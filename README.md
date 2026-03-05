@@ -3,6 +3,7 @@
 ![GitHub Discussions](https://img.shields.io/github/discussions/checkdgt/fse-aiware-python-dependencies)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/checkdgt/fse-aiware-python-dependencies)
 
+## ** [DEADLINE UPDATE](#important-dates) **
 ## Abstract
 The first annual Agentic-based Python Dependency Resolution challenge, to be held at FSE 2026, invites researchers and practitioners to develop innovative agentic-based systems for automatically resolving complex Python dependency conflicts.
 The competition emphasizes open-source innovative memory constrained techniques, such as LLM fine-tuning, retrieval-augmented generation, graph-based databases, error log analysis, and prompt engineering. With open attendance and paper submissions appearing in ACM Digital Library, this event addresses the timely challenge of dependency management in modern Python ecosystems, fostering community collaboration and establishing best practices for LLM-based package management tools.
@@ -10,7 +11,6 @@ The competition emphasizes open-source innovative memory constrained techniques,
 [FSE-AIWare](https://conf.researchr.org/committee/fse-2026/fse-2026-aiware-2026-competition-program-committee)
 
 ![Alt text](fse-aiware.jpeg "FSE-AIWare")
-
 
 
 ## Overview
@@ -77,11 +77,11 @@ Final tool results will be presented during the event, where tools will be furth
 ### Important Dates
 All deadlines are Anywhere on Earth (AoE):
  - **Competition Announcement**: January 1, 2026
- - **Paper and Tool Submission Deadline**: March 6, 2026
- - **Notification to Authors**: March 26, 2026
- - **Participants Camera Ready**: March 31, 2026
- - **Camera-Ready Deadline**: April 2, 2026
- - **Organizers Report Camera Ready**: April 9, 2026
+ - **Paper and Tool Submission Deadline**: ~~March 6~~March 13, 2026
+ - **Notification to Authors**: ~~March 26~~April 2, 2026
+ - **Participants Camera Ready**: ~~March 31~~April 7, 2026
+ - **Camera-Ready Deadline**: ~~April 2~~April 9, 2026
+ - **Organizers Report Camera Ready**: ~~April 9~~April 16, 2026
  - **Competition Date**: July 6, 2026
 
 ### Program Committee
