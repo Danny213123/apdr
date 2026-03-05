@@ -77,11 +77,11 @@ Final tool results will be presented during the event, where tools will be furth
 ### Important Dates
 All deadlines are Anywhere on Earth (AoE):
  - **Competition Announcement**: January 1, 2026
- - **Paper and Tool Submission Deadline**: ~~March 6~~March 13, 2026
- - **Notification to Authors**: ~~March 26~~April 2, 2026
- - **Participants Camera Ready**: ~~March 31~~April 7, 2026
- - **Camera-Ready Deadline**: ~~April 2~~April 9, 2026
- - **Organizers Report Camera Ready**: ~~April 9~~April 16, 2026
+ - **Paper and Tool Submission Deadline**: ~~March 6~~ March 13, 2026
+ - **Notification to Authors**: ~~March 26~~ April 2, 2026
+ - **Participants Camera Ready**: ~~March 31~~ April 7, 2026
+ - **Camera-Ready Deadline**: ~~April 2~~ April 9, 2026
+ - **Organizers Report Camera Ready**: ~~April 9~~ April 16, 2026
  - **Competition Date**: July 6, 2026
 
 ### Program Committee
