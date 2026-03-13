@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 - 2026-03-13
+
+- Improved APDR's TensorFlow handling by removing the hardcoded modern `tensorflow==2.18.0` default, adding a legacy TensorFlow/Keras family bundle, and steering old standalone `keras` + `tensorflow` snippets toward coherent pins like `tensorflow==1.15.5`, `keras==2.3.1`, `numpy==1.16.6`, and `gym==0.17.3`.
+- Expanded APDR's Python runtime support to include `3.7` and `3.8` across candidate-version selection, interpreter discovery, auto-install hints, and benchmark UI Doctor reporting so legacy ML stacks can validate against realistic runtimes instead of jumping straight from `2.7` to `3.9+`.
+- Refreshed APDR's seeded version index and regression coverage for legacy TensorFlow-family cases, so SMT pre-solve falls back more honestly on incomplete metadata instead of failing early on the wrong TensorFlow assignment.
+
 ## 0.2.3 - 2026-03-13
 
 - Added the new terminal CLI/TUI launcher for the benchmark suite, so the project now ships both the web interface and a keyboard-driven command center through `python -m benchmark_ui --cli`.

@@ -941,6 +941,8 @@ fn python_install_specs(python_version: &str) -> Vec<String> {
     let mut values = vec![python_version.to_string()];
     let extras = match python_version {
         "2.7" => vec!["2.7.18"],
+        "3.7" => vec!["3.7.17", "3.7.16"],
+        "3.8" => vec!["3.8.20", "3.8.19", "3.8.18"],
         "3.9" => vec!["3.9.21", "3.9.20", "3.9.19"],
         "3.10" => vec!["3.10.16", "3.10.15", "3.10.14"],
         "3.11" => vec!["3.11.11", "3.11.10", "3.11.9"],
@@ -1160,7 +1162,7 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 fn host_python_for_metadata() -> Option<PathBuf> {
-    for version in ["3.12", "3.11", "3.10", "3.9"] {
+    for version in ["3.12", "3.11", "3.10", "3.9", "3.8", "3.7"] {
         if let Some(path) = find_python_interpreter(version) {
             return Some(path);
         }
@@ -1183,6 +1185,8 @@ fn host_python_for_metadata() -> Option<PathBuf> {
 
 fn windows_winget_python_package(python_version: &str) -> Option<&'static str> {
     match python_version {
+        "3.7" => Some("Python.Python.3.7"),
+        "3.8" => Some("Python.Python.3.8"),
         "3.9" => Some("Python.Python.3.9"),
         "3.10" => Some("Python.Python.3.10"),
         "3.11" => Some("Python.Python.3.11"),
@@ -1193,6 +1197,8 @@ fn windows_winget_python_package(python_version: &str) -> Option<&'static str> {
 
 fn windows_scoop_python_package(python_version: &str) -> Option<&'static str> {
     match python_version {
+        "3.7" => Some("python37"),
+        "3.8" => Some("python38"),
         "3.9" => Some("python39"),
         "3.10" => Some("python310"),
         "3.11" => Some("python311"),

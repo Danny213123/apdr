@@ -349,6 +349,73 @@ fn legacy_pymc3_family_recovery_keeps_curated_bundle_pins() {
 }
 
 #[test]
+fn resolver_uses_family_bundle_for_legacy_tensorflow_stack() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/legacy_tensorflow_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-legacy-tensorflow-output");
+    config.validate_with_docker = false;
+    config.execute_snippet = false;
+    config.python_version_range = 5;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert!(result.requirements_txt.contains("tensorflow==1.15.5"));
+    assert!(result.requirements_txt.contains("keras==2.3.1"));
+    assert!(result.requirements_txt.contains("numpy==1.16.6"));
+    assert!(result.requirements_txt.contains("gym==0.17.3"));
+    assert!(result
+        .resolution_report
+        .notes
+        .iter()
+        .any(|note| note.contains("Family knowledge targeted the legacy TensorFlow/Keras stack at Python 3.7")));
+}
+
+#[test]
+fn legacy_tensorflow_validation_prefers_py37_before_py27() {
+    let parse_result = apdr::ParseResult {
+        imports: vec!["tensorflow".to_string(), "keras".to_string(), "gym".to_string()],
+        import_paths: vec![
+            "tensorflow".to_string(),
+            "keras.layers".to_string(),
+            "gym".to_string(),
+        ],
+        config_deps: Vec::new(),
+        python_version_min: "3.9".to_string(),
+        python_version_max: Some("3.9".to_string()),
+        confidence: 0.8,
+        scanned_files: Vec::new(),
+    };
+    let resolved = vec![
+        apdr::ResolvedDependency {
+            import_name: "tensorflow".to_string(),
+            package_name: "tensorflow".to_string(),
+            version: Some("1.15.5".to_string()),
+            strategy: "family:legacy-tensorflow".to_string(),
+            confidence: 0.96,
+        },
+        apdr::ResolvedDependency {
+            import_name: "keras".to_string(),
+            package_name: "keras".to_string(),
+            version: Some("2.3.1".to_string()),
+            strategy: "family:legacy-tensorflow".to_string(),
+            confidence: 0.96,
+        },
+    ];
+
+    let versions = apdr::resolver::family_knowledge::validation_candidate_versions(
+        &parse_result,
+        &resolved,
+        "3.9",
+        5,
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(versions, vec!["3.7", "2.7", "3.8"]);
+}
+
+#[test]
 fn resolver_skips_macos_pyobjc_private_framework_cases() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let snippet = tool_root.join("tests/fixtures/apple_private_framework_snippet.py");

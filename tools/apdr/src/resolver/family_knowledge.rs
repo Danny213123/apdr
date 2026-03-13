@@ -729,6 +729,15 @@ pub fn apply_family_knowledge(
     ) {
         notes.push(note);
     }
+    if let Some(note) = apply_legacy_tensorflow_bundle(
+        parse_result,
+        resolved,
+        selected_python,
+        python_range,
+        execute_snippet,
+    ) {
+        notes.push(note);
+    }
     notes
 }
 
@@ -771,6 +780,32 @@ pub fn recover_family_knowledge(
             "Family-aware recovery kept the legacy PyMC3 stack pinned at the curated Python {bundle_python} bundle."
         ));
     }
+
+    if uses_legacy_tensorflow_stack(parse_result, resolved)
+        && (lowercase.contains("requires a different python version")
+            || lowercase.contains("could not find a version that satisfies the requirement tensorflow==")
+            || lowercase.contains("no matching distribution found for tensorflow==")
+            || lowercase.contains("could not find a version that satisfies the requirement keras==")
+            || lowercase.contains("no matching distribution found for keras==")
+            || lowercase.contains("resolutionimpossible"))
+    {
+        if let Some(note) = apply_legacy_tensorflow_bundle(
+            parse_result,
+            resolved,
+            selected_python,
+            python_range,
+            execute_snippet,
+        ) {
+            return Some(format!(
+                "Family-aware recovery reapplied the legacy TensorFlow/Keras stack. {note}"
+            ));
+        }
+        let bundle_python =
+            preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
+        return Some(format!(
+            "Family-aware recovery kept the legacy TensorFlow/Keras stack pinned at the curated Python {bundle_python} bundle."
+        ));
+    }
     None
 }
 
@@ -782,16 +817,31 @@ pub fn protects_family_version(
     execute_snippet: bool,
     package_name: &str,
 ) -> bool {
-    if !uses_legacy_pymc3_stack(parse_result, resolved) {
-        return false;
+    let normalized = normalize(package_name);
+
+    if uses_legacy_pymc3_stack(parse_result, resolved) {
+        let bundle_python =
+            preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
+        if legacy_pymc3_bundle(&bundle_python)
+            .iter()
+            .any(|(_, candidate, _)| normalize(candidate) == normalized)
+        {
+            return true;
+        }
     }
 
-    let bundle_python =
-        preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
-    let normalized = normalize(package_name);
-    legacy_pymc3_bundle(&bundle_python)
-        .iter()
-        .any(|(_, candidate, _)| normalize(candidate) == normalized)
+    if uses_legacy_tensorflow_stack(parse_result, resolved) {
+        let bundle_python =
+            preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
+        if legacy_tensorflow_bundle(&bundle_python)
+            .iter()
+            .any(|(_, candidate, _)| normalize(candidate) == normalized)
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 pub fn validation_candidate_versions(
@@ -807,6 +857,21 @@ pub fn validation_candidate_versions(
             vec!["2.7", "3.10", "3.9"]
         } else {
             vec!["3.10", "3.9", "2.7"]
+        };
+        let ordered = preferred
+            .into_iter()
+            .filter(|version| candidates.iter().any(|candidate| candidate == version))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        return Some(if ordered.is_empty() { candidates } else { ordered });
+    }
+
+    if uses_legacy_tensorflow_stack(parse_result, resolved) {
+        let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
+        let preferred = if execute_snippet {
+            vec!["2.7", "3.7", "3.8"]
+        } else {
+            vec!["3.7", "2.7", "3.8"]
         };
         let ordered = preferred
             .into_iter()
@@ -920,6 +985,44 @@ fn apply_legacy_pymc3_bundle(
     ))
 }
 
+fn apply_legacy_tensorflow_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+    python_range: usize,
+    execute_snippet: bool,
+) -> Option<String> {
+    if !uses_legacy_tensorflow_stack(parse_result, resolved) {
+        return None;
+    }
+
+    let bundle_python =
+        preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
+    let mut changes = Vec::new();
+
+    for (import_name, package_name, version) in legacy_tensorflow_bundle(&bundle_python) {
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:legacy-tensorflow",
+            0.96,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Family knowledge targeted the legacy TensorFlow/Keras stack at Python {bundle_python} and pinned a coherent bundle: {}.",
+        changes.join(", ")
+    ))
+}
+
 fn preferred_legacy_pymc3_python(
     selected_python: &str,
     python_range: usize,
@@ -943,6 +1046,46 @@ fn preferred_legacy_pymc3_python(
     } else {
         selected_python.to_string()
     }
+}
+
+fn preferred_legacy_tensorflow_python(
+    selected_python: &str,
+    python_range: usize,
+    execute_snippet: bool,
+) -> String {
+    if execute_snippet {
+        if selected_python.starts_with("2.") {
+            return "2.7".to_string();
+        }
+        if selected_python.starts_with("3.7") {
+            return "3.7".to_string();
+        }
+        return "3.7".to_string();
+    }
+
+    let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
+    if candidates.iter().any(|value| value == "3.7") {
+        "3.7".to_string()
+    } else if candidates.iter().any(|value| value == "2.7") {
+        "2.7".to_string()
+    } else if candidates.iter().any(|value| value == "3.8") {
+        "3.8".to_string()
+    } else {
+        selected_python.to_string()
+    }
+}
+
+fn legacy_tensorflow_candidate_versions(
+    selected_python: &str,
+    python_range: usize,
+) -> Vec<String> {
+    let mut candidates = docker::parallel::candidate_versions(selected_python, python_range);
+    for forced in ["2.7", "3.7", "3.8"] {
+        if !candidates.iter().any(|item| item == forced) {
+            candidates.push(forced.to_string());
+        }
+    }
+    candidates
 }
 
 fn legacy_pymc3_bundle(bundle_python: &str) -> &'static [(&'static str, &'static str, &'static str)] {
@@ -970,6 +1113,26 @@ fn legacy_pymc3_bundle(bundle_python: &str) -> &'static [(&'static str, &'static
     }
 }
 
+fn legacy_tensorflow_bundle(
+    bundle_python: &str,
+) -> &'static [(&'static str, &'static str, &'static str)] {
+    if bundle_python.starts_with("2.") {
+        &[
+            ("gym", "gym", "0.17.3"),
+            ("keras", "keras", "2.3.1"),
+            ("numpy", "numpy", "1.16.6"),
+            ("tensorflow", "tensorflow", "1.15.5"),
+        ]
+    } else {
+        &[
+            ("gym", "gym", "0.17.3"),
+            ("keras", "keras", "2.3.1"),
+            ("numpy", "numpy", "1.16.6"),
+            ("tensorflow", "tensorflow", "1.15.5"),
+        ]
+    }
+}
+
 fn uses_legacy_pymc3_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
     let imports = parse_result
         .imports
@@ -987,6 +1150,34 @@ fn uses_legacy_pymc3_stack(parse_result: &ParseResult, resolved: &[ResolvedDepen
         || packages.contains("pymc3")
         || packages.contains("theano_pymc")
         || packages.contains("theano")
+}
+
+fn uses_legacy_tensorflow_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    let imports = parse_result
+        .imports
+        .iter()
+        .chain(parse_result.import_paths.iter())
+        .map(|item| item.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let packages = resolved
+        .iter()
+        .map(|dependency| normalize(&dependency.package_name))
+        .collect::<BTreeSet<_>>();
+
+    let has_tensorflow = imports.contains("tensorflow")
+        || imports.iter().any(|item| item.starts_with("tensorflow."))
+        || packages.contains("tensorflow");
+    let has_standalone_keras = imports.contains("keras")
+        || imports.iter().any(|item| item.starts_with("keras."))
+        || packages.contains("keras");
+    let py2_target = parse_result.python_version_min.starts_with("2.")
+        || parse_result
+            .python_version_max
+            .as_deref()
+            .map(|value| value.starts_with("2."))
+            .unwrap_or(false);
+
+    has_tensorflow && (has_standalone_keras || py2_target)
 }
 
 fn pin_dependency(

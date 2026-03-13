@@ -22,9 +22,11 @@ from . import APP_NAME, APP_VERSION
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "phi3:medium"
 DEFAULT_TEMPERATURE = 0.7
-APDR_PYTHON_VERSIONS = ["2.7", "3.9", "3.10", "3.11", "3.12"]
+APDR_PYTHON_VERSIONS = ["2.7", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
 APDR_PYTHON_INSTALL_CANDIDATES: dict[str, list[str]] = {
     "2.7": ["2.7.18"],
+    "3.7": ["3.7.17", "3.7.16"],
+    "3.8": ["3.8.20", "3.8.19", "3.8.18"],
     "3.9": ["3.9.21", "3.9.20", "3.9.19"],
     "3.10": ["3.10.16", "3.10.15", "3.10.14"],
     "3.11": ["3.11.11", "3.11.10", "3.11.9"],
@@ -1102,6 +1104,8 @@ class AppState:
 
     def _windows_scoop_python_package(self, version: str) -> str:
         return {
+            "3.7": "python37",
+            "3.8": "python38",
             "3.9": "python39",
             "3.10": "python310",
             "3.11": "python311",

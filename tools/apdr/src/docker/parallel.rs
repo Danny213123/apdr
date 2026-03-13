@@ -1,9 +1,17 @@
 pub fn candidate_versions(base_version: &str, range: usize) -> Vec<String> {
     let known = if base_version == "2.7" {
-        vec!["2.7".to_string(), "3.9".to_string(), "3.10".to_string()]
+        vec![
+            "2.7".to_string(),
+            "3.7".to_string(),
+            "3.8".to_string(),
+            "3.9".to_string(),
+            "3.10".to_string(),
+        ]
     } else {
         vec![
             "2.7".to_string(),
+            "3.7".to_string(),
+            "3.8".to_string(),
             "3.9".to_string(),
             "3.10".to_string(),
             "3.11".to_string(),
@@ -27,7 +35,13 @@ mod tests {
     fn py27_expansion_stops_at_py310() {
         assert_eq!(
             candidate_versions("2.7", 5),
-            vec!["2.7".to_string(), "3.9".to_string(), "3.10".to_string()]
+            vec![
+                "2.7".to_string(),
+                "3.7".to_string(),
+                "3.8".to_string(),
+                "3.9".to_string(),
+                "3.10".to_string()
+            ]
         );
     }
 
@@ -37,6 +51,8 @@ mod tests {
             candidate_versions("3.9", 5),
             vec![
                 "2.7".to_string(),
+                "3.7".to_string(),
+                "3.8".to_string(),
                 "3.9".to_string(),
                 "3.10".to_string(),
                 "3.11".to_string(),
