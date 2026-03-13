@@ -1,2 +1,2 @@
 APP_NAME = "FSE AIWare Bench"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"

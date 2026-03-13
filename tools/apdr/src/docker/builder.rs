@@ -4,6 +4,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -72,22 +73,18 @@ pub fn validate_requirements(
         let combined_log_path = work_dir.join("combined.log");
         let metadata_path = work_dir.join("metadata.txt");
         let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
-        let interpreter = match find_python_interpreter(python_version) {
-            Some(path) => path,
-            None => {
-                let missing = format!(
-                    "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, and common pyenv/asdf/mise locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
-                    python_version.replace('.', "_")
-                );
-                fs::write(&build_log_path, &missing)?;
+        let interpreter = match ensure_python_interpreter(python_version) {
+            Ok(path) => path,
+            Err(detail) => {
+                fs::write(&build_log_path, &detail)?;
                 fs::write(&run_log_path, "")?;
-                fs::write(&combined_log_path, &missing)?;
+                fs::write(&combined_log_path, &detail)?;
                 let attempt = ValidationAttempt {
                     attempt_index,
                     python_version: python_version.clone(),
                     image_tag: Some(env_label.clone()),
                     status: "build-failed".to_string(),
-                    log_excerpt: truncate_log(&missing),
+                    log_excerpt: truncate_log(&detail),
                     artifact_dir: Some(work_dir.display().to_string()),
                     build_log_path: Some(build_log_path.display().to_string()),
                     run_log_path: Some(run_log_path.display().to_string()),
@@ -729,6 +726,211 @@ fn find_python_interpreter(python_version: &str) -> Option<PathBuf> {
     None
 }
 
+fn ensure_python_interpreter(python_version: &str) -> Result<PathBuf, String> {
+    if let Some(path) = find_python_interpreter(python_version) {
+        return Ok(path);
+    }
+
+    let detail = maybe_auto_install_python_interpreter(python_version);
+    if let Some(path) = find_python_interpreter(python_version) {
+        return Ok(path);
+    }
+
+    Err(detail.unwrap_or_else(|| missing_interpreter_message(python_version, "")))
+}
+
+fn maybe_auto_install_python_interpreter(python_version: &str) -> Option<String> {
+    static ATTEMPTS: OnceLock<Mutex<BTreeMap<String, String>>> = OnceLock::new();
+    if !auto_install_enabled() {
+        return Some(missing_interpreter_message(
+            python_version,
+            "Auto-install is disabled by APDR_AUTO_INSTALL_PYTHONS=0.",
+        ));
+    }
+
+    let attempts = ATTEMPTS.get_or_init(|| Mutex::new(BTreeMap::new()));
+    if let Some(detail) = attempts
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(python_version).cloned())
+    {
+        return Some(detail);
+    }
+
+    let detail = attempt_python_auto_install(python_version);
+    if let Ok(mut cache) = attempts.lock() {
+        cache.insert(python_version.to_string(), detail.clone());
+    }
+    Some(detail)
+}
+
+fn auto_install_enabled() -> bool {
+    std::env::var("APDR_AUTO_INSTALL_PYTHONS")
+        .map(|value| {
+            let lowered = value.trim().to_ascii_lowercase();
+            !matches!(lowered.as_str(), "0" | "false" | "no" | "off")
+        })
+        .unwrap_or(true)
+}
+
+fn attempt_python_auto_install(python_version: &str) -> String {
+    let mut managers = Vec::new();
+    let mut last_output = String::new();
+
+    if command_on_path("uv") {
+        managers.push("uv".to_string());
+        let (success, output) = run_install_command("uv", &["python", "install", python_version]);
+        if success && find_python_interpreter(python_version).is_some() {
+            return format!("Installed Python {python_version} with uv.");
+        }
+        last_output = output;
+    }
+
+    if command_on_path("mise") {
+        managers.push("mise".to_string());
+        for spec in python_install_specs(python_version) {
+            let request = format!("python@{spec}");
+            let (success, output) = run_install_command("mise", &["install", &request]);
+            if success && find_python_interpreter(python_version).is_some() {
+                return format!("Installed Python {python_version} with mise ({spec}).");
+            }
+            last_output = output;
+        }
+    }
+
+    if command_on_path("pyenv") {
+        managers.push("pyenv".to_string());
+        for spec in python_install_specs(python_version) {
+            let (success, output) = run_install_command("pyenv", &["install", "-s", &spec]);
+            if success && find_python_interpreter(python_version).is_some() {
+                return format!("Installed Python {python_version} with pyenv ({spec}).");
+            }
+            last_output = output;
+        }
+    }
+
+    if command_on_path("asdf") {
+        managers.push("asdf".to_string());
+        let (_plugin_ok, plugin_output) = run_install_command("asdf", &["plugin", "list"]);
+        if !plugin_output
+            .split_whitespace()
+            .any(|item| item.trim() == "python")
+        {
+            let _ = run_install_command("asdf", &["plugin", "add", "python"]);
+        }
+        for spec in python_install_specs(python_version) {
+            let (success, output) = run_install_command("asdf", &["install", "python", &spec]);
+            if success && find_python_interpreter(python_version).is_some() {
+                return format!("Installed Python {python_version} with asdf ({spec}).");
+            }
+            last_output = output;
+        }
+    }
+
+    if !python_version.starts_with("2.") && command_on_path("brew") {
+        managers.push("brew".to_string());
+        let formula = format!("python@{python_version}");
+        let (success, output) = run_install_command("brew", &["install", &formula]);
+        if success && find_python_interpreter(python_version).is_some() {
+            return format!("Installed Python {python_version} with Homebrew ({formula}).");
+        }
+        last_output = output;
+    }
+
+    if managers.is_empty() {
+        return missing_interpreter_message(
+            python_version,
+            "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, or Homebrew.",
+        );
+    }
+
+    if last_output.trim().is_empty() {
+        return missing_interpreter_message(
+            python_version,
+            &format!(
+                "Tried {} but no usable interpreter was discovered afterward.",
+                managers.join(", ")
+            ),
+        );
+    }
+
+    missing_interpreter_message(
+        python_version,
+        &format!(
+            "Tried {}. Last installer output: {}",
+            managers.join(", "),
+            summarize_command_output(&last_output)
+        ),
+    )
+}
+
+fn missing_interpreter_message(python_version: &str, extra: &str) -> String {
+    let mut message = format!(
+        "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, and common pyenv/asdf/mise/uv locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
+        python_version.replace('.', "_")
+    );
+    if !extra.trim().is_empty() {
+        message.push(' ');
+        message.push_str(extra.trim());
+    }
+    message
+}
+
+fn python_install_specs(python_version: &str) -> Vec<String> {
+    let mut values = vec![python_version.to_string()];
+    let extras = match python_version {
+        "2.7" => vec!["2.7.18"],
+        "3.9" => vec!["3.9.21", "3.9.20", "3.9.19"],
+        "3.10" => vec!["3.10.16", "3.10.15", "3.10.14"],
+        "3.11" => vec!["3.11.11", "3.11.10", "3.11.9"],
+        "3.12" => vec!["3.12.9", "3.12.8", "3.12.7"],
+        _ => Vec::new(),
+    };
+    for value in extras {
+        if !values.iter().any(|item| item == value) {
+            values.push(value.to_string());
+        }
+    }
+    values
+}
+
+fn command_on_path(command: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|value| {
+            std::env::split_paths(&value).any(|path| {
+                let candidate = path.join(command);
+                candidate.exists() && candidate.is_file()
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn run_install_command(command: &str, args: &[&str]) -> (bool, String) {
+    let output = Command::new(command)
+        .args(args)
+        .output();
+    let Ok(output) = output else {
+        return (false, format!("failed to start {command}"));
+    };
+    (
+        output.status.success(),
+        combined_output(&output.stdout, &output.stderr),
+    )
+}
+
+fn summarize_command_output(output: &str) -> String {
+    let lines = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let start = lines.len().saturating_sub(8);
+    lines[start..].join(" | ")
+}
+
 fn python_interpreter_candidates(python_version: &str) -> Vec<PathBuf> {
     let normalized = python_version.replace('.', "_");
     let mut candidates = Vec::new();
@@ -792,6 +994,7 @@ fn managed_python_roots() -> Vec<PathBuf> {
         home.join(".pyenv/versions"),
         home.join(".asdf/installs/python"),
         home.join(".local/share/mise/installs/python"),
+        home.join(".local/share/uv/python"),
     ]
 }
 
@@ -804,6 +1007,7 @@ fn matching_version_dirs(root: &Path, version: &str) -> Vec<PathBuf> {
         format!("{version}."),
         format!("{version}-"),
         format!("Python-{version}"),
+        format!("cpython-{version}"),
     ];
     entries
         .filter_map(|entry| entry.ok().map(|item| item.path()))

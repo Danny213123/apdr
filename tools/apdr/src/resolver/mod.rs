@@ -1123,16 +1123,8 @@ fn infer_validation_reason(
                 );
             }
             "PythonInterpreterUnavailable" => {
-                let attempted = validation
-                    .attempts
-                    .iter()
-                    .map(|item| item.python_version.clone())
-                    .collect::<BTreeSet<_>>();
-                if !attempted.is_empty() {
-                    return Some(format!(
-                        "APDR could not find a matching local Python interpreter for any candidate version: {}.",
-                        attempted.into_iter().collect::<Vec<_>>().join(", ")
-                    ));
+                if !log.trim().is_empty() {
+                    return Some(log.trim().to_string());
                 }
                 return Some(
                     "APDR could not find a matching local Python interpreter for one of the candidate versions."

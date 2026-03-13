@@ -23,6 +23,13 @@ DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "phi3:medium"
 DEFAULT_TEMPERATURE = 0.7
 APDR_PYTHON_VERSIONS = ["2.7", "3.9", "3.10", "3.11", "3.12"]
+APDR_PYTHON_INSTALL_CANDIDATES: dict[str, list[str]] = {
+    "2.7": ["2.7.18"],
+    "3.9": ["3.9.21", "3.9.20", "3.9.19"],
+    "3.10": ["3.10.16", "3.10.15", "3.10.14"],
+    "3.11": ["3.11.11", "3.11.10", "3.11.9"],
+    "3.12": ["3.12.9", "3.12.8", "3.12.7"],
+}
 
 
 @dataclass
@@ -670,9 +677,78 @@ class AppState:
         if missing:
             parts.append("Missing: " + ", ".join(missing))
         parts.append(
-            "APDR auto-scans PATH, Python framework installs, and common pyenv/asdf/mise locations, then validates with whichever matching interpreters are installed."
+            "APDR auto-scans PATH, Python framework installs, and common pyenv/asdf/mise/uv locations, and the Doctor can auto-install missing interpreters with supported managers."
         )
         return " ".join(parts)
+
+    def _apdr_python_install_specs(self, version: str) -> list[str]:
+        specs = [version]
+        for candidate in APDR_PYTHON_INSTALL_CANDIDATES.get(version, []):
+            if candidate not in specs:
+                specs.append(candidate)
+        return specs
+
+    def _auto_install_apdr_python(self, version: str) -> tuple[bool, str]:
+        supported_managers: list[str] = []
+
+        def already_available() -> bool:
+            return bool(self._find_python_interpreter_command(version))
+
+        if already_available():
+            return True, f"Python {version} is already available."
+
+        if shutil.which("uv"):
+            supported_managers.append("uv")
+            code, output = self._run_command(["uv", "python", "install", version], cwd=self.repo_root, timeout=7200)
+            if code == 0 and already_available():
+                return True, "Installed with uv."
+            if code == 0:
+                return False, "uv reported success, but APDR still could not discover the interpreter."
+            last_output = self._summarize_output(output)
+        else:
+            last_output = ""
+
+        if shutil.which("mise"):
+            supported_managers.append("mise")
+            for spec in self._apdr_python_install_specs(version):
+                code, output = self._run_command(["mise", "install", f"python@{spec}"], cwd=self.repo_root, timeout=7200)
+                if code == 0 and already_available():
+                    return True, f"Installed with mise ({spec})."
+                last_output = self._summarize_output(output)
+
+        if shutil.which("pyenv"):
+            supported_managers.append("pyenv")
+            for spec in self._apdr_python_install_specs(version):
+                code, output = self._run_command(["pyenv", "install", "-s", spec], cwd=self.repo_root, timeout=7200)
+                if code == 0 and already_available():
+                    return True, f"Installed with pyenv ({spec})."
+                last_output = self._summarize_output(output)
+
+        if shutil.which("asdf"):
+            supported_managers.append("asdf")
+            plugin_code, plugin_output = self._run_command(["asdf", "plugin", "list"], cwd=self.repo_root, timeout=60)
+            if plugin_code == 0 and "python" not in plugin_output.split():
+                self._run_command(["asdf", "plugin", "add", "python"], cwd=self.repo_root, timeout=300)
+            for spec in self._apdr_python_install_specs(version):
+                code, output = self._run_command(["asdf", "install", "python", spec], cwd=self.repo_root, timeout=7200)
+                if code == 0 and already_available():
+                    return True, f"Installed with asdf ({spec})."
+                last_output = self._summarize_output(output)
+
+        if not version.startswith("2.") and shutil.which("brew"):
+            supported_managers.append("brew")
+            code, output = self._run_command(["brew", "install", f"python@{version}"], cwd=self.repo_root, timeout=7200)
+            if code == 0 and already_available():
+                return True, f"Installed with Homebrew (python@{version})."
+            last_output = self._summarize_output(output)
+
+        if already_available():
+            return True, f"Python {version} became available during setup."
+
+        if supported_managers:
+            detail = last_output or "installer finished without exposing a usable interpreter on the current machine."
+            return False, f"Tried {', '.join(supported_managers)}. Last output: {detail}"
+        return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, or Homebrew."
 
     def _find_python_interpreter_command(self, version: str) -> list[str]:
         env_name = f"APDR_PYTHON_{version.replace('.', '_')}"
@@ -734,6 +810,7 @@ class AppState:
             home / ".pyenv" / "versions",
             home / ".asdf" / "installs" / "python",
             home / ".local" / "share" / "mise" / "installs" / "python",
+            home / ".local" / "share" / "uv" / "python",
         ]
         for root in manager_roots:
             if not root.exists():
@@ -756,7 +833,7 @@ class AppState:
         prefixes = {version, f"{version}.", f"{version}-", f"Python-{version}"}
         for child in children:
             name = child.name
-            if name == version or any(name.startswith(prefix) for prefix in prefixes):
+            if name == version or any(name.startswith(prefix) for prefix in prefixes) or name.startswith(f"cpython-{version}"):
                 matches.append(child)
         return matches
 
@@ -816,6 +893,18 @@ class AppState:
 
     def _auto_fix_apdr(self, log: Any) -> None:
         tool_dir = self.tool_dir("apdr")
+        available, missing = self.apdr_local_interpreters()
+        if missing:
+            log(f"Attempting to install missing APDR Python interpreters: {', '.join(missing)}")
+            for version in missing:
+                success, detail = self._auto_install_apdr_python(version)
+                if success:
+                    log(f"Python {version}: {detail}")
+                else:
+                    log(f"Python {version}: {detail}")
+        else:
+            log("APDR Python interpreters are already available.")
+
         binary_candidates = [
             tool_dir / "target" / "release" / "apdr",
             tool_dir / "target" / "debug" / "apdr",

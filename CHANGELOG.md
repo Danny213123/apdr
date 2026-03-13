@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-03-13
+
+- Added APDR Python runtime auto-install support across [`tools/apdr/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr) and the web Doctor flow, with installer attempts through `uv`, `mise`, `pyenv`, `asdf`, and Homebrew when compatible versions are missing locally.
+- Expanded APDR interpreter discovery to include managed installs from common framework locations plus `uv`, `pyenv`, `asdf`, `mise`, and Homebrew so new runtimes are picked up automatically after install.
+- Improved APDR interpreter failure reporting so validation output shows which Python versions were missing, which installer paths were attempted, and why provisioning still failed when the host environment blocks installation.
+
 ## 0.2.0 - 2026-03-13
 
 - Replaced the standalone benchmark desktop UI with the web app in [`web/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/web) and [`benchmark_ui/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/benchmark_ui), including separate benchmark-view routing, custom dropdowns on macOS, saved-run load/resume support, doctor auto-fix flows, and live `sec/case` pacing updates.
