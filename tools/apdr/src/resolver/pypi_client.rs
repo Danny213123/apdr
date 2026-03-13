@@ -123,6 +123,78 @@ pub fn dependency_specs(
     specs
 }
 
+/// Bulk pre-fetch versions and dependency specs from the KGraph for a set of
+/// packages. This replaces many sequential subprocess calls with a single one,
+/// dramatically reducing startup time for the pre-solve phase.
+pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
+    let missing: Vec<&String> = packages
+        .iter()
+        .filter(|pkg| pypi_index::compatible_versions(store, pkg).is_none())
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let Some(kgraph_path) = smtpip_kgraph_path(store) else {
+        return;
+    };
+    let kgraph_path_text = kgraph_path.display().to_string();
+    let db_path_text = smtpip_db_path(store).display().to_string();
+    let package_list = missing.iter().map(|p| normalize(p)).collect::<Vec<_>>().join(",");
+    let Some(output) = run_host_python(&[
+        "-c",
+        SMTPIP_BULK_SCRIPT,
+        kgraph_path_text.as_str(),
+        db_path_text.as_str(),
+        &package_list,
+    ]) else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Output format: each line is either:
+    //   V\tpackage\tver1,ver2,ver3
+    //   D\tpackage\tversion\tspec1|spec2|spec3
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        match parts.first().copied() {
+            Some("V") if parts.len() >= 3 => {
+                let pkg = parts[1];
+                let versions: Vec<String> = parts[2]
+                    .split(',')
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty())
+                    .collect();
+                if !versions.is_empty() {
+                    let _ = store.save_pypi_versions(pkg, &versions);
+                }
+            }
+            Some("D") if parts.len() >= 4 => {
+                let pkg = parts[1];
+                let version = parts[2];
+                let specs: Vec<String> = parts[3]
+                    .split('|')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !specs.is_empty() {
+                    let _ = store.save_version_dependency_specs(pkg, version, &specs);
+                    let dep_names: Vec<String> = specs
+                        .iter()
+                        .map(|s| requirement_name(s))
+                        .filter(|n| !n.is_empty())
+                        .collect();
+                    if !dep_names.is_empty() {
+                        let _ = store.save_dependency_graph_entry(pkg, &dep_names);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn requirement_name(requirement: &str) -> String {
     let trimmed = requirement.trim();
     if trimmed.is_empty() {
@@ -275,8 +347,8 @@ fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {
     for operator in ["==", ">=", "<=", "!=", "~=", ">", "<"] {
         if let Some(target) = constraint.strip_prefix(operator) {
             return match operator {
-                "==" => compare_versions(version, target.trim()) == Ordering::Equal,
-                "!=" => compare_versions(version, target.trim()) != Ordering::Equal,
+                "==" => wildcard_match(version, target.trim()),
+                "!=" => !wildcard_match(version, target.trim()),
                 ">=" => compare_versions(version, target.trim()) != Ordering::Less,
                 "<=" => compare_versions(version, target.trim()) != Ordering::Greater,
                 ">" => compare_versions(version, target.trim()) == Ordering::Greater,
@@ -286,7 +358,16 @@ fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {
             };
         }
     }
-    compare_versions(version, constraint) == Ordering::Equal
+    wildcard_match(version, constraint)
+}
+
+fn wildcard_match(version: &str, target: &str) -> bool {
+    let target = target.trim();
+    if !target.contains('*') {
+        return compare_versions(version, target) == Ordering::Equal;
+    }
+    let prefix = target.trim_end_matches('*').trim_end_matches('.');
+    version == prefix || version.starts_with(&format!("{prefix}."))
 }
 
 fn compatible_release(version: &str, base: &str) -> bool {
@@ -537,6 +618,102 @@ elif mode == 'deps':
     dependencies = [row[0] for row in rows]
     for item in dependencies:
         print(str(item).strip())
+conn.close()
+"#;
+
+const SMTPIP_BULK_SCRIPT: &str = r#"
+import json
+import os
+import sqlite3
+import sys
+import zipfile
+from pathlib import Path
+
+graph_path = Path(sys.argv[1])
+db_path = Path(sys.argv[2])
+packages = [p.strip() for p in sys.argv[3].split(',') if p.strip()]
+
+def normalize(name):
+    return name.strip().replace('_', '-').replace('.', '-').lower()
+
+def version_key(value):
+    parts = []
+    current = ''
+    for ch in value:
+        if ch.isdigit():
+            current += ch
+        else:
+            if current:
+                parts.append(int(current))
+                current = ''
+            parts.append(ch)
+    if current:
+        parts.append(int(current))
+    return parts
+
+def load_graph(path):
+    if path.suffix == '.zip':
+        with zipfile.ZipFile(path) as zf:
+            with zf.open('KGraph.json') as fh:
+                return json.load(fh)
+    with path.open('r', encoding='utf-8') as fh:
+        return json.load(fh)
+
+def ensure_db(graph_path, db_path):
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    should_rebuild = (
+        (not db_path.exists())
+        or db_path.stat().st_mtime < graph_path.stat().st_mtime
+    )
+    conn = sqlite3.connect(db_path)
+    if not should_rebuild:
+        return conn
+    cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS versions")
+    cur.execute("DROP TABLE IF EXISTS deps")
+    cur.execute("CREATE TABLE versions(package TEXT NOT NULL, version TEXT NOT NULL)")
+    cur.execute("CREATE TABLE deps(package TEXT NOT NULL, version TEXT NOT NULL, spec TEXT NOT NULL)")
+    cur.execute("CREATE INDEX idx_versions_package ON versions(package)")
+    cur.execute("CREATE INDEX idx_deps_package_version ON deps(package, version)")
+    graph = load_graph(graph_path)
+    projects = graph.get('projects', {})
+    version_rows = []
+    dep_rows = []
+    for raw_name, payload in projects.items():
+        package_name = normalize(raw_name)
+        for raw_version, meta in (payload or {}).items():
+            version_rows.append((package_name, str(raw_version).strip()))
+            dependency_packages = ((meta or {}).get('dependency_packages') or [])
+            for spec in dependency_packages:
+                spec_text = str(spec).strip()
+                if spec_text:
+                    dep_rows.append((package_name, str(raw_version).strip(), spec_text))
+    cur.executemany("INSERT INTO versions(package, version) VALUES (?, ?)", version_rows)
+    cur.executemany("INSERT INTO deps(package, version, spec) VALUES (?, ?, ?)", dep_rows)
+    conn.commit()
+    return conn
+
+try:
+    conn = ensure_db(graph_path, db_path)
+except Exception:
+    raise SystemExit(0)
+
+normalized = [normalize(p) for p in packages]
+for pkg in normalized:
+    rows = conn.execute(
+        "SELECT version FROM versions WHERE package = ?", (pkg,)
+    ).fetchall()
+    versions = sorted({row[0] for row in rows}, key=version_key)
+    if versions:
+        print(f"V\t{pkg}\t{','.join(versions)}")
+    for ver in versions:
+        dep_rows = conn.execute(
+            "SELECT spec FROM deps WHERE package = ? AND version = ?",
+            (pkg, ver),
+        ).fetchall()
+        specs = [row[0] for row in dep_rows]
+        if specs:
+            print(f"D\t{pkg}\t{ver}\t{'|'.join(specs)}")
 conn.close()
 "#;
 

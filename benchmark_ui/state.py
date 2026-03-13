@@ -705,7 +705,7 @@ class AppState:
         if already_available():
             return True, f"Python {version} is already available."
 
-        if shutil.which("uv"):
+        if not version.startswith("2.") and shutil.which("uv"):
             supported_managers.append("uv")
             code, output = self._run_command(["uv", "python", "install", version], cwd=self.repo_root, timeout=7200)
             if code == 0 and already_available():
@@ -785,6 +785,10 @@ class AppState:
         if supported_managers:
             detail = last_output or "installer finished without exposing a usable interpreter on the current machine."
             return False, f"Tried {', '.join(supported_managers)}. Last output: {detail}"
+        if version.startswith("2."):
+            if self._is_windows():
+                return False, "No supported legacy Python 2.7 manager was found. APDR will not ask uv, winget, or scoop for 2.7; use mise, pyenv, or asdf."
+            return False, "No supported legacy Python 2.7 manager was found. APDR will not ask uv or Homebrew for 2.7; use mise, pyenv, or asdf."
         if self._is_windows():
             return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, winget, or scoop."
         return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, or Homebrew."

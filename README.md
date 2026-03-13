@@ -118,7 +118,22 @@ The web app adds:
 
 The benchmark runner executes the selected tool from `tools/`, extracts `hard-gists.tar.gz` on first run if needed, and writes run summaries under `runs/`.
 
-Current app version: `0.2.0`
+### Terminal Benchmark UI
+You can launch the same benchmark control plane in the terminal:
+
+```bash
+python3 -m benchmark_ui --cli
+```
+
+The terminal UI reuses the same backend service as the web app and includes:
+- A Home screen with run status, active configuration, and quick actions
+- A Run View with live benchmark progress, recent activity, and completed-case inspection
+- A Configure screen for run settings and per-tool Ollama model configuration
+- Loadouts for saving, applying, and deleting reusable benchmark presets
+- A Doctor screen for environment checks and automatic fixes
+- Saved run browsing with load and resume actions
+
+Current app version: `0.2.3`
 
 Optional frontend development workflow:
 

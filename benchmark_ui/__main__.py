@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 
+from .cli_app import run_cli_app
 from .server import run_server
 from .state import AppState
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Web benchmark UI for the FSE AIWare tool repository.")
+    parser = argparse.ArgumentParser(description="Web or terminal benchmark UI for the FSE AIWare tool repository.")
+    parser.add_argument("--cli", action="store_true", help="Launch the terminal CLI/TUI instead of the web server.")
     parser.add_argument("--doctor", action="store_true", help="Run environment checks and print them as JSON.")
     parser.add_argument("--list-tools", action="store_true", help="Print discovered tools and exit.")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind the web server to.")
@@ -33,6 +35,10 @@ def main() -> None:
         tool = state.discover_tools()[0] if state.discover_tools() else ""
         base_url = state.load_model_config(tool).base_url if tool else ""
         print(json.dumps(state.doctor_checks(tool, base_url), indent=2))
+        return
+
+    if args.cli:
+        run_cli_app(state)
         return
 
     run_server(host=args.host, port=args.port, api_only=args.api_only, state=state)

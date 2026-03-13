@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 - 2026-03-13
+
+- Added the new terminal CLI/TUI launcher for the benchmark suite, so the project now ships both the web interface and a keyboard-driven command center through `python -m benchmark_ui --cli`.
+- Tightened APDR's legacy Python/runtime handling by capping Python `2.7` fallback expansion, improving missing-interpreter guidance, and removing stale Docker-era validation wording so fresh runs reflect the local-environment backend accurately.
+- Improved APDR host-runtime and family-aware recovery logic, including deterministic skips for macOS Objective-C framework snippets and a curated legacy PyMC3 companion bundle that prevents generic recovery from drifting into impossible pins like `pandas==2.x` on legacy cases.
+
 ## 0.2.2 - 2026-03-13
 
 - Added Windows 11 support across the web benchmark launcher and APDR runtime, including Windows interpreter discovery, `pyenv-win`/`uv` lookup, `apdr.exe` detection, and Windows-safe benchmark process management.

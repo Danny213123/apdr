@@ -477,22 +477,27 @@ mod tests {
     }
 
     #[test]
-    fn install_plan_keeps_direct_legacy_pymc3_requirements_without_expanding_modern_transitives() {
+    fn install_plan_keeps_curated_legacy_pymc3_companions_without_expanding_unbounded_transitives() {
         let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let cache_path = unique_cache_dir(&tool_root, "builder-plan-cache");
         let mut store = CacheStore::load(&tool_root, cache_path.clone()).unwrap();
 
         let requirements = "\
+arviz==0.12.1
 numpy==1.21.6
 pandas==1.5.3
 pymc3==3.11.5
 scipy==1.7.3
+setuptools==69.5.1
 Theano-PyMC==1.1.2
+xarray==2022.9.0
+xarray-einstats==0.6.0
 ";
 
         let plan = build_install_plan(&mut store, requirements, "3.10");
 
-        assert_eq!(plan.install_lines.len(), 5);
+        assert_eq!(plan.install_lines.len(), 9);
+        assert!(plan.install_lines.iter().any(|line| line == "arviz==0.12.1"));
         assert!(plan.install_lines.iter().any(|line| line == "numpy==1.21.6"));
         assert!(plan.install_lines.iter().any(|line| line == "pandas==1.5.3"));
         assert!(plan.install_lines.iter().any(|line| line == "pymc3==3.11.5"));
@@ -500,11 +505,23 @@ Theano-PyMC==1.1.2
         assert!(plan
             .install_lines
             .iter()
+            .any(|line| line == "setuptools==69.5.1"));
+        assert!(plan
+            .install_lines
+            .iter()
             .any(|line| line.contains("1.1.2") && line.to_ascii_lowercase().contains("theano")));
         assert!(plan
             .install_lines
             .iter()
-            .all(|line| !line.starts_with("arviz==") && !line.starts_with("matplotlib==")));
+            .any(|line| line == "xarray==2022.9.0"));
+        assert!(plan
+            .install_lines
+            .iter()
+            .any(|line| line == "xarray-einstats==0.6.0"));
+        assert!(plan
+            .install_lines
+            .iter()
+            .all(|line| !line.starts_with("matplotlib==") && !line.starts_with("netcdf4==")));
 
         fs::remove_dir_all(cache_path).unwrap();
     }
@@ -780,7 +797,7 @@ fn attempt_python_auto_install(python_version: &str) -> String {
     let mut managers = Vec::new();
     let mut last_output = String::new();
 
-    if command_on_path("uv") {
+    if !python_version.starts_with("2.") && command_on_path("uv") {
         managers.push("uv".to_string());
         let (success, output) = run_install_command("uv", &["python", "install", python_version]);
         if success && find_python_interpreter(python_version).is_some() {
@@ -910,6 +927,9 @@ fn missing_interpreter_message(python_version: &str, extra: &str) -> String {
         "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, Windows launcher-managed installs, and common pyenv/asdf/mise/uv locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
         python_version.replace('.', "_")
     );
+    if python_version.starts_with("2.") {
+        message.push_str(" Python 2.7 is treated as a legacy runtime, so APDR will not try modern-only installers like uv for it.");
+    }
     if !extra.trim().is_empty() {
         message.push(' ');
         message.push_str(extra.trim());

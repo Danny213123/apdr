@@ -286,6 +286,387 @@ pub static FAMILIES: &[PackageFamily] = &[
             member!("aesara", &["aesara"], Deprecated),
         ],
     },
+    PackageFamily {
+        name: "graphql",
+        modules: &["graphql"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "graphql-core is the maintained reference implementation.",
+        members: &[
+            member!("graphql-core", &["graphql"], preferred),
+            member!("graphql-py", &["graphql"], Unmaintained),
+        ],
+    },
+    PackageFamily {
+        name: "serial",
+        modules: &["serial"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "pyserial is the maintained serial port library.",
+        members: &[
+            member!("pyserial", &["serial"], preferred),
+            member!("serial", &["serial"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "attr",
+        modules: &["attr", "attrs"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "attrs is the maintained package providing the attr namespace.",
+        members: &[
+            member!("attrs", &["attr", "attrs"], preferred),
+            member!("attr", &["attr"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "mysql",
+        modules: &["MySQLdb", "pymysql"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "mysqlclient (C ext) and PyMySQL (pure Python) both provide MySQL access.",
+        members: &[
+            member!("mysqlclient", &["MySQLdb"], preferred),
+            member!("PyMySQL", &["pymysql"], Active),
+            member!("mysql-connector-python", &["mysql"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "postgres",
+        modules: &["psycopg2", "asyncpg"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "psycopg2-binary is the most common PostgreSQL adapter.",
+        members: &[
+            member!("psycopg2-binary", &["psycopg2"], preferred),
+            member!("psycopg2", &["psycopg2"], Active),
+            member!("psycopg", &["psycopg"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "ldap",
+        modules: &["ldap"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-ldap is the maintained LDAP library.",
+        members: &[
+            member!("python-ldap", &["ldap"], preferred),
+            member!("ldap", &["ldap"], Deprecated),
+            member!("ldap3", &["ldap3"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "git",
+        modules: &["git"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "GitPython is the maintained git binding.",
+        members: &[
+            member!("GitPython", &["git"], preferred),
+            member!("pygit2", &["pygit2"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "telegram",
+        modules: &["telegram", "telethon", "pyrogram"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "Multiple Telegram bot libraries share overlapping functionality.",
+        members: &[
+            member!("python-telegram-bot", &["telegram"], preferred),
+            member!("Telethon", &["telethon"], Active),
+            member!("Pyrogram", &["pyrogram"], Active),
+            member!("aiogram", &["aiogram"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "discord",
+        modules: &["discord"],
+        conflict_kind: ConflictKind::Fork,
+        notes: "discord.py is the original; py-cord and nextcord are maintained forks.",
+        members: &[
+            member!("discord.py", &["discord"], preferred),
+            member!("py-cord", &["discord"], Active),
+            member!("nextcord", &["nextcord"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "docx",
+        modules: &["docx"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-docx is the maintained Word document library.",
+        members: &[
+            member!("python-docx", &["docx"], preferred),
+            member!("docx", &["docx"], Unmaintained),
+        ],
+    },
+    PackageFamily {
+        name: "pptx",
+        modules: &["pptx"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-pptx is the maintained PowerPoint library.",
+        members: &[
+            member!("python-pptx", &["pptx"], preferred),
+        ],
+    },
+    PackageFamily {
+        name: "pdf-reader",
+        modules: &["PyPDF2", "pypdf"],
+        conflict_kind: ConflictKind::Migration,
+        notes: "PyPDF2 was merged back into pypdf.",
+        members: &[
+            member!("pypdf", &["pypdf"], preferred),
+            member!("PyPDF2", &["PyPDF2"], Deprecated),
+            member!("pyPdf", &["pyPdf"], Unmaintained),
+        ],
+    },
+    PackageFamily {
+        name: "fitz",
+        modules: &["fitz"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "PyMuPDF provides the fitz module.",
+        members: &[
+            member!("PyMuPDF", &["fitz"], preferred),
+            member!("fitz", &["fitz"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "opengl",
+        modules: &["OpenGL"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "PyOpenGL and PyOpenGL-accelerate share the OpenGL namespace.",
+        members: &[
+            member!("PyOpenGL", &["OpenGL"], preferred),
+            member!("PyOpenGL-accelerate", &["OpenGL"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "pyobjc",
+        modules: &["objc", "AppKit", "Foundation", "Quartz", "CoreFoundation"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "pyobjc is the umbrella; framework packages install into sub-namespaces.",
+        members: &[
+            member!("pyobjc", &["objc", "PyObjCTools"], preferred),
+            member!("pyobjc-framework-Cocoa", &["AppKit", "Foundation"], Active),
+            member!("pyobjc-framework-Quartz", &["Quartz", "CoreGraphics"], Active),
+            member!("pyobjc-framework-CoreFoundation", &["CoreFoundation"], Active),
+            member!("pyobjc-framework-CoreServices", &["LaunchServices"], Active),
+            member!("pyobjc-framework-SystemConfiguration", &["SystemConfiguration"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "pywin32",
+        modules: &["win32api", "win32con", "win32com", "win32gui", "pywintypes"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "pywin32 provides all win32 modules.",
+        members: &[
+            member!("pywin32", &["win32api", "win32con", "win32com", "win32gui", "pywintypes"], preferred),
+        ],
+    },
+    PackageFamily {
+        name: "levenshtein",
+        modules: &["Levenshtein"],
+        conflict_kind: ConflictKind::Migration,
+        notes: "python-Levenshtein now wraps rapidfuzz internally.",
+        members: &[
+            member!("python-Levenshtein", &["Levenshtein"], Active),
+            member!("rapidfuzz", &["rapidfuzz"], preferred),
+            member!("thefuzz", &["thefuzz"], Active),
+            member!("fuzzywuzzy", &["fuzzywuzzy"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "socks-proxy",
+        modules: &["socks"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "PySocks is the maintained SOCKS proxy library.",
+        members: &[
+            member!("PySocks", &["socks"], preferred),
+            member!("SocksiPy", &["socks"], Unmaintained),
+        ],
+    },
+    PackageFamily {
+        name: "faiss",
+        modules: &["faiss"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "faiss-cpu and faiss-gpu are mutually exclusive variants.",
+        members: &[
+            member!("faiss-cpu", &["faiss"], preferred),
+            member!("faiss-gpu", &["faiss"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "paddle",
+        modules: &["paddle"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "paddlepaddle and paddlepaddle-gpu share the paddle namespace.",
+        members: &[
+            member!("paddlepaddle", &["paddle"], preferred),
+            member!("paddlepaddle-gpu", &["paddle"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "gymnasium",
+        modules: &["gym", "gymnasium"],
+        conflict_kind: ConflictKind::Migration,
+        notes: "gym was renamed to gymnasium by the Farama Foundation.",
+        members: &[
+            member!("gymnasium", &["gymnasium"], preferred),
+            member!("gym", &["gym"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "gdal",
+        modules: &["osgeo"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "GDAL is the canonical package providing osgeo.",
+        members: &[
+            member!("GDAL", &["osgeo"], preferred),
+            member!("pygdal", &["osgeo"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "decouple",
+        modules: &["decouple"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-decouple is the maintained config library.",
+        members: &[
+            member!("python-decouple", &["decouple"], preferred),
+            member!("decouple", &["decouple"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "dotenv",
+        modules: &["dotenv"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-dotenv is the maintained .env file loader.",
+        members: &[
+            member!("python-dotenv", &["dotenv"], preferred),
+            member!("dotenv", &["dotenv"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "grpc",
+        modules: &["grpc"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "grpcio is the core package; grpcio-tools adds protoc compilation.",
+        members: &[
+            member!("grpcio", &["grpc"], preferred),
+            member!("grpcio-tools", &["grpc_tools"], Active),
+            member!("grpcio-status", &["grpc_status"], Active),
+            member!("grpcio-health-checking", &["grpc_health"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "whisper",
+        modules: &["whisper"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "openai-whisper is OpenAI's speech recognition; whisper is a Graphite tool.",
+        members: &[
+            member!("openai-whisper", &["whisper"], preferred),
+            member!("whisper", &["whisper"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "slugify",
+        modules: &["slugify"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-slugify and awesome-slugify share the slugify namespace.",
+        members: &[
+            member!("python-slugify", &["slugify"], preferred),
+            member!("awesome-slugify", &["slugify"], Active),
+        ],
+    },
+    PackageFamily {
+        name: "multipart",
+        modules: &["multipart"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-multipart is the maintained multipart form library.",
+        members: &[
+            member!("python-multipart", &["multipart"], preferred),
+            member!("multipart", &["multipart"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "jose",
+        modules: &["jose"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-jose is the maintained JOSE implementation.",
+        members: &[
+            member!("python-jose", &["jose"], preferred),
+            member!("jose", &["jose"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "nmap",
+        modules: &["nmap"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-nmap is the maintained nmap wrapper.",
+        members: &[
+            member!("python-nmap", &["nmap"], preferred),
+            member!("nmap", &["nmap"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "snap7",
+        modules: &["snap7"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-snap7 is the maintained Snap7 binding.",
+        members: &[
+            member!("python-snap7", &["snap7"], preferred),
+            member!("snap7", &["snap7"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "cups",
+        modules: &["cups"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "pycups is the maintained CUPS binding.",
+        members: &[
+            member!("pycups", &["cups"], preferred),
+        ],
+    },
+    PackageFamily {
+        name: "slack-migration",
+        modules: &["slack_sdk", "slack_bolt", "slackclient", "slacker"],
+        conflict_kind: ConflictKind::Migration,
+        notes: "slackclient and slacker migrated to slack-sdk and slack-bolt.",
+        members: &[
+            member!("slack-sdk", &["slack_sdk"], preferred),
+            member!("slack-bolt", &["slack_bolt"], Active),
+            member!("slackclient", &["slackclient"], Deprecated),
+            member!("slacker", &["slacker"], Unmaintained),
+        ],
+    },
+    PackageFamily {
+        name: "xlib",
+        modules: &["Xlib"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-xlib is the maintained X11 binding.",
+        members: &[
+            member!("python-xlib", &["Xlib"], preferred),
+        ],
+    },
+    PackageFamily {
+        name: "usb",
+        modules: &["usb"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "pyusb is the maintained USB library.",
+        members: &[
+            member!("pyusb", &["usb"], preferred),
+            member!("usb", &["usb"], Deprecated),
+        ],
+    },
+    PackageFamily {
+        name: "blinka",
+        modules: &["board", "busio", "digitalio", "analogio", "neopixel"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "adafruit-blinka provides CircuitPython APIs on desktop.",
+        members: &[
+            member!("adafruit-blinka", &["board", "busio", "digitalio", "analogio"], preferred),
+        ],
+    },
+    PackageFamily {
+        name: "rapidjson",
+        modules: &["rapidjson"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "python-rapidjson is the maintained rapidjson binding.",
+        members: &[
+            member!("python-rapidjson", &["rapidjson"], preferred),
+        ],
+    },
 ];
 
 pub struct FamilyRegistry {
@@ -363,20 +744,54 @@ pub fn recover_family_knowledge(
     if uses_legacy_pymc3_stack(parse_result, resolved)
         && (lowercase.contains("pymc3 3.11.5 depends on scipy<1.8.0")
             || lowercase.contains("pymc3 3.11.5 depends on numpy<1.22.2")
+            || lowercase.contains("could not find a version that satisfies the requirement pandas==")
+            || lowercase.contains("no matching distribution found for pandas==")
+            || lowercase.contains("could not find a version that satisfies the requirement numpy==")
+            || lowercase.contains("no matching distribution found for numpy==")
+            || lowercase.contains("modulenotfounderror: no module named 'pkg_resources'")
+            || lowercase.contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
             || lowercase.contains("requires a different python version")
             || lowercase.contains("cannot import 'setuptools.build_meta'")
             || lowercase.contains("resolutionimpossible"))
     {
-        return apply_legacy_pymc3_bundle(
+        if let Some(note) = apply_legacy_pymc3_bundle(
             parse_result,
             resolved,
             selected_python,
             python_range,
             execute_snippet,
-        )
-        .map(|note| format!("Family-aware recovery reapplied the legacy PyMC3 stack. {note}"));
+        ) {
+            return Some(format!(
+                "Family-aware recovery reapplied the legacy PyMC3 stack. {note}"
+            ));
+        }
+        let bundle_python =
+            preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
+        return Some(format!(
+            "Family-aware recovery kept the legacy PyMC3 stack pinned at the curated Python {bundle_python} bundle."
+        ));
     }
     None
+}
+
+pub fn protects_family_version(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+    selected_python: &str,
+    python_range: usize,
+    execute_snippet: bool,
+    package_name: &str,
+) -> bool {
+    if !uses_legacy_pymc3_stack(parse_result, resolved) {
+        return false;
+    }
+
+    let bundle_python =
+        preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
+    let normalized = normalize(package_name);
+    legacy_pymc3_bundle(&bundle_python)
+        .iter()
+        .any(|(_, candidate, _)| normalize(candidate) == normalized)
 }
 
 pub fn validation_candidate_versions(
@@ -537,15 +952,20 @@ fn legacy_pymc3_bundle(bundle_python: &str) -> &'static [(&'static str, &'static
             ("pandas", "pandas", "0.24.2"),
             ("pymc3", "pymc3", "3.5"),
             ("scipy", "scipy", "1.2.3"),
+            ("setuptools", "setuptools", "44.1.1"),
             ("theano", "Theano", "1.0.5"),
         ]
     } else {
         &[
+            ("arviz", "arviz", "0.12.1"),
             ("numpy", "numpy", "1.21.6"),
             ("pandas", "pandas", "1.5.3"),
             ("pymc3", "pymc3", "3.11.5"),
             ("scipy", "scipy", "1.7.3"),
+            ("setuptools", "setuptools", "69.5.1"),
             ("theano", "Theano-PyMC", "1.1.2"),
+            ("xarray", "xarray", "2022.9.0"),
+            ("xarray_einstats", "xarray-einstats", "0.6.0"),
         ]
     }
 }

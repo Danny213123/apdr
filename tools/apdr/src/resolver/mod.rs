@@ -1,4 +1,5 @@
 pub mod family_knowledge;
+pub mod pre_solve;
 pub mod pypi_client;
 pub mod tier1_cache;
 pub mod tier2_heuristic;
@@ -33,7 +34,7 @@ pub fn resolve_path(
     let parse_result = parser::parse_snippet(snippet_path, &data_root, config.scan_config_files)?;
     let mut store = CacheStore::load(tool_root, config.cache_path.clone())?;
 
-    let selected_python = selected_python_version(&parse_result, config);
+    let mut selected_python = selected_python_version(&parse_result, config);
     let mut report = ResolutionReport::default();
     write_parse_artifacts(&config.output_dir, snippet_path, &parse_result, &selected_python)?;
     let solvability = if config.allow_llm {
@@ -101,7 +102,30 @@ pub fn resolve_path(
         &format_dependency_state(&resolved, &unresolved),
     )?;
 
-    let mut requirements_txt = render_requirements(&resolved);
+    let pre_solve = if unresolved.is_empty() {
+        Some(pre_solve::solve_dependency_graph(
+            &parse_result,
+            &resolved,
+            &selected_python,
+            &mut store,
+            config,
+        ))
+    } else {
+        None
+    };
+    if let Some(pre_solve) = pre_solve.as_ref() {
+        report.notes.extend(pre_solve.notes.clone());
+        write_solver_artifacts(&config.output_dir, pre_solve)?;
+        if pre_solve.satisfiable && !pre_solve.lockfile_requirements.trim().is_empty() {
+            selected_python = pre_solve.selected_python_version.clone();
+        }
+    }
+
+    let mut requirements_txt = pre_solve
+        .as_ref()
+        .filter(|result| result.satisfiable && !result.lockfile_requirements.trim().is_empty())
+        .map(|result| result.lockfile_requirements.clone())
+        .unwrap_or_else(|| render_requirements(&resolved));
     context::write_text(
         &context::debug_root(&config.output_dir).join("requirements-before-validation.txt"),
         &requirements_txt,
@@ -118,6 +142,19 @@ pub fn resolve_path(
                 config,
                 &requirements_txt,
             )
+        } else if let Some(pre_solve) = pre_solve
+            .as_ref()
+            .filter(|result| result.attempted && !result.satisfiable && result.hard_unsat)
+        {
+            ValidationSummary {
+                succeeded: false,
+                status: "unsatisfiable".to_string(),
+                reason: pre_solve.reason.clone(),
+                selected_python_version: Some(pre_solve.selected_python_version.clone()),
+                lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                ..Default::default()
+            }
         } else {
             validate_with_retries(
                 snippet_path,
@@ -131,14 +168,22 @@ pub fn resolve_path(
             )?
         }
     } else {
+        let unsat_reason = pre_solve
+            .as_ref()
+            .filter(|result| result.attempted && !result.satisfiable && result.hard_unsat)
+            .and_then(|result| result.reason.clone());
         ValidationSummary {
-            succeeded: unresolved.is_empty(),
-            status: if unresolved.is_empty() {
+            succeeded: unresolved.is_empty() && unsat_reason.is_none(),
+            status: if unresolved.is_empty() && unsat_reason.is_none() {
                 "passed".to_string()
+            } else if unsat_reason.is_some() {
+                "unsatisfiable".to_string()
             } else {
                 "unresolved".to_string()
             },
-            reason: if unresolved.is_empty() {
+            reason: if let Some(reason) = unsat_reason {
+                Some(reason)
+            } else if unresolved.is_empty() {
                 None
             } else {
                 Some(format!(
@@ -518,6 +563,29 @@ fn apply_recovery_fix(
     match classified.error_type.as_str() {
         "VersionNotFound" | "DependencyConflict" | "InvalidVersion" | "NonZeroCode" => {
             let (package_name, current_version) = extract_package_and_version(log)?;
+            if family_knowledge::protects_family_version(
+                parse_result,
+                resolved,
+                python_version,
+                config.python_version_range,
+                config.execute_snippet,
+                &package_name,
+            ) {
+                if let Some(note) = family_knowledge::recover_family_knowledge(
+                    parse_result,
+                    resolved,
+                    python_version,
+                    config.python_version_range,
+                    config.execute_snippet,
+                    log,
+                ) {
+                    return Some(note);
+                }
+                return Some(format!(
+                    "Kept family-managed package `{package_name}` pinned after {} to avoid breaking a curated compatibility bundle.",
+                    classified.error_type
+                ));
+            }
             let known_versions =
                 pypi_client::compatible_versions(store, &package_name, python_version);
             if known_versions.is_empty() {
@@ -930,6 +998,49 @@ fn write_parse_artifacts(
     )
 }
 
+fn write_solver_artifacts(
+    output_dir: &Path,
+    result: &pre_solve::PreSolveResult,
+) -> io::Result<()> {
+    let assignments = if result.assigned_versions.is_empty() {
+        "- none".to_string()
+    } else {
+        result
+            .assigned_versions
+            .iter()
+            .map(|(package, version)| format!("- {package}=={version}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    write_state_artifacts(
+        output_dir,
+        "solver-summary.txt",
+        &format!(
+            "attempted: {}\nsatisfiable: {}\nselected_python: {}\ndirect_packages: {}\ntransitive_packages: {}\nreason: {}\n\nassignments:\n{}\n",
+            result.attempted,
+            result.satisfiable,
+            result.selected_python_version,
+            if result.direct_packages.is_empty() {
+                "--".to_string()
+            } else {
+                result.direct_packages.join(", ")
+            },
+            if result.transitive_packages.is_empty() {
+                "--".to_string()
+            } else {
+                result.transitive_packages.join(", ")
+            },
+            result.reason.as_deref().unwrap_or("--"),
+            assignments,
+        ),
+    )?;
+    write_state_artifacts(
+        output_dir,
+        "solver-lockfile.txt",
+        &result.lockfile_requirements,
+    )
+}
+
 fn write_state_artifacts(output_dir: &Path, name: &str, contents: &str) -> io::Result<()> {
     context::write_text(&context::debug_root(output_dir).join(name), contents)
 }
@@ -1143,13 +1254,17 @@ fn infer_validation_reason(
 
     if lowercase.contains("permission denied while trying to connect to the docker api") {
         return Some(
-            "Docker permission denied while opening the Docker API socket. Start Docker Desktop or grant access to the current user.".to_string(),
+            "Historical Docker backend error: permission denied while opening the Docker API socket. New APDR runs validate with local Python environments instead."
+                .to_string(),
         );
     }
     if lowercase.contains("cannot connect to the docker daemon")
         || lowercase.contains("is the docker daemon running")
     {
-        return Some("Docker daemon is unavailable. Start Docker Desktop before running APDR validation.".to_string());
+        return Some(
+            "Historical Docker backend error: Docker daemon was unavailable. New APDR runs validate with local Python environments instead."
+                .to_string(),
+        );
     }
     if let Some(module_name) = extract_missing_module(log) {
         let lowered = module_name.to_lowercase();
@@ -1220,10 +1335,10 @@ fn infer_validation_reason(
         );
     }
     if attempt.status == "build-timeout" {
-        return Some("Docker build timed out during APDR validation.".to_string());
+        return Some("Local package-environment build timed out during APDR validation.".to_string());
     }
     if attempt.status == "runtime-timeout" {
-        return Some("Container smoke test timed out during APDR validation.".to_string());
+        return Some("Local APDR smoke test timed out during validation.".to_string());
     }
     report.notes.last().cloned().filter(|note| !note.is_empty())
 }
@@ -1319,6 +1434,38 @@ fn detect_skip_reason(
                 ),
             ));
         }
+    }
+
+    let apple_framework_markers = [
+        "foundation",
+        "appkit",
+        "quartz",
+        "systemconfiguration",
+        "corefoundation",
+        "cfnetwork",
+        "security",
+        "coreservices",
+        "launchservices",
+        "pyobjc",
+        "pyobjc-core",
+        "pyobjc-framework-cocoa",
+        "pyobjc-framework-systemconfiguration",
+        "pyobjc-framework-quartz",
+        "pyobjc-framework-security",
+        "pyobjc-framework-coreservices",
+    ];
+    let has_apple_bridge = markers.iter().any(|item| item == "objc" || item.starts_with("objc."));
+    let has_apple_framework = apple_framework_markers.iter().any(|marker| {
+        markers
+            .iter()
+            .any(|item| item == marker || item.starts_with(&format!("{marker}.")))
+    });
+    if has_apple_bridge && has_apple_framework {
+        return Some((
+            "skipped-host-runtime",
+            "Detected macOS Objective-C framework dependency (PyObjC/Foundation/SystemConfiguration). APDR cannot validate this snippet without the macOS host framework runtime."
+                .to_string(),
+        ));
     }
 
     if markers.iter().any(|item| item == "rpi" || item == "rpi.gpio") {
