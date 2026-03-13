@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::cache::pypi_index;
@@ -26,14 +26,12 @@ pub fn fetch_versions(
         return versions;
     }
 
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(PYPI_VERSION_SCRIPT)
-        .arg(package_name)
-        .arg(python_version)
-        .output();
-
-    let Ok(output) = output else {
+    let Some(output) = run_host_python(&[
+        "-c",
+        PYPI_VERSION_SCRIPT,
+        package_name,
+        python_version,
+    ]) else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -88,16 +86,17 @@ pub fn dependency_specs(
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return Vec::new();
     };
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(SMTPIP_KGRAPH_SCRIPT)
-        .arg("deps")
-        .arg(kgraph_path)
-        .arg(smtpip_db_path(store))
-        .arg(package_name)
-        .arg(version)
-        .output();
-    let Ok(output) = output else {
+    let kgraph_path_text = kgraph_path.display().to_string();
+    let db_path_text = smtpip_db_path(store).display().to_string();
+    let Some(output) = run_host_python(&[
+        "-c",
+        SMTPIP_KGRAPH_SCRIPT,
+        "deps",
+        kgraph_path_text.as_str(),
+        db_path_text.as_str(),
+        package_name,
+        version,
+    ]) else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -169,15 +168,16 @@ fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return Vec::new();
     };
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(SMTPIP_KGRAPH_SCRIPT)
-        .arg("versions")
-        .arg(kgraph_path)
-        .arg(smtpip_db_path(store))
-        .arg(package_name)
-        .output();
-    let Ok(output) = output else {
+    let kgraph_path_text = kgraph_path.display().to_string();
+    let db_path_text = smtpip_db_path(store).display().to_string();
+    let Some(output) = run_host_python(&[
+        "-c",
+        SMTPIP_KGRAPH_SCRIPT,
+        "versions",
+        kgraph_path_text.as_str(),
+        db_path_text.as_str(),
+        package_name,
+    ]) else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -211,6 +211,64 @@ fn smtpip_kgraph_path(store: &CacheStore) -> Option<PathBuf> {
 
 fn smtpip_db_path(store: &CacheStore) -> PathBuf {
     store.cache_path.join("smtpip-kgraph.sqlite3")
+}
+
+fn run_host_python(args: &[&str]) -> Option<std::process::Output> {
+    let python = host_python_command()?;
+    Command::new(python).args(args).output().ok()
+}
+
+fn host_python_command() -> Option<PathBuf> {
+    let mut candidates = vec![PathBuf::from("python3"), PathBuf::from("python")];
+    if cfg!(windows) {
+        for version in ["312", "311", "310", "39"] {
+            if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+                candidates.push(
+                    PathBuf::from(&local_appdata)
+                        .join("Programs")
+                        .join("Python")
+                        .join(format!("Python{version}"))
+                        .join("python.exe"),
+                );
+            }
+            for variable in ["ProgramFiles", "ProgramFiles(x86)"] {
+                if let Some(base) = std::env::var_os(variable) {
+                    candidates.push(
+                        PathBuf::from(&base)
+                            .join("Python")
+                            .join(format!("Python{version}"))
+                            .join("python.exe"),
+                    );
+                }
+            }
+        }
+    }
+    dedupe_paths(candidates)
+        .into_iter()
+        .find(|candidate| is_python3(candidate))
+}
+
+fn is_python3(candidate: &Path) -> bool {
+    let Ok(output) = Command::new(candidate)
+        .arg("-c")
+        .arg("import sys; sys.stdout.write('%s' % sys.version_info[0])")
+        .output()
+    else {
+        return false;
+    };
+    output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "3"
+}
+
+fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut unique = Vec::new();
+    for path in paths {
+        let key = path.to_string_lossy().to_string();
+        if seen.insert(key) {
+            unique.push(path);
+        }
+    }
+    unique
 }
 
 fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {

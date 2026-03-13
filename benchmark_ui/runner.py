@@ -245,15 +245,18 @@ class BenchmarkWorker(threading.Thread):
         existing_outputs = {path.resolve() for path in output_root.glob("output_data_*.yml")}
         requirements_path = output_root / "requirements.txt"
         existing_requirements_mtime = requirements_path.stat().st_mtime if requirements_path.exists() else None
-        process = subprocess.Popen(
-            command,
-            cwd=tool_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            start_new_session=True,
-        )
+        popen_kwargs: dict[str, Any] = {
+            "cwd": tool_dir,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "bufsize": 1,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        else:
+            popen_kwargs["start_new_session"] = True
+        process = subprocess.Popen(command, **popen_kwargs)
         self.current_process = process
         streamed_lines = 0
         captured_tail: list[str] = []
@@ -427,14 +430,22 @@ class BenchmarkWorker(threading.Thread):
         if process.poll() is not None:
             return
         try:
-            if hasattr(os, "killpg"):
+            if os.name == "nt":
+                ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
+                if ctrl_break is not None:
+                    process.send_signal(ctrl_break)
+                else:
+                    process.terminate()
+            elif hasattr(os, "killpg"):
                 os.killpg(process.pid, signal.SIGTERM)
             else:
                 process.terminate()
             process.wait(timeout=5)
         except (OSError, subprocess.TimeoutExpired):
             try:
-                if hasattr(os, "killpg"):
+                if os.name == "nt":
+                    process.kill()
+                elif hasattr(os, "killpg"):
                     os.killpg(process.pid, signal.SIGKILL)
                 else:
                     process.kill()

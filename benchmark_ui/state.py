@@ -296,6 +296,14 @@ class AppState:
         candidates = [
             Path.home() / ".local" / "bin" / "pipenv",
             Path.home() / "Library" / "Python" / f"{sys.version_info.major}.{sys.version_info.minor}" / "bin" / "pipenv",
+            Path(sys.executable).resolve().parent / "Scripts" / "pipenv.exe",
+            Path.home()
+            / "AppData"
+            / "Roaming"
+            / "Python"
+            / f"Python{sys.version_info.major}{sys.version_info.minor}"
+            / "Scripts"
+            / "pipenv.exe",
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -348,7 +356,7 @@ class AppState:
                 return True, f"APDR wrapper is usable and Cargo is available to build/run the Rust CLI. {interpreter_detail}", runner
             return (
                 False,
-                "APDR needs either a built binary in tools/apdr/target or Cargo on PATH. Run `tools/apdr/build.sh`.",
+                "APDR needs either a built binary in tools/apdr/target or Cargo on PATH. Build it with `cargo build --release` in tools/apdr.",
                 runner,
             )
 
@@ -677,7 +685,7 @@ class AppState:
         if missing:
             parts.append("Missing: " + ", ".join(missing))
         parts.append(
-            "APDR auto-scans PATH, Python framework installs, and common pyenv/asdf/mise/uv locations, and the Doctor can auto-install missing interpreters with supported managers."
+            "APDR auto-scans PATH, Python framework installs, Windows launcher-managed installs, and common pyenv/asdf/mise/uv locations, and the Doctor can auto-install missing interpreters with supported managers."
         )
         return " ".join(parts)
 
@@ -735,7 +743,36 @@ class AppState:
                     return True, f"Installed with asdf ({spec})."
                 last_output = self._summarize_output(output)
 
-        if not version.startswith("2.") and shutil.which("brew"):
+        if self._is_windows():
+            package_id = self._windows_winget_python_package(version)
+            if package_id and shutil.which("winget"):
+                supported_managers.append("winget")
+                code, output = self._run_command(
+                    [
+                        "winget",
+                        "install",
+                        "-e",
+                        "--id",
+                        package_id,
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ],
+                    cwd=self.repo_root,
+                    timeout=7200,
+                )
+                if code == 0 and already_available():
+                    return True, f"Installed with winget ({package_id})."
+                last_output = self._summarize_output(output)
+
+            scoop_package = self._windows_scoop_python_package(version)
+            if scoop_package and shutil.which("scoop"):
+                supported_managers.append("scoop")
+                code, output = self._run_command(["scoop", "install", scoop_package], cwd=self.repo_root, timeout=7200)
+                if code == 0 and already_available():
+                    return True, f"Installed with scoop ({scoop_package})."
+                last_output = self._summarize_output(output)
+
+        if not self._is_windows() and not version.startswith("2.") and shutil.which("brew"):
             supported_managers.append("brew")
             code, output = self._run_command(["brew", "install", f"python@{version}"], cwd=self.repo_root, timeout=7200)
             if code == 0 and already_available():
@@ -748,6 +785,8 @@ class AppState:
         if supported_managers:
             detail = last_output or "installer finished without exposing a usable interpreter on the current machine."
             return False, f"Tried {', '.join(supported_managers)}. Last output: {detail}"
+        if self._is_windows():
+            return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, winget, or scoop."
         return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, or Homebrew."
 
     def _find_python_interpreter_command(self, version: str) -> list[str]:
@@ -782,6 +821,8 @@ class AppState:
         elif version.startswith("2."):
             names.append("python2")
         names.append("python")
+        if self._is_windows() and shutil.which("py"):
+            add(["py", f"-{version}"])
 
         for name in names:
             resolved = shutil.which(name)
@@ -805,13 +846,50 @@ class AppState:
             Path("/usr/local/opt") / f"python@{version}" / "bin" / f"python{version}",
             Path("/opt/homebrew/opt") / f"python@{version}" / "bin" / f"python{version}",
         ]
+        if self._is_windows():
+            compact = version.replace(".", "")
+            windows_roots: list[Path] = []
+            local_appdata_value = os.environ.get("LOCALAPPDATA", "").strip()
+            if local_appdata_value:
+                local_appdata = Path(local_appdata_value)
+                windows_roots.extend(
+                    [
+                        local_appdata / "Programs" / "Python" / f"Python{compact}",
+                        local_appdata / "Programs" / "Python" / f"Python{compact}-32",
+                    ]
+                )
+            for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+                base_value = os.environ.get(env_name, "").strip()
+                if not base_value:
+                    continue
+                base = Path(base_value)
+                windows_roots.extend(
+                    [
+                        base / "Python" / f"Python{compact}",
+                        base / f"Python{compact}",
+                    ]
+                )
+            for root in windows_roots:
+                paths.append(root / "python.exe")
 
         manager_roots = [
             home / ".pyenv" / "versions",
+            home / ".pyenv" / "pyenv-win" / "versions",
             home / ".asdf" / "installs" / "python",
             home / ".local" / "share" / "mise" / "installs" / "python",
             home / ".local" / "share" / "uv" / "python",
         ]
+        if self._is_windows():
+            local_appdata_value = os.environ.get("LOCALAPPDATA", "").strip()
+            if local_appdata_value:
+                local_appdata = Path(local_appdata_value)
+                manager_roots.extend(
+                    [
+                        local_appdata / "uv" / "python",
+                        local_appdata / "Programs" / "Python",
+                    ]
+                )
+            manager_roots.append(home / "scoop" / "apps")
         for root in manager_roots:
             if not root.exists():
                 continue
@@ -819,6 +897,13 @@ class AppState:
                 paths.append(child / "bin" / f"python{minor}")
                 paths.append(child / "bin" / f"python{major}")
                 paths.append(child / "bin" / "python")
+                paths.append(child / "python.exe")
+                paths.append(child / f"python{major}.exe")
+                paths.append(child / f"python{minor}.exe")
+                current = child / "current"
+                paths.append(current / "python.exe")
+                paths.append(current / f"python{major}.exe")
+                paths.append(current / f"python{minor}.exe")
 
         return paths
 
@@ -830,10 +915,19 @@ class AppState:
             children = sorted(root.iterdir())
         except OSError:
             return []
-        prefixes = {version, f"{version}.", f"{version}-", f"Python-{version}"}
+        compact = version.replace(".", "")
+        prefixes = {
+            version,
+            f"{version}.",
+            f"{version}-",
+            f"Python-{version}",
+            f"cpython-{version}",
+            f"Python{compact}",
+            f"python{compact}",
+        }
         for child in children:
             name = child.name
-            if name == version or any(name.startswith(prefix) for prefix in prefixes) or name.startswith(f"cpython-{version}"):
+            if name == version or any(name.startswith(prefix) for prefix in prefixes):
                 matches.append(child)
         return matches
 
@@ -864,7 +958,32 @@ class AppState:
             log(f"Docker daemon is already available (server {output}).")
             return
         if sys.platform != "darwin":
-            log("Docker daemon is not available. Automatic startup is only implemented for macOS right now.")
+            if self._is_windows():
+                docker_exes: list[Path] = [Path.home() / "AppData" / "Local" / "Docker" / "Docker Desktop.exe"]
+                program_files_value = os.environ.get("ProgramFiles", "").strip()
+                if program_files_value:
+                    docker_exes.insert(0, Path(program_files_value) / "Docker" / "Docker" / "Docker Desktop.exe")
+                docker_exe = next((path for path in docker_exes if path.exists()), None)
+                if not docker_exe:
+                    log("Docker Desktop.exe was not found in the usual Windows install locations.")
+                    return
+                log("Attempting to start Docker Desktop on Windows.")
+                try:
+                    subprocess.Popen([str(docker_exe)], cwd=self.repo_root)
+                except OSError as exc:
+                    log(f"Failed to launch Docker Desktop: {exc}")
+                    return
+                for attempt in range(30):
+                    time.sleep(2)
+                    code, output = self._run_command(["docker", "info", "--format", "{{.ServerVersion}}"], cwd=self.repo_root, timeout=8)
+                    if code == 0:
+                        log(f"Docker daemon is ready (server {output}).")
+                        return
+                    if attempt in {0, 4, 9, 19, 29}:
+                        log("Waiting for Docker Desktop to finish starting...")
+                log("Docker Desktop was launched, but the daemon is still unavailable.")
+                return
+            log("Docker daemon is not available. Automatic startup is only implemented for macOS and Windows right now.")
             return
 
         docker_apps = [
@@ -916,7 +1035,7 @@ class AppState:
             log("Cargo is not installed, so APDR cannot be built automatically.")
             return
         build_script = tool_dir / "build.sh"
-        if build_script.exists():
+        if build_script.exists() and not self._is_windows():
             log("Building APDR.")
             code, output = self._run_command([str(build_script)], cwd=tool_dir, timeout=1800)
         else:
@@ -968,3 +1087,19 @@ class AppState:
             return " | ".join(lines)
         head = " | ".join(lines[:max_lines])
         return f"{head} | ..."
+
+    def _is_windows(self) -> bool:
+        return sys.platform.startswith("win")
+
+    def _windows_winget_python_package(self, version: str) -> str:
+        if version == "2.7":
+            return ""
+        return f"Python.Python.{version}"
+
+    def _windows_scoop_python_package(self, version: str) -> str:
+        return {
+            "3.9": "python39",
+            "3.10": "python310",
+            "3.11": "python311",
+            "3.12": "python312",
+        }.get(version, "")

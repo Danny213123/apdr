@@ -7,7 +7,7 @@ APDR is the agentic dependency resolver in this repository. It now runs the full
 3. Resolve packages through seeded cache, heuristics, and optional Ollama fallback
 4. Expand known transitive dependencies
 5. Generate `requirements.txt` and a resolution report
-6. Validate the environment in Docker with retries and error-driven recovery
+6. Validate the environment in local Python interpreters with retries and error-driven recovery
 7. Persist learned mappings, version data, lockfiles, build artifacts, and recovery patterns in `.apdr-cache/`
 
 ## Build
@@ -15,6 +15,13 @@ APDR is the agentic dependency resolver in this repository. It now runs the full
 ```bash
 cd /Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr
 ./build.sh
+```
+
+On Windows 11, build with Cargo directly:
+
+```powershell
+cd C:\path\to\fse-aiware-python-dependencies\tools\apdr
+cargo build --release
 ```
 
 ## CLI
@@ -31,7 +38,7 @@ Resolve from stdin:
 cat tests/fixtures/sample_snippet.py | cargo run -- resolve --stdin --output target/stdin-run --no-validate
 ```
 
-Validate with Docker and optional Ollama fallback:
+Validate with local interpreters and optional Ollama fallback:
 
 ```bash
 cargo run -- resolve /path/to/snippet.py \
@@ -62,7 +69,7 @@ The benchmark-compatible entrypoint is still `test_executor.py`:
 python3 test_executor.py -f tests/fixtures/sample_snippet.py -v --no-validate
 ```
 
-It accepts the common benchmark flags (`-m`, `-b`, `-l`, `-r`, `-ra`) and forwards them to the Rust CLI. When validation is enabled, the wrapper now returns a non-zero exit code if Docker validation fails.
+It accepts the common benchmark flags (`-m`, `-b`, `-l`, `-r`, `-ra`) and forwards them to the Rust CLI. When validation is enabled, the wrapper now returns a non-zero exit code if APDR validation fails.
 
 ## Output Files
 
@@ -72,11 +79,12 @@ APDR writes:
 - `resolution-report.txt`
 - `output_data_<python-version>.yml`
 
-The report includes cache hits, heuristic hits, LLM calls, retries, unresolved imports, validation attempts, selected Python version, lockfile key, and Docker image id.
+The report includes cache hits, heuristic hits, LLM calls, retries, unresolved imports, validation attempts, selected Python version, lockfile key, and validation artifact metadata.
 
 ## Runtime Requirements
 
-- `docker` on `PATH` if validation is enabled
+- Matching local Python interpreters for any versions APDR needs to validate
+- Optional Python managers for auto-install support: `uv`, `mise`, `pyenv`, `asdf`, `winget`, `scoop`, or Homebrew
 - Optional `ollama` on `PATH` if `--allow-llm` is used
 - Network access to PyPI for uncached version discovery
 

@@ -142,7 +142,7 @@ pub fn resolve_path(
                 None
             } else {
                 Some(format!(
-                    "Skipped Docker validation with {} unresolved imports.",
+                    "Skipped local environment validation with {} unresolved imports.",
                     unresolved.len()
                 ))
             },
@@ -1010,7 +1010,7 @@ fn environment_specific_note(
         || source_markers.contains("pyqt4")
     {
         return Some(
-            "Detected host-application dependency (Maya/PyQt4). Generic Docker validation cannot satisfy this snippet without the Autodesk Maya desktop runtime.".to_string(),
+            "Detected host-application dependency (Maya/PyQt4). APDR cannot validate this snippet without the Autodesk Maya desktop runtime.".to_string(),
         );
     }
     if matches!(
@@ -1026,12 +1026,12 @@ fn environment_specific_note(
             | "c4d"
     ) {
         return Some(format!(
-            "Detected host-application dependency ({missing}). Generic Docker validation cannot satisfy this snippet without the corresponding application runtime."
+            "Detected host-application dependency ({missing}). APDR cannot validate this snippet without the corresponding application runtime."
         ));
     }
     if missing == "rpi" || missing == "rpi.gpio" || source_markers.contains("rpi") {
         return Some(
-            "Detected hardware/runtime dependency (RPi.GPIO). Generic Docker validation cannot satisfy this snippet without Raspberry Pi GPIO access.".to_string(),
+            "Detected hardware/runtime dependency (RPi.GPIO). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
         );
     }
     None
@@ -1175,12 +1175,12 @@ fn infer_validation_reason(
         }
         if lowered == "c4d" {
             return Some(
-                "Detected host-application dependency (`c4d`). Generic Docker validation cannot satisfy this snippet without the Cinema 4D runtime.".to_string(),
+                "Detected host-application dependency (`c4d`). APDR cannot validate this snippet without the Cinema 4D runtime.".to_string(),
             );
         }
         if lowered == "rpi" || lowered == "rpi.gpio" {
             return Some(
-                "Detected hardware/runtime dependency (`RPi.GPIO`). Generic Docker validation cannot satisfy this snippet without Raspberry Pi GPIO access.".to_string(),
+                "Detected hardware/runtime dependency (`RPi.GPIO`). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
             );
         }
         return Some(format!("Runtime import failed: missing module `{module_name}`."));
@@ -1296,7 +1296,7 @@ fn detect_skip_reason(
     {
         return Some((
             "skipped-host-runtime",
-            "Detected host-application dependency (Maya/PyQt4). Generic Docker validation cannot satisfy this snippet without the Autodesk Maya desktop runtime.".to_string(),
+            "Detected host-application dependency (Maya/PyQt4). APDR cannot validate this snippet without the Autodesk Maya desktop runtime.".to_string(),
         ));
     }
 
@@ -1315,7 +1315,7 @@ fn detect_skip_reason(
             return Some((
                 "skipped-host-runtime",
                 format!(
-                    "Detected host-application dependency ({marker}). Generic Docker validation cannot satisfy this snippet without the corresponding application runtime."
+                    "Detected host-application dependency ({marker}). APDR cannot validate this snippet without the corresponding application runtime."
                 ),
             ));
         }
@@ -1324,7 +1324,7 @@ fn detect_skip_reason(
     if markers.iter().any(|item| item == "rpi" || item == "rpi.gpio") {
         return Some((
             "skipped-host-runtime",
-            "Detected hardware/runtime dependency (RPi.GPIO). Generic Docker validation cannot satisfy this snippet without Raspberry Pi GPIO access.".to_string(),
+            "Detected hardware/runtime dependency (RPi.GPIO). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
         ));
     }
 

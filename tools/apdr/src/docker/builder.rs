@@ -557,7 +557,10 @@ fn catalog_package_repository(
 ) -> io::Result<()> {
     let repository_dir = store.cache_path.join("package-repository");
     fs::create_dir_all(&repository_dir)?;
-    let output = Command::new("python3")
+    let Some(host_python) = host_python_for_metadata() else {
+        return Ok(());
+    };
+    let output = Command::new(host_python)
         .arg("-c")
         .arg(PACKAGE_REPOSITORY_CATALOG_SCRIPT)
         .arg(site_packages_dir)
@@ -827,7 +830,41 @@ fn attempt_python_auto_install(python_version: &str) -> String {
         }
     }
 
-    if !python_version.starts_with("2.") && command_on_path("brew") {
+    if cfg!(windows) {
+        if let Some(package_id) = windows_winget_python_package(python_version) {
+            if command_on_path("winget") {
+                managers.push("winget".to_string());
+                let (success, output) = run_install_command(
+                    "winget",
+                    &[
+                        "install",
+                        "-e",
+                        "--id",
+                        package_id,
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ],
+                );
+                if success && find_python_interpreter(python_version).is_some() {
+                    return format!("Installed Python {python_version} with winget ({package_id}).");
+                }
+                last_output = output;
+            }
+        }
+
+        if let Some(package_name) = windows_scoop_python_package(python_version) {
+            if command_on_path("scoop") {
+                managers.push("scoop".to_string());
+                let (success, output) = run_install_command("scoop", &["install", package_name]);
+                if success && find_python_interpreter(python_version).is_some() {
+                    return format!("Installed Python {python_version} with scoop ({package_name}).");
+                }
+                last_output = output;
+            }
+        }
+    }
+
+    if !cfg!(windows) && !python_version.starts_with("2.") && command_on_path("brew") {
         managers.push("brew".to_string());
         let formula = format!("python@{python_version}");
         let (success, output) = run_install_command("brew", &["install", &formula]);
@@ -840,7 +877,11 @@ fn attempt_python_auto_install(python_version: &str) -> String {
     if managers.is_empty() {
         return missing_interpreter_message(
             python_version,
-            "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, or Homebrew.",
+            if cfg!(windows) {
+                "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, winget, or scoop."
+            } else {
+                "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, or Homebrew."
+            },
         );
     }
 
@@ -866,7 +907,7 @@ fn attempt_python_auto_install(python_version: &str) -> String {
 
 fn missing_interpreter_message(python_version: &str, extra: &str) -> String {
     let mut message = format!(
-        "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, and common pyenv/asdf/mise/uv locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
+        "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, Windows launcher-managed installs, and common pyenv/asdf/mise/uv locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
         python_version.replace('.', "_")
     );
     if !extra.trim().is_empty() {
@@ -898,8 +939,29 @@ fn command_on_path(command: &str) -> bool {
     std::env::var_os("PATH")
         .map(|value| {
             std::env::split_paths(&value).any(|path| {
-                let candidate = path.join(command);
-                candidate.exists() && candidate.is_file()
+                let direct = path.join(command);
+                if direct.exists() && direct.is_file() {
+                    return true;
+                }
+                #[cfg(windows)]
+                {
+                    let has_extension = Path::new(command).extension().is_some();
+                    if !has_extension {
+                        let extensions = std::env::var("PATHEXT")
+                            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+                        for ext in extensions.split(';') {
+                            let suffix = ext.trim();
+                            if suffix.is_empty() {
+                                continue;
+                            }
+                            let candidate = path.join(format!("{command}{suffix}"));
+                            if candidate.exists() && candidate.is_file() {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
             })
         })
         .unwrap_or(false)
@@ -971,6 +1033,34 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
         )),
     ];
 
+    if cfg!(windows) {
+        let compact = python_version.replace('.', "");
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            let local_appdata = PathBuf::from(local_appdata);
+            paths.push(
+                local_appdata
+                    .join("Programs")
+                    .join("Python")
+                    .join(format!("Python{compact}"))
+                    .join("python.exe"),
+            );
+            paths.push(
+                local_appdata
+                    .join("Programs")
+                    .join("Python")
+                    .join(format!("Python{compact}-32"))
+                    .join("python.exe"),
+            );
+        }
+        for variable in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(base) = std::env::var_os(variable) {
+                let base = PathBuf::from(base);
+                paths.push(base.join("Python").join(format!("Python{compact}")).join("python.exe"));
+                paths.push(base.join(format!("Python{compact}")).join("python.exe"));
+            }
+        }
+    }
+
     let major = python_version.split('.').next().unwrap_or(python_version);
     for root in managed_python_roots() {
         if !root.exists() {
@@ -980,34 +1070,51 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
             paths.push(child.join("bin").join(format!("python{python_version}")));
             paths.push(child.join("bin").join(format!("python{major}")));
             paths.push(child.join("bin").join("python"));
+            paths.push(child.join("python.exe"));
+            paths.push(child.join(format!("python{major}.exe")));
+            paths.push(child.join(format!("python{python_version}.exe")));
+            paths.push(child.join("current").join("python.exe"));
+            paths.push(child.join("current").join(format!("python{major}.exe")));
+            paths.push(child.join("current").join(format!("python{python_version}.exe")));
         }
     }
     paths
 }
 
 fn managed_python_roots() -> Vec<PathBuf> {
-    let Some(home) = std::env::var_os("HOME") else {
-        return Vec::new();
-    };
-    let home = PathBuf::from(home);
-    vec![
-        home.join(".pyenv/versions"),
-        home.join(".asdf/installs/python"),
-        home.join(".local/share/mise/installs/python"),
-        home.join(".local/share/uv/python"),
-    ]
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    let mut roots = Vec::new();
+    if let Some(home) = home {
+        roots.push(home.join(".pyenv/versions"));
+        roots.push(home.join(".pyenv/pyenv-win/versions"));
+        roots.push(home.join(".asdf/installs/python"));
+        roots.push(home.join(".local/share/mise/installs/python"));
+        roots.push(home.join(".local/share/uv/python"));
+        roots.push(home.join("scoop/apps"));
+    }
+    if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+        let local_appdata = PathBuf::from(local_appdata);
+        roots.push(local_appdata.join("uv/python"));
+        roots.push(local_appdata.join("Programs/Python"));
+    }
+    roots
 }
 
 fn matching_version_dirs(root: &Path, version: &str) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();
     };
+    let compact = version.replace('.', "");
     let prefixes = [
         version.to_string(),
         format!("{version}."),
         format!("{version}-"),
         format!("Python-{version}"),
         format!("cpython-{version}"),
+        format!("Python{compact}"),
+        format!("python{compact}"),
     ];
     entries
         .filter_map(|entry| entry.ok().map(|item| item.path()))
@@ -1030,6 +1137,48 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         }
     }
     unique
+}
+
+fn host_python_for_metadata() -> Option<PathBuf> {
+    for version in ["3.12", "3.11", "3.10", "3.9"] {
+        if let Some(path) = find_python_interpreter(version) {
+            return Some(path);
+        }
+    }
+    for candidate in ["python3", "python"] {
+        let path = PathBuf::from(candidate);
+        let Ok(output) = Command::new(&path)
+            .arg("-c")
+            .arg("import sys; sys.stdout.write('%s' % sys.version_info[0])")
+            .output()
+        else {
+            continue;
+        };
+        if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "3" {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn windows_winget_python_package(python_version: &str) -> Option<&'static str> {
+    match python_version {
+        "3.9" => Some("Python.Python.3.9"),
+        "3.10" => Some("Python.Python.3.10"),
+        "3.11" => Some("Python.Python.3.11"),
+        "3.12" => Some("Python.Python.3.12"),
+        _ => None,
+    }
+}
+
+fn windows_scoop_python_package(python_version: &str) -> Option<&'static str> {
+    match python_version {
+        "3.9" => Some("python39"),
+        "3.10" => Some("python310"),
+        "3.11" => Some("python311"),
+        "3.12" => Some("python312"),
+        _ => None,
+    }
 }
 
 fn link_or_copy(source: &Path, destination: &Path) -> io::Result<()> {

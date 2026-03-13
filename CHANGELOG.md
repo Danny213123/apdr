@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 - 2026-03-13
+
+- Added Windows 11 support across the web benchmark launcher and APDR runtime, including Windows interpreter discovery, `pyenv-win`/`uv` lookup, `apdr.exe` detection, and Windows-safe benchmark process management.
+- Extended APDR Python auto-install on Windows with `winget` and `scoop`, and updated Doctor output so missing interpreter guidance reflects Windows launcher-managed installs and Windows package managers.
+- Removed remaining hardcoded `python3` assumptions from APDR metadata and package-repository helper paths, and refreshed APDR docs/status messaging to reflect local-environment validation instead of Docker-specific wording.
+
 ## 0.2.1 - 2026-03-13
 
 - Added APDR Python runtime auto-install support across [`tools/apdr/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr) and the web Doctor flow, with installer attempts through `uv`, `mise`, `pyenv`, `asdf`, and Homebrew when compatible versions are missing locally.

@@ -32,8 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-l", "--loop", type=int, default=5, help="Maximum APDR recovery retries")
     parser.add_argument("-r", "--range", type=int, default=1, help="Python version search range")
     parser.add_argument("-ra", "--rag", default="true", help="Enable APDR's optional LLM-assisted resolution tier")
-    parser.add_argument("--docker-timeout", type=int, default=300, help="Docker build and run timeout in seconds")
-    parser.add_argument("--no-validate", action="store_true", help="Skip Docker validation")
+    parser.add_argument("--docker-timeout", type=int, default=300, help="Validation install/import timeout in seconds")
+    parser.add_argument("--no-validate", action="store_true", help="Skip APDR validation")
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
     parser.add_argument("--benchmark-context-log", default="", help="Append benchmark build/run/LLM trace to this file")
@@ -44,8 +44,14 @@ def parse_args() -> argparse.Namespace:
 def choose_command(tool_dir: Path) -> list[str]:
     release_binary = tool_dir / "target" / "release" / "apdr"
     debug_binary = tool_dir / "target" / "debug" / "apdr"
+    release_binary_windows = tool_dir / "target" / "release" / "apdr.exe"
+    debug_binary_windows = tool_dir / "target" / "debug" / "apdr.exe"
     source_mtime = newest_source_mtime(tool_dir)
-    candidates = [path for path in (debug_binary, release_binary) if path.exists()]
+    candidates = [
+        path
+        for path in (debug_binary_windows, release_binary_windows, debug_binary, release_binary)
+        if path.exists()
+    ]
     if candidates:
         freshest = max(candidates, key=lambda path: path.stat().st_mtime)
         if freshest.stat().st_mtime >= source_mtime:
