@@ -6,18 +6,8 @@ import sys
 # from docker import APIClient
 from io import BytesIO
 
-from helpers.benchmark_context import append_event
-
 class DockerHelper():
-    def __init__(
-        self,
-        logging=False,
-        image_name="",
-        dockerfile_name="",
-        container_name="",
-        benchmark_context_log="",
-        snippet_label="",
-    ) -> None:
+    def __init__(self, logging=False, image_name="", dockerfile_name="", container_name = "") -> None:
         # Stores the dockerfile information for output
         self.dockerfile_out = ""
         # The name of the docker image- This is unique based on snippet name and python version
@@ -53,19 +43,8 @@ class DockerHelper():
                 raise
         # Logging for output
         self.logging = logging
-        self.benchmark_context_log = benchmark_context_log
-        self.snippet_label = snippet_label
         # When an error occurs, we want to know what it was on a previous run
         self.previous_error = {"error_message": '', "module": ''}
-
-    def trace(self, kind, message, step=""):
-        append_event(
-            self.benchmark_context_log,
-            kind,
-            message,
-            snippet=self.snippet_label,
-            step=step,
-        )
 
     def query_docker(self):
         return self.client.api.images()
@@ -123,7 +102,6 @@ class DockerHelper():
         self.dockerfile_name = f"Dockerfile-llm-{llm_out['python_version']}"
         with open(f"{project_dir}/{self.dockerfile_name}", "w") as file:
             file.write(self.dockerfile_out)
-        self.trace("dockerfile", self.dockerfile_out, step=self.dockerfile_name)
 
     # Uses the docker api to build the created dockerfiles
     # Returns true if good and false with the error message if there was an issue
@@ -131,14 +109,8 @@ class DockerHelper():
         if not dockerfile: dockerfile = self.dockerfile_name
         error_lines = ""
         project_dir, dir_name, project_file = self.get_project_dir(path)
-        self.trace(
-            "docker-build-start",
-            f"image={self.image_name}\ndockerfile={dockerfile}\ncontext={project_dir}",
-            step=self.image_name,
-        )
         for line in self.client.api.build(path=project_dir, dockerfile=dockerfile, forcerm=True, tag=self.image_name):
             decoded_line = line.decode('utf-8')
-            self.trace("docker-build-log", decoded_line, step=self.image_name)
             if 'ERROR' in decoded_line or 'Could not fetch URL' in decoded_line or 'errorDetail' in decoded_line:
                 error_lines += decoded_line
             if self.logging: print(decoded_line)
@@ -166,7 +138,6 @@ class DockerHelper():
         self.delete_container()
         logs = ''
         try:
-            self.trace("docker-run-start", f"image={self.image_name}", step=self.container_name)
             self.container = self.client.containers.create(self.image_name, name=self.container_name)
             self.container.start()
             sleep(10)
@@ -187,10 +158,7 @@ class DockerHelper():
                 self.container.remove(v=True, force=True)
                 self.container = None
 
-        decoded = logs.decode('utf-8')
-        if decoded:
-            self.trace("docker-run-log", decoded, step=self.container_name)
-        return decoded
+        return logs.decode('utf-8')
 
 def main():
     dh = DockerHelper(logging=True, image_name="woof:meow", dockerfile_name="", container_name="")

@@ -164,3 +164,18 @@ dev/mlx-examples/
     
 Pipfile.lock
 GithubProjects/
+.DS_Store
+._*
+._hard-gists
+hard-gists/
+SMTpip/
+smartpip/
+.playwright-cli/
+models/*.json
+!models/.gitkeep
+loadouts/*.json
+!loadouts/.gitkeep
+runs/*
+!runs/.gitkeep
+web/node_modules/
+web/dist/

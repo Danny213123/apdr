@@ -6,6 +6,7 @@ import time
 import multiprocessing as mp
 from multiprocessing import Process
 
+from helpers.benchmark_context import append_event
 from helpers.ollama_helper_tester import OllamaHelper
 from helpers.py_pi_query import PyPIQuery
 from helpers.build_dockerfile import DockerHelper
@@ -13,16 +14,46 @@ from helpers.deps_scraper import DepsScraper
 
 class TestExecutor():
 
-    def __init__(self, base_url="http://localhost:11434", model='gemma2', logging=True, temp=0.7, end_loop=5, search_range=1, base_modules='./modules') -> None:
+    def __init__(
+        self,
+        base_url="http://localhost:11434",
+        model='gemma2',
+        logging=True,
+        temp=0.7,
+        end_loop=5,
+        search_range=1,
+        base_modules='./modules',
+        benchmark_context_log="",
+        snippet_label="",
+    ) -> None:
         # Initiate instance of Ollama helper and PyPi Query
         print(f'Running model- {model} with temp {temp}. Looping {end_loop} times with a search range of {search_range}')
-        self.ollama_helper = OllamaHelper(base_url=base_url, model=model, logging=logging, temp=temp, base_modules=base_modules)
+        self.ollama_helper = OllamaHelper(
+            base_url=base_url,
+            model=model,
+            logging=logging,
+            temp=temp,
+            base_modules=base_modules,
+            benchmark_context_log=benchmark_context_log,
+            snippet_label=snippet_label,
+        )
         self.pypi = PyPIQuery(logging=True, base_modules=base_modules)
         self.deps = DepsScraper(logging=True)
         self.end_loop = end_loop
         self.search_range = search_range
         self.start_time = time.time()
+        self.benchmark_context_log = benchmark_context_log
+        self.snippet_label = snippet_label
         pass
+
+    def trace(self, kind, message, step=""):
+        append_event(
+            self.benchmark_context_log,
+            kind,
+            message,
+            snippet=self.snippet_label,
+            step=step,
+        )
 
     # Defines JSONObject dictionary for dot notation
     def validate_json(self, json_string):
@@ -133,13 +164,22 @@ class TestExecutor():
     # Handles the main loop of building | running | validating
     def docker_create_process(self, ollama_helper, llm_eval, file, process_num):
         # Create the YAML file in the same folder as the snippet
-        dockerHelper = DockerHelper(logging=True)
+        dockerHelper = DockerHelper(
+            logging=True,
+            benchmark_context_log=self.benchmark_context_log,
+            snippet_label=self.snippet_label,
+        )
 
         # Get a set of modules, based on the evaluation
         # Also pull down working versions from PyPi at the same time.
         llm_eval = self.get_module_specifics(ollama_helper, llm_eval)
 
         print(llm_eval)
+        self.trace(
+            "module-plan",
+            json.dumps(llm_eval, sort_keys=True),
+            step=f"process-{process_num}",
+        )
 
         # Dictionary to store erroring module versions and keep a list of error types
         error_handler = {
@@ -166,6 +206,11 @@ class TestExecutor():
         output_file.write(f"start_time: {self.start_time}\n")
         output_file.write('iterations:\n')
         output_file.close()
+        self.trace(
+            "case-start",
+            f"process={process_num}\npython_version={llm_eval['python_version']}\noutput_file={file_to_open}",
+            step=f"process-{process_num}",
+        )
         # Build loop
         run_complete = False
         build_complete = False
@@ -187,6 +232,18 @@ class TestExecutor():
                     if not build_complete:
                         # Update error_handler with any failing module and version
                         error_handler = self.naughty_bois(output, error_handler, error_type, llm_eval)
+                        self.trace(
+                            "build-retry",
+                            json.dumps(
+                                {
+                                    "error_type": error_type,
+                                    "error_handler": error_handler,
+                                    "llm_eval": llm_eval,
+                                },
+                                sort_keys=True,
+                            ),
+                            step=f"process-{process_num}",
+                        )
                         # Update the LLM details with the information from the build ouput
                         llm_eval = self.update_llm_eval(output, llm_eval)
                         # If we had an import error, and a non zero code, then we may have an ordering issue and need to reshuffle the modules
@@ -202,6 +259,7 @@ class TestExecutor():
                 # while not run_complete:
                 docker_output = dockerHelper.run_container_test()
                 print(docker_output)
+                self.trace("run-output", docker_output, step=f"process-{process_num}")
 
                 # Processes Docker run information (after a build has been successul we must run it to see if everything is correct)
                 output, error_type = ollama_helper.process_error(docker_output, error_handler, llm_eval)
@@ -253,6 +311,7 @@ class TestExecutor():
                     llm_eval = self.update_llm_eval(None, llm_eval)
             except Exception as e:
                 print(f"Failed to build container: {e}")
+                self.trace("executor-exception", str(e), step=f"process-{process_num}")
             # Update the loop number and log the details to the log file
             loop = self.end_test(file_to_open, llm_eval, dockerHelper, error_type, docker_output, loop, run_complete)
         
@@ -289,6 +348,19 @@ class TestExecutor():
     def end_test(self, file_to_open, llm_eval, dockerHelper, error_type, docker_message, loop, run_complete):
         out_file = open(file_to_open, "a")
         python_modules = llm_eval["previous_python_modules"] if 'previous_python_modules' in llm_eval else llm_eval['python_modules']
+        self.trace(
+            "iteration-summary",
+            json.dumps(
+                {
+                    "iteration": loop,
+                    "error_type": error_type,
+                    "run_complete": run_complete,
+                    "python_modules": python_modules,
+                },
+                sort_keys=True,
+            ),
+            step=f"iteration-{loop}",
+        )
         out_file.write(f"  iteration_{loop}:\n")
         out_file.write(f'    - python_module: {python_modules}\n')
         out_file.write(f'    - error_type: {error_type}\n')
@@ -340,6 +412,7 @@ def process_args():
     parser.add_argument('-r', '--range', type=int, nargs="?", default=0, const=0, help="The search range, expands out above and below the found Python version, defaults to 0")
     parser.add_argument('-ra', '--rag', type=str2bool, nargs="?", default=True, const=True, help="Flag to enable RAG in the system.")
     parser.add_argument('-v', '--verbose', action="store_true", help="Verbose logging of information")
+    parser.add_argument('--benchmark-context-log', type=str, default="", help="Append benchmark build/run/LLM trace to this file")
     return parser.parse_args()
 
 # Main loop
@@ -353,7 +426,21 @@ def main():
     file_path = '/'.join(args.file.split('/')[:-1])
 
     # Create the main 
-    testExecutor = TestExecutor(base_url=args.base, model=args.model, logging=True, temp=args.temp, end_loop=args.loop, search_range=args.range, base_modules=file_path+"/modules")
+    testExecutor = TestExecutor(
+        base_url=args.base,
+        model=args.model,
+        logging=True,
+        temp=args.temp,
+        end_loop=args.loop,
+        search_range=args.range,
+        base_modules=file_path+"/modules",
+        benchmark_context_log=args.benchmark_context_log,
+        snippet_label=args.file,
+    )
+    testExecutor.trace(
+        "benchmark-command",
+        f"file={args.file}\nmodel={args.model}\nbase={args.base}\nloop={args.loop}\nrange={args.range}\nrag={args.rag}",
+    )
     # Use a simple search to grab imports from file without the LLM
     python_deps = []
     if args.rag:
@@ -411,11 +498,21 @@ def main():
         p = mp.Process(
             target=testExecutor.docker_create_process,
             args=(
-                OllamaHelper(base_url=args.base, model=args.model, logging=True, temp=args.temp, base_modules=file_path+"/modules", rag=args.rag),
+                OllamaHelper(
+                    base_url=args.base,
+                    model=args.model,
+                    logging=True,
+                    temp=args.temp,
+                    base_modules=file_path+"/modules",
+                    rag=args.rag,
+                    benchmark_context_log=args.benchmark_context_log,
+                    snippet_label=args.file,
+                ),
                 run_details,
                 args.file,
-                i)
+                i,
             )
+        )
         processes.append(p)
         p.start()
 

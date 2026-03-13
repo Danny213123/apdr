@@ -1,0 +1,9 @@
+# pattern	error_type	conflict_class	fix
+No matching distribution found	VersionNotFound	TPL-TPL	Try the next compatible version from the cached index.
+Cannot install	DependencyConflict	TPL-TPL	Relax the conflicting pins and recompute the package set.
+ModuleNotFoundError	ModuleNotFound	TPL-TPL	Add the missing package and retry import mapping.
+ImportError	ImportError	TPL-TPL	Pin to an API-compatible version.
+SyntaxError	SyntaxError	TPL-Python	Retry against adjacent Python versions.
+Illegal instruction	CpuError	TPL-CPU	Switch to an older CPU-compatible build.
+CUDA driver version is insufficient	CudaError	TPL-CUDA	Use a matching CUDA build variant.
+

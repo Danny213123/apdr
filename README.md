@@ -12,6 +12,8 @@ The competition emphasizes open-source innovative memory constrained techniques,
 
 ![Alt text](fse-aiware.jpeg "FSE-AIWare")
 
+[Changelog](CHANGELOG.md)
+
 
 ## Overview
 Agentic engineering has advanced wildly over recent years. Since Chat GPT3.5 took the spotlight back in 2022, we've seen frontier models frequently push the boundaries of what we thought possible.
@@ -98,6 +100,34 @@ All deadlines are Anywhere on Earth (AoE):
  - Download Gemma2 through Ollama (e.g. ollama pull gemma2)
  - Start the Ollama server
  - Extract hard-gists.tar.gz
+
+### Web Benchmark UI
+You can also run the repository through a browser-based benchmark app:
+
+```bash
+python3 -m benchmark_ui
+```
+
+This starts a local web server at `http://127.0.0.1:4173` and serves the UI from [`web/`](web).
+
+The web app adds:
+- A Home screen for running the `hard-gists.tar.gz` benchmark, showing live progress, recent activity, and completed cases
+- A Configure screen that stores per-tool model settings under `models/` and auto-populates model names from Ollama
+- A Loadouts screen for saving reusable benchmark presets under `loadouts/`
+- A Doctor screen for checking Docker, Ollama, dataset readiness, and the tool runtimes, including automatic fixes
+
+The benchmark runner executes the selected tool from `tools/`, extracts `hard-gists.tar.gz` on first run if needed, and writes run summaries under `runs/`.
+
+Current app version: `0.2.0`
+
+Optional frontend development workflow:
+
+```bash
+python3 -m benchmark_ui --api-only --port 8765
+cd web
+npm install
+npm run dev
+```
 
 To begin, we suggest building the PLLM docker container and running the sample gists to understand how existing works have tackled this problem.
 

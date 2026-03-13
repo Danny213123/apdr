@@ -1,0 +1,15 @@
+[package]
+name = "apdr"
+version = "0.2.0"
+edition = "2021"
+default-run = "apdr"
+
+[lib]
+name = "apdr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "apdr"
+path = "src/main.rs"
+
+[dependencies]

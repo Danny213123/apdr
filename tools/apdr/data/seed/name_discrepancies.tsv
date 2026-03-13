@@ -1,0 +1,10 @@
+# import_name	package_name	default_version	source
+bs4	beautifulsoup4	4.12.3	discrepancy
+cv2	opencv-python	4.10.0.84	discrepancy
+yaml	PyYAML	6.0.2	discrepancy
+pil	Pillow	11.0.0	discrepancy
+sklearn	scikit-learn	1.5.2	discrepancy
+dotenv	python-dotenv	1.0.1	discrepancy
+dateutil	python-dateutil	2.9.0.post0	discrepancy
+attr	attrs	24.2.0	discrepancy
+

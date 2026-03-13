@@ -3,7 +3,6 @@
 import argparse
 import re
 
-from helpers.benchmark_context import append_event, read_tail
 from helpers.ollama_helper_base import OllamaHelperBase
 from helpers.py_pi_query import PyPIQuery
 
@@ -37,59 +36,11 @@ class ModuleVersions(BaseModel):
 # Main Ollama helper class
 class OllamaHelper(OllamaHelperBase):
     # Init defines the url to the Ollama API, the model, temp, logging and where the module information is stored
-    def __init__(
-        self,
-        base_url="http://localhost:11434",
-        model='llama3',
-        temp=1.0,
-        logging=False,
-        base_modules='./modules',
-        rag=True,
-        benchmark_context_log="",
-        snippet_label="",
-    ) -> None:
+    def __init__(self, base_url="http://localhost:11434", model='llama3', temp=1.0, logging=False, base_modules='./modules', rag=True) -> None:
         super().__init__(base_url, model, temp, logging)
         self.base_modules = base_modules
         self.rag = rag
         self.pypi = PyPIQuery(logging=logging, base_modules=base_modules)
-        self.benchmark_context_log = benchmark_context_log
-        self.snippet_label = snippet_label
-
-    def trace(self, kind, message, step=""):
-        append_event(
-            self.benchmark_context_log,
-            kind,
-            message,
-            snippet=self.snippet_label,
-            step=step,
-        )
-
-    def recent_benchmark_context(self):
-        context = read_tail(self.benchmark_context_log)
-        if not context:
-            return "No prior benchmark trace has been recorded yet."
-        return context
-
-    def make_prompt(self, template, partial_variables):
-        values = dict(partial_variables)
-        values["benchmark_context"] = self.recent_benchmark_context()
-        return PromptTemplate(
-            template=template
-            + "\nBenchmark trace context (recent tail):\n{benchmark_context}\n",
-            input_variables=[],
-            partial_variables=values,
-        )
-
-    def invoke_prompt(self, prompt, parser, step):
-        rendered = prompt.format()
-        self.trace("llm-prompt", rendered, step=step)
-        message = (prompt | self.model).invoke({})
-        raw = getattr(message, "content", message)
-        if isinstance(raw, list):
-            raw = "\n".join(str(item) for item in raw)
-        raw_text = str(raw)
-        self.trace("llm-response", raw_text, step=step)
-        return parser.parse(raw_text)
 
     """_summary_
     Validates the json from the model using pydantic to parse it
@@ -109,11 +60,15 @@ class OllamaHelper(OllamaHelperBase):
         
         parser = JsonOutputParser(pydantic_object=PythonFile)
 
-        prompt = self.make_prompt(
+        prompt = PromptTemplate(
             template="Given a python file:{raw_file}\nReturn just a list of Python modules and python version required to run. Output JSON based on the schema {format_instructions}",
+            input_variables=[],
             partial_variables={"raw_file": raw_file, "format_instructions": parser.get_format_instructions()}
         )
-        out = self.invoke_prompt(prompt, parser, "evaluate-file")
+        
+        chain = prompt | self.model | parser
+
+        out = chain.invoke({})
         
         print(out)
         return out
@@ -157,8 +112,15 @@ class OllamaHelper(OllamaHelperBase):
                         tp = "Given a comma separated list of '{version_details}', for the '{module}' module, from oldest to newest.\nSelect a recent version for us to use that isn't previously used: 'Previously used: {previous}, and return the information with the format {format_instructions}"
                         pv = {"version_details": versions, "module": module, "previous": [], "format_instructions": parser.get_format_instructions()}
 
-                    prompt = self.make_prompt(template=tp, partial_variables=pv)
-                    out = self.invoke_prompt(prompt, parser, f"module-version:{module}")
+                    prompt = PromptTemplate(
+                        template=tp,
+                        input_variables=[],
+                        partial_variables=pv
+                    )
+
+                    chain = prompt | self.model | parser
+
+                    out = chain.invoke({})
 
                     updated_modules[out['module']] = out['version'].split(' ')[0]
                 completed = True
@@ -176,12 +138,12 @@ class OllamaHelper(OllamaHelperBase):
 
 
     # NOTE: Deprecated, update instances that use this!
-    def execute_chain(self, prompt, parser, pydantic_model, step):
+    def execute_chain(self, chain, pydantic_model):
         loop = 5
         passed = False
         
         while not passed or loop > 0:
-            out = self.invoke_prompt(prompt, parser, step)
+            out = chain.invoke({})
             if self.logging: print(out)
             passed = self.pydantic_validate(pydantic_model, out)
             if passed: return passed, out
@@ -207,7 +169,9 @@ class OllamaHelper(OllamaHelperBase):
         # We want it to extract a module name which we can work with later
         for loop in range(0, 5):
             try:
-                out = self.invoke_prompt(prompt, parser, "error-module")
+                chain = prompt | self.model | parser
+
+                out = chain.invoke({})
                 # Get the name of the offending module from the error message        
                 bad_module = self.pypi.check_module_name(out['module'])[0]
 
@@ -224,7 +188,9 @@ class OllamaHelper(OllamaHelperBase):
 
         for loop in range(0, 5):
             try:
-                out = self.invoke_prompt(prompt, parser, "error-version")
+                chain = prompt | self.model | parser
+
+                out = chain.invoke({})
 
                 print(out)
 
@@ -265,8 +231,9 @@ class OllamaHelper(OllamaHelperBase):
 
     def could_not_find_version(self, error, previous_versions, details):
         parser = JsonOutputParser(pydantic_object=Module)
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
                     template="Given a docker build error where a version could not be found:\n{error}\nIdentify the module causing the error, which is likely in the form 'from module_name==version'.\nReturn the just the name of the module using the format instructions.\n{format_instructions}",
+                    input_variables=[],
                     partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
                 )
         
@@ -285,10 +252,11 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given a could not find a version error for the '{module}' module:\n{error}\nExcluding previous versions: ({previous_versions}), perform a distributed search over the recommended versions in the error message!\nReturn the information with the format {format_instructions}, use None for version if no version could be found!"
             pv = {"module": bad_module, "error": error, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
 
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
                 # template="Given a set of versions from oldest to newest ({versions}) for the '{module}' module. Perform a distributed search to retrieve a new version, excluding previously used versions ({previous_versions}).\nReturn the information with the format {format_instructions}",
                 # template="Given a could not find a version error for the '{module}' module:\{error}\nFrom the error message and excluding previous versions: ({previous_versions}), locate and select a random version, which would be in the form 'from versions: version'. \nReturn the information with the format {format_instructions} using None as version if no version was found.",
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -303,9 +271,10 @@ class OllamaHelper(OllamaHelperBase):
                 tp = "Excluding previous versions: ({previous_versions}). Perform a distributed search over the '{module}' module versions: {versions}, selecting one to install.\nReturn the information with the format {format_instructions}"
                 pv = {"versions": versions, "module": bad_module, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
 
-            get_version_prompt = self.make_prompt(
+            get_version_prompt = PromptTemplate(
                 # template="Given a set of versions from oldest to newest ({versions}) for the '{module}' module. Perform a distributed search to retrieve a new version, excluding previously used versions ({previous_versions}).\nReturn the information with the format {format_instructions}",
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -320,12 +289,15 @@ class OllamaHelper(OllamaHelperBase):
     def dependency_conflict(self, error):
         parser = JsonOutputParser(pydantic_object=ModuleVersion)
 
-        prompt = self.make_prompt(
+        prompt = PromptTemplate(
             template="Given a dependency conflict error:\n{error}\nReturn the module and a working version that would fix the error using the format {format_instructions}",
+            input_variables=[],
             partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
         )
 
-        passed, json_out = self.execute_chain(prompt, parser, ModuleVersion, "dependency-conflict")
+        chain = prompt | self.model | parser
+
+        passed, json_out = self.execute_chain(chain, ModuleVersion)
         
         print(json_out)
         return json_out
@@ -333,8 +305,9 @@ class OllamaHelper(OllamaHelperBase):
 
     def import_error(self, error, previous_versions, details):
         parser = JsonOutputParser(pydantic_object=Module)
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
                     template="Given an ImportError:\n{error}\n Identify the import which is causing the error.\nFor this type of error, the module is normally in the text 'from x import y', where x and y are the module to import and the offending method.\nReturn the name of the module using the format instructions.\n{format_instructions}",
+                    input_variables=[],
                     partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
                 )
         
@@ -353,8 +326,9 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nPerform equally distanced sampling to return a version from the given versions, excluding previously used versions ({previous_versions}).\nReturn the information with the format {format_instructions}"
             pv = {"error": error, "module": bad_module, "module_versions": versions, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
             
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -368,9 +342,10 @@ class OllamaHelper(OllamaHelperBase):
 
     def module_not_found(self, error, previous_versions, details):
         parser = JsonOutputParser(pydantic_object=Module)
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
                     template="Given a ModuleNotFound:\n{error}\nIdentify the module being imported which is causing this error.\nReturn the name of the module using the format instructions.\n{format_instructions}",
                     # template="Given an AttributeError:\n{error}\n Use your knowledge of Python to identify which of the existing modules ({python_modules}) is causing the error.\nReturn the name of the module using the format instructions.\n{format_instructions}",
+                    input_variables=[],
                     partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
                 )
         
@@ -389,9 +364,10 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nPerform equally distanced sampling to return a version from the given versions, excluding previously used versions ({previous_versions}). Return the information with the format {format_instructions}"
             pv = {"error": error, "module": bad_module, "module_versions": versions, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
 
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
                 # template="Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nExcluding previously used versions:\n{previous_versions}\nSelect a version from the other side of the version list, depending on the last previous version. Return the information with the format {format_instructions}",
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -409,8 +385,9 @@ class OllamaHelper(OllamaHelperBase):
             python_modules.append(module)
 
         parser = JsonOutputParser(pydantic_object=Module)
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
                     template="Given an AttributeError:\n{error}\n Use your knowledge of Python to identify which of the existing modules ({python_modules}) is causing the error.\nReturn the name of the module using the format instructions.\n{format_instructions}",
+                    input_variables=[],
                     partial_variables={"error": error, 'python_modules': ', '.join(python_modules), "format_instructions": parser.get_format_instructions()}
                 )
         
@@ -429,10 +406,11 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given an AttributeError for the '{module}' module: {error}\nIf you know a version that would fix this error, then return this, otherwise perform equally distanced sampling to return a version from the given versions ({module_versions}).\nDO NOT return any previous ({previous_versions})!\nReturn JSON using format {format_instructions}"
             pv = {"error": error, "module": bad_module, "python_version": details['python_version'], "module_versions": versions, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
 
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
                 # template="Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nExcluding previously used versions:\n{previous_versions}\nSelect a version from the other side of the version list, depending on the last previous version. Return the information with the format {format_instructions}",
                 # template="Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nExcluding previously used versions:\n{previous_versions}\nIf you know a version that would fix this error, then return this.\nOtherwise perform equally distanced sampling to return a version from the given versions. Return the information with the format {format_instructions}",
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -447,12 +425,15 @@ class OllamaHelper(OllamaHelperBase):
     def invalid_version(self, error):
         parser = JsonOutputParser(pydantic_object=ModuleVersion)
 
-        prompt = self.make_prompt(
+        prompt = PromptTemplate(
             template="Given a docker invalid versions error\n{error}\nReturn the Python module (not pip) and a working version that would fix the error using the format {format_instructions}",
+            input_variables=[],
             partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
         )
 
-        passed, json_out = self.execute_chain(prompt, parser, ModuleVersion, "invalid-version")
+        chain = prompt | self.model | parser
+
+        passed, json_out = self.execute_chain(chain, ModuleVersion)
         
         print(json_out)
         return json_out
@@ -461,8 +442,9 @@ class OllamaHelper(OllamaHelperBase):
     def non_zero_error(self, error):
         parser = JsonOutputParser(pydantic_object=Module)
 
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
             template="Given a docker build non-zero error:\n{error}\n Identify the module which failed to install with pip, this will typically be in the form module==version, where module is the module we want.\nReturn the name of the module using the format instructions.\n{format_instructions}",
+            input_variables=[],
             partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
         )
         
@@ -483,11 +465,12 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest ({module_versions})\nPerform equally distanced sampling to return a version from the given versions, excluding previously used versions ({previous_versions}). Return the information with the format {format_instructions}"
             pv = {"error": error, "module": module, "python_version": details['python_version'], "module_versions": versions, "previous_versions": error_modules, "format_instructions": parser.get_format_instructions()}
 
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
             # template="Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nPerform equally distanced sampling to return a version from the given versions, excluding previously used versions ({previous_versions}). Return the information with the format {format_instructions}",
                 template=tp,
                 # template="Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest ({module_versions})\nExcluding previously used versions ({previous_versions}), Select a version from the other side of the version list, depending on the last previous version. Return the information with the format {format_instructions}",
                 # template="Given a Non Zero Error message for the '{module}' Python module. Perform random sampling from the given versions ({module_versions}), excluding any previously used versions ({previous_versions}). Ensure the new version is different from the last previous version.\nReturn the information with the format {format_instructions}",
+                input_variables=[],
                 partial_variables=pv
             )
         
@@ -501,8 +484,9 @@ class OllamaHelper(OllamaHelperBase):
 
     def syntax_error_helper(self, error, previous_versions, details):
         parser = JsonOutputParser(pydantic_object=Module)
-        get_module_prompt = self.make_prompt(
+        get_module_prompt = PromptTemplate(
                     template="Given a Docker build error message: {error}\nIdentify the offending Python module and output the module name using the following format instruction {format_instructions}.",
+                    input_variables=[],
                     partial_variables={"error": error, "format_instructions": parser.get_format_instructions()}
                 )
         
@@ -521,8 +505,9 @@ class OllamaHelper(OllamaHelperBase):
             tp = "Given a comma separated list of 'Module versions' for the '{module}' module, from oldest to newest:\n{module_versions}\nExcluding previously used versions:\n{previous_versions}\nSelect a version from the other side of the version list, depending on the last previous version. Return the information with the format {format_instructions}"
             pv = {"error": error, "module": bad_module, "python_version": details['python_version'], "module_versions": versions, "previous_versions": previous_versions, "format_instructions": parser.get_format_instructions()}
 
-        get_version_prompt = self.make_prompt(
+        get_version_prompt = PromptTemplate(
                 template=tp,
+                input_variables=[],
                 partial_variables=pv
             )
         

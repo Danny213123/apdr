@@ -1,0 +1,8 @@
+# package_name	dependencies
+requests	urllib3,certifi,charset-normalizer,idna
+flask	blinker,click,itsdangerous,jinja2,werkzeug
+fastapi	pydantic,starlette,typing-extensions
+django	asgiref,sqlparse
+scikit-learn	joblib,scipy,threadpoolctl
+matplotlib	contourpy,cycler,fonttools,kiwisolver,numpy,packaging,pillow
+

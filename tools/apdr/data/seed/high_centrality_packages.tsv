@@ -1,0 +1,11 @@
+# package	score	source
+cryptography	8624.5	jia-qrs-2024
+numpy	0.385	jia-qrs-2024
+matplotlib	0.375	jia-qrs-2024
+flask	81	jia-qrs-2024
+pygments	77	jia-qrs-2024
+requests	76	seed
+pandas	74	seed
+scipy	71	seed
+django	69	seed
+setuptools	68	seed

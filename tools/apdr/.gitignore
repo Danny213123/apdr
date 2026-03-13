@@ -1,0 +1,10 @@
+target/
+.apdr-cache/
+out/
+tests/fixtures/.apdr-docker/
+tests/fixtures/requirements.txt
+tests/fixtures/resolution-report.txt
+tests/fixtures/output_data_*.yml
+tests/fixtures/generated_config_case/requirements.txt
+tests/fixtures/generated_config_case/resolution-report.txt
+tests/fixtures/generated_config_case/output_data_*.yml
