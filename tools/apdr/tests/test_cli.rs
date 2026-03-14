@@ -45,10 +45,16 @@ fn cli_resolves_from_stdin_without_validation() {
     assert!(stdout.contains("VALIDATION_SUCCEEDED=true"));
     assert!(stdout.contains("DEBUG_DIR="));
     assert!(stdout.contains("CONTEXT_LOG="));
+    assert!(stdout.contains("ENV_CREATE_DURATION_MS=0"));
 
     let requirements = fs::read_to_string(output_dir.join("requirements.txt")).unwrap();
+    let report = fs::read_to_string(output_dir.join("resolution-report.txt")).unwrap();
     assert!(requirements.contains("requests==2.32.3"));
     assert!(requirements.contains("beautifulsoup4==4.12.3"));
+    assert!(report.contains("env_create_duration_ms: 0"));
+    assert!(report.contains("validation_duration_ms: 0"));
+    assert!(report.contains("install_duration_ms: 0"));
+    assert!(report.contains("smoke_duration_ms: 0"));
     assert!(output_dir.join(".apdr-debug").join("parse-summary.txt").exists());
     assert!(output_dir.join(".apdr-debug").join("benchmark-context.log").exists());
 

@@ -6,7 +6,7 @@ fn resolver_maps_seeded_imports_to_packages() {
     let snippet = tool_root.join("tests/fixtures/sample_snippet.py");
     let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
     config.output_dir = tool_root.join("target/test-output");
-    config.validate_with_docker = false;
+    config.validate = false;
 
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
@@ -114,6 +114,34 @@ fn tier1_resolves_reference_alias_seed_entries() {
 }
 
 #[test]
+fn tier1_discrepancy_versions_fall_back_to_latest_python_compatible_release() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-discrepancy-version-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    store.pypi_index.insert(
+        "redis".to_string(),
+        vec!["2.10.6".to_string(), "3.5.3".to_string()],
+    );
+
+    let parse_result = apdr::ParseResult {
+        imports: vec!["redis".to_string()],
+        import_paths: vec!["redis".to_string()],
+        config_deps: Vec::new(),
+        python_version_min: "2.7".to_string(),
+        python_version_max: Some("2.7".to_string()),
+        confidence: 0.8,
+        scanned_files: Vec::new(),
+    };
+
+    let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
+    assert_eq!(stage.resolved.len(), 1);
+    assert_eq!(stage.resolved[0].package_name, "redis");
+    assert_eq!(stage.resolved[0].version.as_deref(), Some("3.5.3"));
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
+#[test]
 fn tier1_resolves_libxmp_to_python_xmp_toolkit() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cache_path = tool_root.join("target/test-libxmp-alias-cache");
@@ -165,7 +193,7 @@ fn resolver_normalizes_legacy_pymc3_stack_to_compatible_versions() {
     let snippet = tool_root.join("tests/fixtures/legacy_pymc3_snippet.py");
     let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
     config.output_dir = tool_root.join("target/test-legacy-pymc3-output");
-    config.validate_with_docker = false;
+    config.validate = false;
 
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
@@ -186,7 +214,7 @@ fn resolver_uses_family_bundle_for_py2_style_pymc3_benchmarks() {
     let snippet = tool_root.join("tests/fixtures/legacy_pymc3_py2_style_snippet.py");
     let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
     config.output_dir = tool_root.join("target/test-legacy-pymc3-py2-style-output");
-    config.validate_with_docker = false;
+    config.validate = false;
     config.execute_snippet = false;
     config.python_version_range = 5;
 
@@ -354,7 +382,7 @@ fn resolver_uses_family_bundle_for_legacy_tensorflow_stack() {
     let snippet = tool_root.join("tests/fixtures/legacy_tensorflow_snippet.py");
     let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
     config.output_dir = tool_root.join("target/test-legacy-tensorflow-output");
-    config.validate_with_docker = false;
+    config.validate = false;
     config.execute_snippet = false;
     config.python_version_range = 5;
 

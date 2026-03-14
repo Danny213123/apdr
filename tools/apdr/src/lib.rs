@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod context;
 pub mod docker;
+pub mod knowledge_cache;
 pub mod llm;
 pub mod parser;
 pub mod recovery;
@@ -37,7 +38,7 @@ pub struct ResolveConfig {
     pub max_retries: usize,
     pub cache_path: PathBuf,
     pub output_dir: PathBuf,
-    pub docker_timeout: Duration,
+    pub validation_timeout: Duration,
     pub parallel_versions: bool,
     pub scan_config_files: bool,
     pub allow_llm: bool,
@@ -45,7 +46,7 @@ pub struct ResolveConfig {
     pub llm_model: String,
     pub llm_base_url: String,
     pub benchmark_context_log: Option<PathBuf>,
-    pub validate_with_docker: bool,
+    pub validate: bool,
     pub execute_snippet: bool,
 }
 
@@ -71,7 +72,7 @@ pub struct ResolutionReport {
     pub cache_hits: usize,
     pub heuristic_hits: usize,
     pub llm_calls: usize,
-    pub docker_builds: usize,
+    pub env_builds: usize,
     pub retries: usize,
     pub unresolved: Vec<String>,
     pub conflict_classes: BTreeMap<String, usize>,
@@ -85,8 +86,12 @@ pub struct ValidationAttempt {
     pub attempt_index: usize,
     pub python_version: String,
     pub status: String,
-    pub image_tag: Option<String>,
-    pub used_cached_image: bool,
+    pub validation_backend: String,
+    pub env_label: Option<String>,
+    pub env_dir: Option<String>,
+    pub env_create_duration_ms: u128,
+    pub used_cached_env: bool,
+    pub validated_env_cache_hit: bool,
     pub used_cached_lockfile: bool,
     pub error_type: Option<String>,
     pub conflict_class: Option<String>,
@@ -105,8 +110,14 @@ pub struct ValidationSummary {
     pub succeeded: bool,
     pub status: String,
     pub reason: Option<String>,
+    pub validation_backend: String,
+    pub solve_duration_ms: u128,
+    pub validation_duration_ms: u128,
+    pub env_create_duration_ms: u128,
+    pub install_duration_ms: u128,
+    pub smoke_duration_ms: u128,
     pub selected_python_version: Option<String>,
-    pub docker_image_id: Option<String>,
+    pub build_image_id: Option<String>,
     pub lockfile_key: Option<String>,
     pub build_cache_key: Option<String>,
     pub attempts: Vec<ValidationAttempt>,
@@ -128,7 +139,7 @@ pub struct ResolveResult {
     pub unresolved: Vec<String>,
     pub requirements_txt: String,
     pub lockfile: Option<String>,
-    pub docker_image_id: Option<String>,
+    pub build_image_id: Option<String>,
     pub validation: ValidationSummary,
     pub resolution_report: ResolutionReport,
 }
@@ -170,7 +181,7 @@ impl ResolveConfig {
             max_retries: 10,
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
-            docker_timeout: Duration::from_secs(300),
+            validation_timeout: Duration::from_secs(300),
             parallel_versions: true,
             scan_config_files: true,
             allow_llm: false,
@@ -178,7 +189,7 @@ impl ResolveConfig {
             llm_model: "gemma3:4b".to_string(),
             llm_base_url: "http://localhost:11434".to_string(),
             benchmark_context_log: None,
-            validate_with_docker: true,
+            validate: true,
             execute_snippet: true,
         }
     }
@@ -256,7 +267,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\ndocker_builds: {}\nretries: {}\nduration_ms: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nvalidation_python: {}\ndocker_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\nsmoke_duration_ms: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -278,9 +289,15 @@ impl ResolveResult {
             self.resolution_report.cache_hits,
             self.resolution_report.heuristic_hits,
             self.resolution_report.llm_calls,
-            self.resolution_report.docker_builds,
+            self.resolution_report.env_builds,
             self.resolution_report.retries,
             self.resolution_report.duration.as_millis(),
+            self.validation.solve_duration_ms,
+            self.validation.validation_duration_ms,
+            self.validation.env_create_duration_ms,
+            self.validation.install_duration_ms,
+            self.validation.smoke_duration_ms,
+            if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             self.validation.succeeded,
             if self.validation.status.is_empty() {
                 if self.validation.succeeded {
@@ -293,7 +310,7 @@ impl ResolveResult {
             },
             self.validation.reason.as_deref().unwrap_or("--"),
             self.validation.selected_python_version.as_deref().unwrap_or("--"),
-            self.docker_image_id.as_deref().unwrap_or("--"),
+            self.build_image_id.as_deref().unwrap_or("--"),
             self.validation.lockfile_key.as_deref().unwrap_or("--"),
             self.validation.debug_dir.as_deref().unwrap_or("--"),
             self.validation.attempts_dir.as_deref().unwrap_or("--"),
@@ -320,15 +337,19 @@ impl ResolveResult {
                     .iter()
                     .map(|attempt| {
                         format!(
-                            "- attempt={} py={} status={} error_type={} conflict_class={} fix={} image={} cached_image={} cached_lockfile={} artifact_dir={} build_log={} run_log={} combined_log={} metadata={} context_snapshot={}",
+                            "- attempt={} py={} backend={} status={} error_type={} conflict_class={} fix={} env_label={} env_dir={} env_create_ms={} cached_env={} env_cache_hit={} cached_lockfile={} artifact_dir={} build_log={} run_log={} combined_log={} metadata={} context_snapshot={}",
                             attempt.attempt_index,
                             attempt.python_version,
+                            if attempt.validation_backend.is_empty() { "env" } else { &attempt.validation_backend },
                             attempt.status,
                             attempt.error_type.as_deref().unwrap_or("--"),
                             attempt.conflict_class.as_deref().unwrap_or("--"),
                             attempt.fix_applied.as_deref().unwrap_or("--"),
-                            attempt.image_tag.as_deref().unwrap_or("--"),
-                            attempt.used_cached_image,
+                            attempt.env_label.as_deref().unwrap_or("--"),
+                            attempt.env_dir.as_deref().unwrap_or("--"),
+                            attempt.env_create_duration_ms,
+                            attempt.used_cached_env,
+                            attempt.validated_env_cache_hit,
                             attempt.used_cached_lockfile,
                             attempt.artifact_dir.as_deref().unwrap_or("--"),
                             attempt.build_log_path.as_deref().unwrap_or("--"),
@@ -346,13 +367,12 @@ impl ResolveResult {
 
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nVALIDATION_PYTHON={}\nDOCKER_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nSMOKE_DURATION_MS={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
             self.resolved.len(),
-            self.unresolved.len()
-            ,
+            self.unresolved.len(),
             self.solvability
                 .as_ref()
                 .map(|item| item.decision.as_str())
@@ -369,6 +389,12 @@ impl ResolveResult {
                 .as_ref()
                 .map(|item| item.source.as_str())
                 .unwrap_or(""),
+            self.validation.solve_duration_ms,
+            self.validation.validation_duration_ms,
+            self.validation.env_create_duration_ms,
+            self.validation.install_duration_ms,
+            self.validation.smoke_duration_ms,
+            if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             self.validation.succeeded,
             if self.validation.status.is_empty() {
                 if self.validation.succeeded {
@@ -381,7 +407,7 @@ impl ResolveResult {
             },
             self.validation.reason.as_deref().unwrap_or(""),
             self.validation.selected_python_version.as_deref().unwrap_or(""),
-            self.docker_image_id.as_deref().unwrap_or(""),
+            self.build_image_id.as_deref().unwrap_or(""),
             self.validation.lockfile_key.as_deref().unwrap_or(""),
             self.validation.debug_dir.as_deref().unwrap_or(""),
             self.validation.attempts_dir.as_deref().unwrap_or(""),

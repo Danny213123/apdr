@@ -594,6 +594,10 @@ function renderProgress() {
     <span><span class="kv-label">Elapsed:</span> <span class="text-yellow">${escapeHtml(run.elapsedLabel || "0m 00s")}</span></span>
     <span><span class="kv-label">Pass rate:</span> <span class="text-yellow">${escapeHtml(run.passRate || "0.0%")}</span></span>
     <span><span class="kv-label">Sec/case:</span> <span class="text-yellow">${escapeHtml(run.speed || "--")}</span></span>
+    <span><span class="kv-label">Solve avg:</span> <span class="text-yellow">${escapeHtml(run.solveAverage || "--")}</span></span>
+    <span><span class="kv-label">Env avg:</span> <span class="text-yellow">${escapeHtml(run.envCreateAverage || "--")}</span></span>
+    <span><span class="kv-label">Install avg:</span> <span class="text-yellow">${escapeHtml(run.installAverage || "--")}</span></span>
+    <span><span class="kv-label">Smoke avg:</span> <span class="text-yellow">${escapeHtml(run.smokeAverage || "--")}</span></span>
     <span><span class="kv-label">ETA:</span> <span class="text-yellow">${escapeHtml(run.eta || "--")}</span></span>
   `;
   ui.perfLine.innerHTML = `
@@ -602,7 +606,13 @@ function renderProgress() {
       String(config.loop_count ?? "-"),
     )} range=${escapeHtml(String(config.search_range ?? "-"))} rag=${escapeHtml(
       config.rag ? "on" : "off",
-    )} verbose=${escapeHtml(config.verbose ? "on" : "off")}</span>
+    )} verbose=${escapeHtml(config.verbose ? "on" : "off")} solve=${escapeHtml(
+      run.solveAverage || "--",
+    )} validate=${escapeHtml(run.validationAverage || "--")} env=${escapeHtml(
+      run.envCreateAverage || "--",
+    )} install=${escapeHtml(run.installAverage || "--")} smoke=${escapeHtml(
+      run.smokeAverage || "--",
+    )}</span>
   `;
   ui.researchLine.innerHTML = `
     <span class="kv-label">Resolved model</span>
@@ -659,6 +669,11 @@ function renderCaseDetails(container, item) {
     ["Snippet", item.snippet || "-"],
     ["Result", item.result || "-"],
     ["Dependencies", item.dependencies || "-"],
+    ["Solve", item.solve || "-"],
+    ["Validate", item.validation || "-"],
+    ["Env create", item.envCreate || "-"],
+    ["Install", item.install || "-"],
+    ["Smoke", item.smoke || "-"],
     ["PLLM", item.pllmSummary || item.pllm || "-"],
     ["PYEGO", item.legacySummary || item.legacy || "-"],
     ["READPY", item.readpySummary || item.readpy || "-"],

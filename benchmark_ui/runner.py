@@ -291,6 +291,11 @@ class BenchmarkWorker(threading.Thread):
         succeeded = not skipped and returncode == 0 and not self._has_failure_markers(captured_tail) and (
             bool(requirements) or bool(outputs)
         )
+        solve_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("solve_duration_ms"))
+        validation_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("validation_duration_ms"))
+        env_create_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("env_create_duration_ms"))
+        install_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("install_duration_ms"))
+        smoke_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("smoke_duration_ms"))
 
         result = {
             "snippet": self.state.relative_path(snippet),
@@ -305,6 +310,11 @@ class BenchmarkWorker(threading.Thread):
             "log_lines_streamed": streamed_lines,
             "log_tail": captured_tail,
             "output_files": outputs[:5],
+            "solve_duration_seconds": solve_duration_seconds,
+            "validation_duration_seconds": validation_duration_seconds,
+            "env_create_duration_seconds": env_create_duration_seconds,
+            "install_duration_seconds": install_duration_seconds,
+            "smoke_duration_seconds": smoke_duration_seconds,
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
@@ -375,6 +385,18 @@ class BenchmarkWorker(threading.Thread):
         except OSError:
             return {}
         return metadata
+
+    def _metadata_millis_to_seconds(self, value: Any) -> float | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            millis = float(text)
+        except (TypeError, ValueError):
+            return None
+        if millis < 0:
+            return None
+        return round(millis / 1000.0, 2)
 
     def _has_failure_markers(self, lines: Any) -> bool:
         terms = (

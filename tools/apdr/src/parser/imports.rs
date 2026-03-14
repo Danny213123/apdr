@@ -14,38 +14,44 @@ pub fn scan_imports(source: &str) -> ImportScan {
         if trimmed.starts_with('#') || trimmed.is_empty() {
             continue;
         }
-        let trimmed = strip_comment(trimmed).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+        let trimmed = strip_comment(trimmed);
 
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            for part in rest.split(',') {
-                let import_path = normalize_import(part);
-                if import_path.is_empty() {
-                    continue;
-                }
-                top_levels.insert(top_level(&import_path).to_string());
-                full_paths.insert(import_path);
+        // Split on semicolons to handle multiple statements per line
+        // e.g. "import sys; from PIL import Image; import numpy"
+        for statement in trimmed.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
             }
-            continue;
-        }
 
-        if let Some(rest) = trimmed.strip_prefix("from ") {
-            if let Some((module, import_part)) = rest.split_once(" import ") {
-                let module_path = normalize_import(module);
-                if module_path.is_empty() {
-                    continue;
-                }
-                top_levels.insert(top_level(&module_path).to_string());
-                full_paths.insert(module_path.clone());
-
-                for name in import_part.split(',') {
-                    let imported_name = normalize_member(name);
-                    if imported_name.is_empty() || imported_name == "*" {
+            if let Some(rest) = stmt.strip_prefix("import ") {
+                for part in rest.split(',') {
+                    let import_path = normalize_import(part);
+                    if import_path.is_empty() {
                         continue;
                     }
-                    full_paths.insert(format!("{module_path}.{imported_name}"));
+                    top_levels.insert(top_level(&import_path).to_string());
+                    full_paths.insert(import_path);
+                }
+                continue;
+            }
+
+            if let Some(rest) = stmt.strip_prefix("from ") {
+                if let Some((module, import_part)) = rest.split_once(" import ") {
+                    let module_path = normalize_import(module);
+                    if module_path.is_empty() {
+                        continue;
+                    }
+                    top_levels.insert(top_level(&module_path).to_string());
+                    full_paths.insert(module_path.clone());
+
+                    for name in import_part.split(',') {
+                        let imported_name = normalize_member(name);
+                        if imported_name.is_empty() || imported_name == "*" {
+                            continue;
+                        }
+                        full_paths.insert(format!("{module_path}.{imported_name}"));
+                    }
                 }
             }
         }
@@ -129,6 +135,15 @@ mod tests {
 
         assert!(scan.top_levels.contains(&"RPi".to_string()));
         assert!(scan.full_paths.contains(&"RPi.GPIO".to_string()));
+    }
+
+    #[test]
+    fn scan_handles_semicolon_separated_statements() {
+        let scan = scan_imports("import sys; from PIL import Image; import numpy\n");
+        assert!(scan.top_levels.contains(&"sys".to_string()));
+        assert!(scan.top_levels.contains(&"PIL".to_string()));
+        assert!(scan.top_levels.contains(&"numpy".to_string()));
+        assert!(scan.full_paths.contains(&"PIL.Image".to_string()));
     }
 
     #[test]

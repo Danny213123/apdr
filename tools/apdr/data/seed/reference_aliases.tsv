@@ -1149,3 +1149,4 @@ responsibleai	responsibleai		seed
 dowhy	dowhy		seed
 econml	econml		seed
 causalml	causalml		seed
+pkg_resources	setuptools		seed

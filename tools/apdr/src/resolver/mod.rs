@@ -1,4 +1,5 @@
 pub mod family_knowledge;
+pub mod kgraph_db;
 pub mod pre_solve;
 pub mod pypi_client;
 pub mod tier1_cache;
@@ -53,7 +54,7 @@ pub fn resolve_path(
             .as_ref()
             .map(|item| format!("LLM skipped snippet at confidence {:.2}: {}", item.confidence, item.reason))
             .unwrap_or_else(|| "LLM skipped snippet as unsolvable.".to_string());
-        let validation = skipped_validation_summary(
+        let mut validation = skipped_validation_summary(
             "skipped-unsolvable",
             &reason,
             &selected_python,
@@ -61,6 +62,7 @@ pub fn resolve_path(
             config,
             &render_requirements(&[]),
         );
+        validation.solve_duration_ms = started.elapsed().as_millis();
         report.unresolved = parse_result.imports.clone();
         report.duration = started.elapsed();
         write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
@@ -78,7 +80,7 @@ pub fn resolve_path(
             unresolved: report.unresolved.clone(),
             requirements_txt: String::new(),
             lockfile: Some(String::new()),
-            docker_image_id: None,
+            build_image_id: None,
             validation,
             resolution_report: report,
         });
@@ -171,7 +173,9 @@ pub fn resolve_path(
         &requirements_txt,
     )?;
     let skip_reason = detect_skip_reason(&parse_result, &resolved, &unresolved);
-    let validation = if config.validate_with_docker {
+    let solve_duration_ms = started.elapsed().as_millis();
+    let validation_started = Instant::now();
+    let mut validation = if config.validate {
         if let Some((status, note)) = skip_reason {
             report.notes.push(note.clone());
             skipped_validation_summary(
@@ -236,13 +240,17 @@ pub fn resolve_path(
             ..Default::default()
         }
     };
+    validation.solve_duration_ms = solve_duration_ms;
+    if config.validate && !validation.attempts.is_empty() {
+        validation.validation_duration_ms = validation_started.elapsed().as_millis();
+    }
 
     if validation.succeeded {
         let lockfile_key = lockfile_cache::key_for(&requirements_txt, &selected_python);
         let _ = store.save_lockfile(&lockfile_key, &requirements_txt);
-        if let Some(image_tag) = validation.docker_image_id.as_deref() {
+        if let Some(image_id) = validation.build_image_id.as_deref() {
             let build_key = lockfile_cache::key_for(&requirements_txt, &selected_python);
-            let _ = store.save_build_artifact(&build_key, image_tag);
+            let _ = store.save_build_artifact(&build_key, image_id);
         }
     }
 
@@ -280,7 +288,7 @@ pub fn resolve_path(
         unresolved,
         requirements_txt: requirements_txt.clone(),
         lockfile: Some(requirements_txt),
-        docker_image_id: validation.docker_image_id.clone(),
+        build_image_id: validation.build_image_id.clone(),
         validation,
         resolution_report: report,
     })
@@ -437,7 +445,7 @@ fn validate_with_retries(
             config,
             store,
         )?;
-        report.docker_builds += attempt_result.attempts.len();
+        report.env_builds += attempt_result.attempts.len();
         validation.lockfile_key = attempt_result
             .lockfile_key
             .clone()
@@ -446,6 +454,12 @@ fn validate_with_retries(
             .build_cache_key
             .clone()
             .or(validation.build_cache_key.clone());
+        if validation.validation_backend.is_empty() && !attempt_result.validation_backend.is_empty() {
+            validation.validation_backend = attempt_result.validation_backend.clone();
+        }
+        validation.env_create_duration_ms += attempt_result.env_create_duration_ms;
+        validation.install_duration_ms += attempt_result.install_duration_ms;
+        validation.smoke_duration_ms += attempt_result.smoke_duration_ms;
         validation.attempts.extend(attempt_result.attempts.clone());
 
         if let Some((pattern, error_type, conflict_class, fix)) = pending_pattern_learning.take() {
@@ -463,7 +477,7 @@ fn validate_with_retries(
             validation.status = "passed".to_string();
             validation.reason = None;
             validation.selected_python_version = attempt_result.selected_python_version.clone();
-            validation.docker_image_id = attempt_result.docker_image_id.clone();
+            validation.build_image_id = attempt_result.build_image_id.clone();
             return Ok(validation);
         }
 
@@ -575,6 +589,9 @@ fn validate_with_retries(
     if validation.reason.is_none() {
         validation.reason = infer_validation_reason(&validation, report);
     }
+    if validation.validation_backend.is_empty() && !validation.attempts.is_empty() {
+        validation.validation_backend = "env".to_string();
+    }
 
     Ok(validation)
 }
@@ -674,7 +691,12 @@ fn apply_recovery_fix(
                         resolved,
                         &module_name,
                         &record.package_name,
-                        record.default_version.clone(),
+                        pypi_client::compatible_default_version(
+                            store,
+                            &record.package_name,
+                            record.default_version.as_deref(),
+                            python_version,
+                        ),
                         "recovery:cache",
                     )
                 {

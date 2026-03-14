@@ -133,7 +133,7 @@ The terminal UI reuses the same backend service as the web app and includes:
 - A Doctor screen for environment checks and automatic fixes
 - Saved run browsing with load and resume actions
 
-Current app version: `0.2.5`
+Current app version: `0.2.6`
 
 Optional frontend development workflow:
 

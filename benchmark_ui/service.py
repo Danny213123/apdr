@@ -305,6 +305,16 @@ class BenchmarkService:
             snapshot = deepcopy(self._current_run)
         snapshot.pop("_recentActivityLimit", None)
         snapshot.pop("_completedCasesLimit", None)
+        snapshot.pop("_solveSecondsTotal", None)
+        snapshot.pop("_validationSecondsTotal", None)
+        snapshot.pop("_envCreateSecondsTotal", None)
+        snapshot.pop("_installSecondsTotal", None)
+        snapshot.pop("_smokeSecondsTotal", None)
+        snapshot.pop("_solveSamples", None)
+        snapshot.pop("_validationSamples", None)
+        snapshot.pop("_envCreateSamples", None)
+        snapshot.pop("_installSamples", None)
+        snapshot.pop("_smokeSamples", None)
         return snapshot
 
     def _app_payload(self) -> dict[str, Any]:
@@ -403,11 +413,26 @@ class BenchmarkService:
             "elapsedLabel": "0m 00s",
             "passRate": "0.0%",
             "speed": "--",
+            "solveAverage": "--",
+            "validationAverage": "--",
+            "envCreateAverage": "--",
+            "installAverage": "--",
+            "smokeAverage": "--",
             "eta": "--",
             "recentActivity": [],
             "completedCases": [],
             "_recentActivityLimit": 350,
             "_completedCasesLimit": 500,
+            "_solveSecondsTotal": 0.0,
+            "_validationSecondsTotal": 0.0,
+            "_envCreateSecondsTotal": 0.0,
+            "_installSecondsTotal": 0.0,
+            "_smokeSecondsTotal": 0.0,
+            "_solveSamples": 0,
+            "_validationSamples": 0,
+            "_envCreateSamples": 0,
+            "_installSamples": 0,
+            "_smokeSamples": 0,
         }
 
     def _drain_messages(self) -> None:
@@ -491,6 +516,7 @@ class BenchmarkService:
                         "output_files": [],
                         "log_tail": [],
                     }
+                self._accumulate_phase_metrics(self._current_run, result)
                 case_succeeded = self._result_succeeded(result)
                 case_skipped = self._result_skipped(result)
                 self._current_run["completed"] = int(message["completed"])
@@ -584,6 +610,36 @@ class BenchmarkService:
         self._current_run["elapsedSeconds"] = round(elapsed, 2)
         self._current_run["elapsedLabel"] = self._format_duration(elapsed)
         self._current_run["speed"] = self._format_case_pace(case_pace)
+        self._current_run["solveAverage"] = self._format_phase_average(
+            self._phase_average(
+                float(self._current_run.get("_solveSecondsTotal") or 0.0),
+                int(self._current_run.get("_solveSamples") or 0),
+            )
+        )
+        self._current_run["validationAverage"] = self._format_phase_average(
+            self._phase_average(
+                float(self._current_run.get("_validationSecondsTotal") or 0.0),
+                int(self._current_run.get("_validationSamples") or 0),
+            )
+        )
+        self._current_run["envCreateAverage"] = self._format_phase_average(
+            self._phase_average(
+                float(self._current_run.get("_envCreateSecondsTotal") or 0.0),
+                int(self._current_run.get("_envCreateSamples") or 0),
+            )
+        )
+        self._current_run["installAverage"] = self._format_phase_average(
+            self._phase_average(
+                float(self._current_run.get("_installSecondsTotal") or 0.0),
+                int(self._current_run.get("_installSamples") or 0),
+            )
+        )
+        self._current_run["smokeAverage"] = self._format_phase_average(
+            self._phase_average(
+                float(self._current_run.get("_smokeSecondsTotal") or 0.0),
+                int(self._current_run.get("_smokeSamples") or 0),
+            )
+        )
         self._current_run["eta"] = self._format_eta(eta_seconds)
 
     def _build_case_row(self, result: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -592,6 +648,11 @@ class BenchmarkService:
         run_config = config or self._current_run["config"]
         case_id = self._extract_case_id(snippet)
         comparisons = self._baseline_comparisons(case_id, status)
+        solve_seconds = self._result_phase_seconds(result, "solve")
+        validation_seconds = self._result_phase_seconds(result, "validation")
+        env_create_seconds = self._result_phase_seconds(result, "env_create")
+        install_seconds = self._result_phase_seconds(result, "install")
+        smoke_seconds = self._result_phase_seconds(result, "smoke")
         return {
             "status": status,
             "caseId": case_id,
@@ -609,6 +670,11 @@ class BenchmarkService:
             "snippet": snippet,
             "outputFiles": [str(item) for item in result.get("output_files", []) if item],
             "logTail": [str(line) for line in result.get("log_tail", []) if str(line).strip()],
+            "solve": self._format_phase_average(solve_seconds),
+            "validation": self._format_phase_average(validation_seconds),
+            "envCreate": self._format_phase_average(env_create_seconds),
+            "install": self._format_phase_average(install_seconds),
+            "smoke": self._format_phase_average(smoke_seconds),
         }
 
     def _append_activity(self, text: str) -> None:
@@ -654,6 +720,7 @@ class BenchmarkService:
         successes = sum(1 for item in results if self._result_succeeded(item))
         skipped = sum(1 for item in results if self._result_skipped(item))
         failures = completed - successes - skipped
+        phase_totals = self._phase_totals(results)
         elapsed = self._summary_elapsed_seconds(summary)
         case_pace = (elapsed / completed) if completed > 0 and elapsed > 0 else None
         remaining = max(total - completed, 0)
@@ -693,6 +760,11 @@ class BenchmarkService:
                 "elapsedLabel": self._format_duration(elapsed) if elapsed > 0 else "0m 00s",
                 "passRate": f"{pass_rate:0.1f}%",
                 "speed": self._format_case_pace(case_pace),
+                "solveAverage": self._format_phase_average(self._phase_average(*phase_totals["solve"])),
+                "validationAverage": self._format_phase_average(self._phase_average(*phase_totals["validation"])),
+                "envCreateAverage": self._format_phase_average(self._phase_average(*phase_totals["env_create"])),
+                "installAverage": self._format_phase_average(self._phase_average(*phase_totals["install"])),
+                "smokeAverage": self._format_phase_average(self._phase_average(*phase_totals["smoke"])),
                 "eta": self._format_eta(eta_seconds),
                 "recentActivity": self._historical_activity(run_id, summary, run_dir, completed, total, remaining),
                 "completedCases": [
@@ -701,6 +773,16 @@ class BenchmarkService:
                 ],
                 "resumeAvailable": resume_available,
                 "remaining": remaining,
+                "_solveSecondsTotal": phase_totals["solve"][0],
+                "_validationSecondsTotal": phase_totals["validation"][0],
+                "_envCreateSecondsTotal": phase_totals["env_create"][0],
+                "_installSecondsTotal": phase_totals["install"][0],
+                "_smokeSecondsTotal": phase_totals["smoke"][0],
+                "_solveSamples": phase_totals["solve"][1],
+                "_validationSamples": phase_totals["validation"][1],
+                "_envCreateSamples": phase_totals["env_create"][1],
+                "_installSamples": phase_totals["install"][1],
+                "_smokeSamples": phase_totals["smoke"][1],
             }
         )
         self._refresh_run_fields_for(run)
@@ -927,6 +1009,16 @@ class BenchmarkService:
             return "--"
         return f"{seconds_per_case:0.2f} sec/case"
 
+    def _format_phase_average(self, seconds: float | None) -> str:
+        if seconds is None:
+            return "--"
+        return f"{seconds:0.2f}s"
+
+    def _phase_average(self, total_seconds: float, samples: int) -> float | None:
+        if samples <= 0:
+            return None
+        return total_seconds / samples
+
     def _format_progress_bar(self, completed: int, total: int, width: int = 40) -> str:
         if total <= 0:
             return f"Progress {completed}/0 (  0.0%) [{'-' * width}]"
@@ -1050,6 +1142,54 @@ class BenchmarkService:
             return int(str(value).strip())
         except (TypeError, ValueError):
             return 0
+
+    def _safe_float(self, value: Any) -> float | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return None
+
+    def _result_phase_seconds(self, result: dict[str, Any], phase: str) -> float | None:
+        direct = self._safe_float(result.get(f"{phase}_duration_seconds"))
+        if direct is not None:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return None
+        millis = self._safe_float(metadata.get(f"{phase}_duration_ms"))
+        if millis is None or millis < 0:
+            return None
+        return round(millis / 1000.0, 2)
+
+    def _phase_totals(self, results: list[dict[str, Any]]) -> dict[str, tuple[float, int]]:
+        totals: dict[str, tuple[float, int]] = {
+            "solve": (0.0, 0),
+            "validation": (0.0, 0),
+            "env_create": (0.0, 0),
+            "install": (0.0, 0),
+            "smoke": (0.0, 0),
+        }
+        for result in results:
+            for phase in ("solve", "validation", "env_create", "install", "smoke"):
+                seconds = self._result_phase_seconds(result, phase)
+                if seconds is None:
+                    continue
+                total, samples = totals[phase]
+                totals[phase] = (total + seconds, samples + 1)
+        return totals
+
+    def _accumulate_phase_metrics(self, run: dict[str, Any], result: dict[str, Any]) -> None:
+        for phase in ("solve", "validation", "env_create", "install", "smoke"):
+            seconds = self._result_phase_seconds(result, phase)
+            if seconds is None:
+                continue
+            total_key = f"_{phase}SecondsTotal"
+            sample_key = f"_{phase}Samples"
+            run[total_key] = float(run.get(total_key) or 0.0) + seconds
+            run[sample_key] = int(run.get(sample_key) or 0) + 1
 
     def _result_succeeded(self, result: dict[str, Any]) -> bool:
         if self._result_skipped(result):

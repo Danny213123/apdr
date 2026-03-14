@@ -53,7 +53,12 @@ pub fn resolve(parse_result: &ParseResult, store: &mut CacheStore, python_versio
                 resolved.push(ResolvedDependency {
                     import_name: import_name.clone(),
                     package_name: record.package_name.clone(),
-                    version: record.default_version.clone(),
+                    version: pypi_client::compatible_default_version(
+                        store,
+                        &record.package_name,
+                        record.default_version.as_deref(),
+                        python_version,
+                    ),
                     strategy,
                     confidence: 0.97,
                 });

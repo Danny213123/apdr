@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 - 2026-03-14
+
+- Fixed APDR phase-timing propagation so top-level case outputs now preserve `solve`, `validation`, `install`, and `smoke` timings from the real validation attempts instead of dropping install/smoke totals during retry aggregation.
+- Added explicit `env_create_duration_ms` reporting across APDR outputs, saved run summaries, and the benchmark runner contract so local-environment setup time is visible alongside install and smoke timing.
+- Updated the Benchmark View to show `Env avg` in the live metrics header and `Env create` in expanded case details, giving live and historical runs a complete validation-phase breakdown for new APDR results.
+
 ## 0.2.5 - 2026-03-13
 
 - Updated the Benchmark View completed-cases table to compare each case against the published PLLM, PYEGO, and READPY baselines, showing `MATCH`/`DIFF` badges plus detailed baseline summaries in the expanded case view instead of placeholder resolver markers.

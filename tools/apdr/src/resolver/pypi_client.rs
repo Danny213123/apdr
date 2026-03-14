@@ -1,16 +1,49 @@
 use std::cmp::Ordering;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
+
+use once_cell::sync::OnceCell;
 
 use crate::cache::pypi_index;
 use crate::cache::store::{normalize, CacheStore};
+use crate::knowledge_cache::KnowledgeCache;
+use crate::resolver::kgraph_db;
+
+// Lazy-initialized in-process knowledge cache (fastest lookup path)
+// Wrapped in Mutex to allow learning/updates as we discover new packages
+static KNOWLEDGE_CACHE: OnceCell<Mutex<KnowledgeCache>> = OnceCell::new();
 
 // Lazy-initialized TCP connection to smartPip server (port 8888)
 static SMARTPIP_CONNECTION: Mutex<Option<TcpStream>> = Mutex::new(None);
+static SMARTPIP_SERVER_LAUNCHING: AtomicBool = AtomicBool::new(false);
+static SMARTPIP_SERVER_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// Get or initialize the knowledge cache (starts empty, populated on-demand from smartPip)
+fn get_knowledge_cache() -> &'static Mutex<KnowledgeCache> {
+    KNOWLEDGE_CACHE.get_or_init(|| {
+        // Start with empty cache - will be populated on-demand from smartPip Z3 queries
+        // This avoids the 70s startup delay from loading .shrink files
+        Mutex::new(KnowledgeCache::new_empty())
+    })
+}
+
+/// Save the knowledge cache back to disk (persists learned knowledge)
+pub fn save_knowledge_cache() -> std::io::Result<()> {
+    let cache_mutex = get_knowledge_cache();
+    let cache = cache_mutex.lock().ok().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "Failed to lock knowledge cache")
+    })?;
+
+    let data_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/knowledge");
+    cache.save_to_directory(&data_dir)
+}
 
 pub fn latest_known_version(store: &CacheStore, package_name: &str) -> Option<String> {
     pypi_index::compatible_versions(store, package_name)
@@ -22,17 +55,55 @@ pub fn fetch_versions(
     package_name: &str,
     python_version: &str,
 ) -> Vec<String> {
+    // 1. Try local cache first (includes session data and test data)
     if let Some(versions) = pypi_index::compatible_versions(store, package_name) {
         if !versions.is_empty() {
             return versions.clone();
         }
     }
 
-    let versions = fetch_versions_from_smtpip(store, package_name);
+    // 2. Try in-process knowledge cache (on-demand from smartPip, no file loading)
+    {
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(cache) = cache_mutex.lock() {
+            if let Some(versions) = cache.get_versions(package_name) {
+                if !versions.is_empty() {
+                    // Cache hit! Save to local store for this session too
+                    let _ = store.save_pypi_versions(package_name, &versions);
+                    return versions;
+                }
+            }
+        }
+    }
+
+    // 3. Try native KGraph SQLite (fast path: ~1ms indexed query, no IPC)
+    let db_path = smtpip_db_path(store);
+    let versions = kgraph_db::kgraph_versions(&db_path, package_name);
     if !versions.is_empty() {
+        let _ = store.save_pypi_versions(package_name, &versions);
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(mut cache) = cache_mutex.lock() {
+            for version in &versions {
+                cache.add_package_version(package_name, version);
+            }
+        }
         return versions;
     }
 
+    // 4. Try smartPip Z3 solver (TCP or subprocess fallback)
+    let versions = fetch_versions_from_smtpip(store, package_name);
+    if !versions.is_empty() {
+        // Populate knowledge cache from smartPip result
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(mut cache) = cache_mutex.lock() {
+            for version in &versions {
+                cache.add_package_version(package_name, version);
+            }
+        }
+        return versions;
+    }
+
+    // 5. Fallback to PyPI API
     let Some(output) = run_host_python(&[
         "-c",
         PYPI_VERSION_SCRIPT,
@@ -53,6 +124,14 @@ pub fn fetch_versions(
         .collect::<Vec<_>>();
     if !versions.is_empty() {
         let _ = store.save_pypi_versions(package_name, &versions);
+
+        // Populate knowledge cache from PyPI result
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(mut cache) = cache_mutex.lock() {
+            for version in &versions {
+                cache.add_package_version(package_name, version);
+            }
+        }
     }
     versions
 }
@@ -81,17 +160,61 @@ pub fn best_matching_version(
         .last()
 }
 
+pub fn compatible_default_version(
+    store: &mut CacheStore,
+    package_name: &str,
+    preferred_version: Option<&str>,
+    python_version: &str,
+) -> Option<String> {
+    let preferred = preferred_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let versions = compatible_versions(store, package_name, python_version);
+    if versions.is_empty() {
+        return None;
+    }
+    if versions.iter().any(|item| item == preferred) {
+        return Some(preferred.to_string());
+    }
+    versions.last().cloned()
+}
+
 pub fn dependency_specs(
     store: &mut CacheStore,
     package_name: &str,
     version: &str,
 ) -> Vec<String> {
+    // 1. Try local cache first
     if let Some(specs) = store.version_dependency_specs(package_name, version) {
         return specs.clone();
     }
 
-    // Try TCP connection to smartPip server first (fast path)
-    if let Some(specs) = try_smartpip_tcp_deps(package_name, version) {
+    // 2. Try in-process knowledge cache (on-demand from smartPip, no file loading)
+    {
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(cache) = cache_mutex.lock() {
+            if let Some(specs) = cache.get_dependencies(package_name, version) {
+                if !specs.is_empty() {
+                    // Cache hit! Save to local store for this session too
+                    let _ = store.save_version_dependency_specs(package_name, version, &specs);
+                    let dep_names: Vec<String> = specs
+                        .iter()
+                        .map(|s| requirement_name(s))
+                        .filter(|n| !n.is_empty())
+                        .collect();
+                    if !dep_names.is_empty() {
+                        let _ = store.save_dependency_graph_entry(package_name, &dep_names);
+                    }
+                    return specs;
+                }
+            }
+        }
+    }
+
+    // 3. Try native KGraph SQLite (fast path: ~1ms indexed query, no IPC)
+    {
+        let db_path = smtpip_db_path(store);
+        let specs = kgraph_db::kgraph_dependency_specs(&db_path, package_name, version);
         if !specs.is_empty() {
             let _ = store.save_version_dependency_specs(package_name, version, &specs);
             let dep_names: Vec<String> = specs
@@ -102,11 +225,38 @@ pub fn dependency_specs(
             if !dep_names.is_empty() {
                 let _ = store.save_dependency_graph_entry(package_name, &dep_names);
             }
+            let cache_mutex = get_knowledge_cache();
+            if let Ok(mut cache) = cache_mutex.lock() {
+                cache.add_dependencies(package_name, version, &specs);
+            }
             return specs;
         }
     }
 
-    // Fallback to subprocess (slow path)
+    // 4. Try smartPip Z3 solver via TCP (fast path if server is running)
+    if let Some(specs) = try_smartpip_tcp_deps(store, package_name, version) {
+        if !specs.is_empty() {
+            let _ = store.save_version_dependency_specs(package_name, version, &specs);
+            let dep_names: Vec<String> = specs
+                .iter()
+                .map(|s| requirement_name(s))
+                .filter(|n| !n.is_empty())
+                .collect();
+            if !dep_names.is_empty() {
+                let _ = store.save_dependency_graph_entry(package_name, &dep_names);
+            }
+
+            // Populate knowledge cache from smartPip TCP result
+            let cache_mutex = get_knowledge_cache();
+            if let Ok(mut cache) = cache_mutex.lock() {
+                cache.add_dependencies(package_name, version, &specs);
+            }
+
+            return specs;
+        }
+    }
+
+    // 5. Fallback to subprocess (slowest path)
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return Vec::new();
     };
@@ -143,6 +293,12 @@ pub fn dependency_specs(
         if !dependency_names.is_empty() {
             let _ = store.save_dependency_graph_entry(package_name, &dependency_names);
         }
+
+        // Populate knowledge cache from smartPip subprocess result
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(mut cache) = cache_mutex.lock() {
+            cache.add_dependencies(package_name, version, &specs);
+        }
     }
     specs
 }
@@ -158,11 +314,46 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
     if missing.is_empty() {
         return;
     }
+
+    // Try native SQLite bulk prefetch first (~50ms for 30 packages vs ~2-5s subprocess)
+    let db_path = smtpip_db_path(store);
+    if kgraph_db::db_available(&db_path) {
+        let missing_owned: Vec<String> = missing.iter().map(|p| (*p).clone()).collect();
+        let results = kgraph_db::kgraph_bulk_prefetch(&db_path, &missing_owned);
+        if !results.is_empty() {
+            let cache_mutex = get_knowledge_cache();
+            for (pkg, (versions, deps_by_version)) in &results {
+                let _ = store.save_pypi_versions(pkg, versions);
+                if let Ok(mut cache) = cache_mutex.lock() {
+                    for version in versions {
+                        cache.add_package_version(pkg, version);
+                    }
+                }
+                for (version, specs) in deps_by_version {
+                    let _ = store.save_version_dependency_specs(pkg, version, specs);
+                    let dep_names: Vec<String> = specs
+                        .iter()
+                        .map(|s| requirement_name(s))
+                        .filter(|n| !n.is_empty())
+                        .collect();
+                    if !dep_names.is_empty() {
+                        let _ = store.save_dependency_graph_entry(pkg, &dep_names);
+                    }
+                    if let Ok(mut cache) = cache_mutex.lock() {
+                        cache.add_dependencies(pkg, version, specs);
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    // Fallback to Python subprocess for bulk prefetch (also builds DB if missing)
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return;
     };
     let kgraph_path_text = kgraph_path.display().to_string();
-    let db_path_text = smtpip_db_path(store).display().to_string();
+    let db_path_text = db_path.display().to_string();
     let package_list = missing.iter().map(|p| normalize(p)).collect::<Vec<_>>().join(",");
     let Some(output) = run_host_python(&[
         "-c",
@@ -177,9 +368,6 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
         return;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output format: each line is either:
-    //   V\tpackage\tver1,ver2,ver3
-    //   D\tpackage\tversion\tspec1|spec2|spec3
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
         match parts.first().copied() {
@@ -262,7 +450,7 @@ pub fn version_satisfies(version: &str, constraint: &str) -> bool {
 
 fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec<String> {
     // Try TCP connection to smartPip server first (fast path)
-    if let Some(versions) = try_smartpip_tcp_versions(package_name) {
+    if let Some(versions) = try_smartpip_tcp_versions(store, package_name) {
         if !versions.is_empty() {
             let _ = store.save_pypi_versions(package_name, &versions);
             return versions;
@@ -316,21 +504,26 @@ fn smtpip_kgraph_path(store: &CacheStore) -> Option<PathBuf> {
 
 /// Try to query smartPip TCP server for package versions.
 /// Returns None if TCP connection fails, allowing fallback to subprocess.
-fn try_smartpip_tcp_versions(package_name: &str) -> Option<Vec<String>> {
+fn try_smartpip_tcp_versions(store: &CacheStore, package_name: &str) -> Option<Vec<String>> {
     let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
 
     // Establish connection if not already connected
     if conn_guard.is_none() {
-        match TcpStream::connect_timeout(
-            &"127.0.0.1:8888".parse().ok()?,
-            Duration::from_millis(500)
-        ) {
+        match connect_smartpip_stream() {
             Ok(stream) => {
-                stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-                stream.set_write_timeout(Some(Duration::from_secs(5))).ok()?;
                 *conn_guard = Some(stream);
             }
-            Err(_) => return None,
+            Err(_) => {
+                if !SMARTPIP_SERVER_UNAVAILABLE.load(AtomicOrdering::SeqCst) {
+                    ensure_smartpip_tcp_server(store);
+                }
+                match connect_smartpip_stream() {
+                    Ok(stream) => {
+                        *conn_guard = Some(stream);
+                    }
+                    Err(_) => return None,
+                }
+            }
         }
     }
 
@@ -367,11 +560,26 @@ fn try_smartpip_tcp_versions(package_name: &str) -> Option<Vec<String>> {
 
 /// Try to query smartPip TCP server for dependency specs.
 /// Returns None if TCP connection fails, allowing fallback to subprocess.
-fn try_smartpip_tcp_deps(package_name: &str, version: &str) -> Option<Vec<String>> {
+fn try_smartpip_tcp_deps(store: &CacheStore, package_name: &str, version: &str) -> Option<Vec<String>> {
     let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
 
     if conn_guard.is_none() {
-        return None; // Connection not established
+        match connect_smartpip_stream() {
+            Ok(stream) => {
+                *conn_guard = Some(stream);
+            }
+            Err(_) => {
+                if !SMARTPIP_SERVER_UNAVAILABLE.load(AtomicOrdering::SeqCst) {
+                    ensure_smartpip_tcp_server(store);
+                }
+                match connect_smartpip_stream() {
+                    Ok(stream) => {
+                        *conn_guard = Some(stream);
+                    }
+                    Err(_) => return None,
+                }
+            }
+        }
     }
 
     let stream = conn_guard.as_mut()?;
@@ -403,6 +611,101 @@ fn try_smartpip_tcp_deps(package_name: &str, version: &str) -> Option<Vec<String
 
 fn smtpip_db_path(store: &CacheStore) -> PathBuf {
     store.cache_path.join("smtpip-kgraph.sqlite3")
+}
+
+fn smartpip_server_script_path(store: &CacheStore) -> Option<PathBuf> {
+    let path = store.tool_root.join("smartpip_kgraph_server.py");
+    if path.exists() {
+        return Some(path);
+    }
+    None
+}
+
+fn smartpip_server_log_path(store: &CacheStore) -> PathBuf {
+    store.cache_path.join("smartpip-kgraph-server.log")
+}
+
+fn ensure_smartpip_tcp_server(store: &CacheStore) {
+    if smartpip_server_available() {
+        SMARTPIP_SERVER_UNAVAILABLE.store(false, AtomicOrdering::SeqCst);
+        return;
+    }
+    if SMARTPIP_SERVER_LAUNCHING.swap(true, AtomicOrdering::SeqCst) {
+        wait_for_smartpip_server();
+        return;
+    }
+
+    let Some(python) = host_python_command() else {
+        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
+        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
+        return;
+    };
+    let Some(graph_path) = smtpip_kgraph_path(store) else {
+        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
+        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
+        return;
+    };
+    let Some(script_path) = smartpip_server_script_path(store) else {
+        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
+        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
+        return;
+    };
+    let db_path = smtpip_db_path(store);
+    let log_path = smartpip_server_log_path(store);
+
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+    let stderr = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+
+    let mut command = Command::new(python);
+    command
+        .arg(script_path)
+        .arg(graph_path)
+        .arg(db_path)
+        .arg("8888");
+
+    if let Some(handle) = stdout {
+        command.stdout(handle);
+    }
+    if let Some(handle) = stderr {
+        command.stderr(handle);
+    }
+
+    let _ = command.spawn();
+    if smartpip_server_available() || wait_for_smartpip_server() {
+        SMARTPIP_SERVER_UNAVAILABLE.store(false, AtomicOrdering::SeqCst);
+    } else {
+        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
+    }
+    SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
+}
+
+fn smartpip_server_available() -> bool {
+    TcpStream::connect_timeout(&"127.0.0.1:8888".parse().unwrap(), Duration::from_millis(250)).is_ok()
+}
+
+fn wait_for_smartpip_server() -> bool {
+    for _ in 0..40 {
+        if smartpip_server_available() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    false
+}
+
+fn connect_smartpip_stream() -> std::io::Result<TcpStream> {
+    let stream = TcpStream::connect_timeout(&"127.0.0.1:8888".parse().unwrap(), Duration::from_millis(500))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    Ok(stream)
 }
 
 fn run_host_python(args: &[&str]) -> Option<std::process::Output> {

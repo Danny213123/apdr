@@ -9,6 +9,7 @@ import os
 import platform
 import shlex
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -552,6 +553,26 @@ class AppState:
                         self.format_apdr_interpreter_detail(available, missing),
                     )
                 )
+                venv_ok, venv_detail = self.apdr_env_tooling_available(available)
+                checks.append(
+                    self._doctor_row(
+                        "PASS" if venv_ok else "WARN",
+                        "apdr env tooling",
+                        venv_detail,
+                    )
+                )
+                kgraph_server_up = self.apdr_kgraph_server_available()
+                checks.append(
+                    self._doctor_row(
+                        "PASS" if kgraph_server_up else "WARN",
+                        "apdr KGraph server",
+                        (
+                            "smartPip-compatible KGraph server is listening on 127.0.0.1:8888."
+                            if kgraph_server_up
+                            else "KGraph server is not running yet. APDR can auto-start it on port 8888 from SMTpip/KGraph.zip."
+                        ),
+                    )
+                )
 
         return checks
 
@@ -572,6 +593,11 @@ class AppState:
 
         if "apdr" in tools:
             self._auto_fix_apdr(log)
+            started, detail = self.ensure_apdr_kgraph_server()
+            if started:
+                log(f"APDR KGraph server: {detail}")
+            else:
+                log(f"APDR KGraph server: {detail}")
             available, missing = self.apdr_local_interpreters()
             log(f"APDR interpreter availability: {self.format_apdr_interpreter_detail(available, missing)}")
 
@@ -668,6 +694,85 @@ class AppState:
             return ""
         return detail.split(pattern, 1)[1].split("'", 1)[0]
 
+    def apdr_kgraph_server_available(self) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", 8888), timeout=0.3):
+                return True
+        except OSError:
+            return False
+
+    def _apdr_kgraph_path(self) -> Path | None:
+        candidates = [
+            self.repo_root / "SMTpip" / "KGraph.zip",
+            self.repo_root / "SMTpip" / "KGraph.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
+    def _apdr_kgraph_server_script(self) -> Path:
+        return self.repo_root / "tools" / "apdr" / "smartpip_kgraph_server.py"
+
+    def _apdr_kgraph_db_path(self) -> Path:
+        return self.repo_root / "tools" / "apdr" / ".apdr-cache" / "smtpip-kgraph.sqlite3"
+
+    def _apdr_kgraph_log_path(self) -> Path:
+        return self.repo_root / "tools" / "apdr" / ".apdr-cache" / "smartpip-kgraph-server.log"
+
+    def _python3_command(self) -> list[str]:
+        candidates = [Path(sys.executable)]
+        for name in ("python3", "python"):
+            resolved = shutil.which(name)
+            if resolved:
+                candidates.append(Path(resolved))
+        seen: set[str] = set()
+        for candidate in candidates:
+            key = str(candidate)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            code, output = self._run_command(
+                [str(candidate), "-c", "import sys; print(sys.version_info[0])"],
+                cwd=self.repo_root,
+                timeout=10,
+            )
+            if code == 0 and output.strip() == "3":
+                return [str(candidate)]
+        return []
+
+    def ensure_apdr_kgraph_server(self) -> tuple[bool, str]:
+        if self.apdr_kgraph_server_available():
+            return True, "smartPip-compatible KGraph server is already listening on 127.0.0.1:8888."
+        graph_path = self._apdr_kgraph_path()
+        if not graph_path:
+            return False, "Missing SMTpip/KGraph.zip (or KGraph.json), so the APDR KGraph server cannot start."
+        script_path = self._apdr_kgraph_server_script()
+        if not script_path.exists():
+            return False, f"Missing APDR KGraph server launcher at {self.relative_path(script_path)}."
+        python = self._python3_command()
+        if not python:
+            return False, "No Python 3 interpreter is available to launch the APDR KGraph server."
+        log_path = self._apdr_kgraph_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            try:
+                subprocess.Popen(
+                    python + [str(script_path), str(graph_path), str(self._apdr_kgraph_db_path()), "8888"],
+                    cwd=self.repo_root,
+                    stdout=handle,
+                    stderr=handle,
+                    start_new_session=not self._is_windows(),
+                )
+            except OSError as exc:
+                return False, f"Failed to start APDR KGraph server: {exc}"
+        deadline = time.time() + 12.0
+        while time.time() < deadline:
+            if self.apdr_kgraph_server_available():
+                return True, "Started smartPip-compatible KGraph server on 127.0.0.1:8888."
+            time.sleep(0.25)
+        return False, f"KGraph server did not become ready on port 8888. Check {self.relative_path(log_path)}."
+
     def apdr_local_interpreters(self) -> tuple[dict[str, str], list[str]]:
         available: dict[str, str] = {}
         missing: list[str] = []
@@ -692,6 +797,32 @@ class AppState:
             "APDR auto-scans PATH, Python framework installs, Windows launcher-managed installs, common pyenv/asdf/mise/uv locations, and APDR-managed Miniforge envs, and the Doctor can auto-install missing interpreters with supported managers."
         )
         return " ".join(parts)
+
+    def apdr_env_tooling_available(self, available_interpreters: dict[str, str]) -> tuple[bool, str]:
+        """Check that venv (3.x) and virtualenv (2.7) are available for APDR env-based validation."""
+        issues: list[str] = []
+        # Check venv for each available 3.x interpreter
+        for version, cmd_path in available_interpreters.items():
+            if version.startswith("3."):
+                interpreter = cmd_path.split()[-1] if cmd_path else f"python{version}"
+                code, _ = self._run_command([interpreter, "-m", "venv", "--help"], cwd=self.repo_root, timeout=5)
+                if code != 0:
+                    issues.append(f"venv unavailable for Python {version}")
+                break  # Only need to verify one 3.x interpreter
+        # Check virtualenv for Python 2.7 support
+        has_27 = "2.7" in available_interpreters
+        if has_27:
+            host_python = shutil.which("python3") or "python3"
+            code, _ = self._run_command([host_python, "-m", "virtualenv", "--version"], cwd=self.repo_root, timeout=5)
+            if code != 0:
+                issues.append("virtualenv not installed for host Python 3 (needed for Python 2.7 env creation)")
+        if issues:
+            return False, "Issues: " + "; ".join(issues) + ". Run auto-fix to install missing tooling."
+        parts = ["Validation backend: isolated local envs (venv for 3.x"]
+        if has_27:
+            parts.append(", virtualenv for 2.7")
+        parts.append(").")
+        return True, "".join(parts)
 
     def _apdr_python_install_specs(self, version: str) -> list[str]:
         specs = [version]
@@ -1154,6 +1285,26 @@ class AppState:
                     log(f"Python {version}: {detail}")
         else:
             log("APDR Python interpreters are already available.")
+
+        # Ensure virtualenv is available for Python 2.7 env creation
+        if "2.7" in available:
+            host_python = shutil.which("python3") or "python3"
+            code, _ = self._run_command(
+                [host_python, "-m", "virtualenv", "--version"], cwd=self.repo_root, timeout=5
+            )
+            if code != 0:
+                log("Installing virtualenv for Python 2.7 env creation.")
+                code, output = self._run_command(
+                    [host_python, "-m", "pip", "install", "--user", "virtualenv"],
+                    cwd=self.repo_root,
+                    timeout=120,
+                )
+                if code == 0:
+                    log("virtualenv installed successfully.")
+                else:
+                    log(f"virtualenv installation failed: {self._summarize_output(output)}")
+            else:
+                log("virtualenv is already available for Python 2.7 env creation.")
 
         binary_candidates = [
             tool_dir / "target" / "release" / "apdr",

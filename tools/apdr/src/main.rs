@@ -72,13 +72,13 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     .parse::<usize>()
                     .map_err(|_| "--max-retries must be an integer".to_string())?;
             }
-            "--docker-timeout" => {
+            "--docker-timeout" | "--validation-timeout" => {
                 index += 1;
-                let value = args.get(index).ok_or("--docker-timeout expects a value")?;
+                let value = args.get(index).ok_or("--validation-timeout expects a value")?;
                 let seconds = value.parse::<u64>().map_err(|_| {
-                    "--docker-timeout must be an integer number of seconds".to_string()
+                    "--validation-timeout must be an integer number of seconds".to_string()
                 })?;
-                config.docker_timeout = std::time::Duration::from_secs(seconds);
+                config.validation_timeout = std::time::Duration::from_secs(seconds);
             }
             "--cache-path" => {
                 index += 1;
@@ -114,7 +114,7 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                 config.scan_config_files = false;
             }
             "--no-validate" => {
-                config.validate_with_docker = false;
+                config.validate = false;
             }
             "--no-execute-snippet" => {
                 config.execute_snippet = false;
@@ -152,11 +152,11 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         config.benchmark_context_log.as_deref(),
         "apdr-resolve-command",
         &format!(
-            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate_with_docker={}\npython_override={}\nrange={}\nmax_retries={}",
+            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate={}\npython_override={}\nrange={}\nmax_retries={}",
             snippet_path.display(),
             config.output_dir.display(),
             config.allow_llm,
-            config.validate_with_docker,
+            config.validate,
             config.python_version.as_deref().unwrap_or(""),
             config.python_version_range,
             config.max_retries
@@ -174,6 +174,12 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
     if let Some(path) = temporary_snippet {
         let _ = fs::remove_file(path);
     }
+
+    // NOTE: Automatic save disabled to avoid 10-20s overhead per case
+    // The cache still works in-memory during a batch run, providing speedups
+    // To manually save after a batch: call save_knowledge_cache() explicitly
+    // let _ = apdr::resolver::pypi_client::save_knowledge_cache();
+
     let (result, requirements_path, report_path) = resolution?;
     print!("{}", result.summary_lines(&requirements_path, &report_path));
     if !result.validation.succeeded {
@@ -190,6 +196,7 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         }
         return Err(status);
     }
+
     Ok(())
 }
 

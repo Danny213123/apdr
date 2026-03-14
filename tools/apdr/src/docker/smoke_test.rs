@@ -7,10 +7,6 @@ pub fn generate(imports: &[String], execute_snippet: bool) -> String {
         "import traceback".to_string(),
         "".to_string(),
     ];
-    lines.push("site_dir = os.environ.get('APDR_SITE_PACKAGES', '').strip()".to_string());
-    lines.push("if site_dir and site_dir not in sys.path:".to_string());
-    lines.push("    sys.path.insert(0, site_dir)".to_string());
-    lines.push("".to_string());
     lines.push("def _load_import(name):".to_string());
     lines.push("    try:".to_string());
     lines.push("        importlib.import_module(name)".to_string());
@@ -24,8 +20,8 @@ pub fn generate(imports: &[String], execute_snippet: bool) -> String {
     if execute_snippet {
         lines.push("".to_string());
         lines.push("globals_dict = {'__name__': '__main__'}".to_string());
-        lines.push("with open('/app/snippet.py', 'r', encoding='utf-8') as handle:".to_string());
-        lines.push("    code = compile(handle.read(), '/app/snippet.py', 'exec')".to_string());
+        lines.push("with open('snippet.py', 'r', encoding='utf-8') as handle:".to_string());
+        lines.push("    code = compile(handle.read(), 'snippet.py', 'exec')".to_string());
         lines.push("exec(code, globals_dict)".to_string());
     } else {
         lines.push("print('smoke-ok')".to_string());
