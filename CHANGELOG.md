@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 - 2026-03-13
+
+- Updated the Benchmark View completed-cases table to compare each case against the published PLLM, PYEGO, and READPY baselines, showing `MATCH`/`DIFF` badges plus detailed baseline summaries in the expanded case view instead of placeholder resolver markers.
+- Adjusted PLLM comparison scoring so APDR `SKIP` outcomes count as a table match whenever the PLLM baseline did not pass that case, which makes host-runtime and intentionally skipped cases line up with the published baseline more honestly.
+- Improved APDR runtime provisioning on macOS and Linux by adding APDR-managed Miniforge fallback for missing Python `3.7` and `3.8` interpreters, alongside broader resolver/runtime refinements for Python-version detection, pre-solve metadata handling, and richer LLM-assisted diagnostics.
+
 ## 0.2.4 - 2026-03-13
 
 - Improved APDR's TensorFlow handling by removing the hardcoded modern `tensorflow==2.18.0` default, adding a legacy TensorFlow/Keras family bundle, and steering old standalone `keras` + `tensorflow` snippets toward coherent pins like `tensorflow==1.15.5`, `keras==2.3.1`, `numpy==1.16.6`, and `gym==0.17.3`.

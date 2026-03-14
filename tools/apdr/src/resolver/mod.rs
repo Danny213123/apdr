@@ -102,7 +102,7 @@ pub fn resolve_path(
         &format_dependency_state(&resolved, &unresolved),
     )?;
 
-    let pre_solve = if unresolved.is_empty() {
+    let mut pre_solve = if unresolved.is_empty() {
         Some(pre_solve::solve_dependency_graph(
             &parse_result,
             &resolved,
@@ -113,11 +113,51 @@ pub fn resolve_path(
     } else {
         None
     };
-    if let Some(pre_solve) = pre_solve.as_ref() {
-        report.notes.extend(pre_solve.notes.clone());
-        write_solver_artifacts(&config.output_dir, pre_solve)?;
-        if pre_solve.satisfiable && !pre_solve.lockfile_requirements.trim().is_empty() {
-            selected_python = pre_solve.selected_python_version.clone();
+    if let Some(result) = pre_solve.as_ref() {
+        report.notes.extend(result.notes.clone());
+        write_solver_artifacts(&config.output_dir, result)?;
+        if result.satisfiable && !result.lockfile_requirements.trim().is_empty() {
+            selected_python = result.selected_python_version.clone();
+        }
+    }
+
+    // If pre-solve failed due to missing KGraph metadata (not hard_unsat), retry with LLM
+    if let Some(result) = pre_solve.as_ref() {
+        if result.attempted && !result.satisfiable && !result.hard_unsat && config.allow_llm {
+            if let Some(packages_without_metadata) = extract_packages_without_metadata(result) {
+                let (updated_resolved, updated_unresolved) = retry_with_llm_for_missing_packages(
+                    &parse_result,
+                    &snippet_source,
+                    &resolved,
+                    &packages_without_metadata,
+                    &selected_python,
+                    &mut store,
+                    config,
+                    &mut report,
+                );
+                resolved = updated_resolved;
+
+                // Re-run pre-solve with updated dependencies if all imports were resolved
+                if updated_unresolved.is_empty() {
+                    pre_solve = Some(pre_solve::solve_dependency_graph(
+                        &parse_result,
+                        &resolved,
+                        &selected_python,
+                        &mut store,
+                        config,
+                    ));
+                    if let Some(result) = pre_solve.as_ref() {
+                        report.notes.push("Re-ran SMT pre-solve after LLM re-resolution of packages with missing metadata.".to_string());
+                        report.notes.extend(result.notes.clone());
+                        write_solver_artifacts(&config.output_dir, result)?;
+                        if result.satisfiable && !result.lockfile_requirements.trim().is_empty() {
+                            selected_python = result.selected_python_version.clone();
+                        }
+                    }
+                } else {
+                    pre_solve = None;
+                }
+            }
         }
     }
 
@@ -1135,6 +1175,7 @@ fn environment_specific_note(
             | "clr"
             | "win32com"
             | "c4d"
+            | "odbaccess"
     ) {
         return Some(format!(
             "Detected host-application dependency ({missing}). APDR cannot validate this snippet without the corresponding application runtime."
@@ -1144,6 +1185,17 @@ fn environment_specific_note(
         return Some(
             "Detected hardware/runtime dependency (RPi.GPIO). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
         );
+    }
+    let py2_stdlib = [
+        "urllib2", "urlparse", "_winreg", "configparser", "cpickle",
+        "cstringio", "queue", "htmlparser", "httplib", "cookielib",
+        "robotparser",
+    ];
+    if py2_stdlib.contains(&missing.as_str()) {
+        return Some(format!(
+            "Runtime import failed: `{missing}` is a Python 2 standard library module \
+             that does not exist in Python 3. The snippet requires Python 2.7."
+        ));
     }
     None
 }
@@ -1425,6 +1477,7 @@ fn detect_skip_reason(
         "nuke",
         "clr",
         "win32com",
+        "odbaccess",
     ] {
         if markers.iter().any(|item| item == marker || item.starts_with(&format!("{marker}."))) {
             return Some((
@@ -1487,4 +1540,95 @@ fn detect_skip_reason(
     }
 
     None
+}
+
+/// Extract package names from pre-solve error message indicating missing KGraph metadata
+fn extract_packages_without_metadata(result: &pre_solve::PreSolveResult) -> Option<Vec<String>> {
+    let reason = result.reason.as_ref()?;
+    if !reason.contains("has no cached or KGraph version metadata") {
+        return None;
+    }
+
+    let mut packages = Vec::new();
+    // Parse error messages like: "package `swift` has no cached or KGraph version metadata"
+    for fragment in reason.split('|') {
+        let trimmed = fragment.trim();
+        if let Some(start_idx) = trimmed.find("package `") {
+            if let Some(end_idx) = trimmed[start_idx + 9..].find('`') {
+                let package = &trimmed[start_idx + 9..start_idx + 9 + end_idx];
+                if !packages.contains(&package.to_string()) {
+                    packages.push(package.to_string());
+                }
+            }
+        }
+    }
+
+    if packages.is_empty() {
+        None
+    } else {
+        Some(packages)
+    }
+}
+
+/// Retry resolution with LLM for packages that have no KGraph metadata
+fn retry_with_llm_for_missing_packages(
+    parse_result: &crate::ParseResult,
+    snippet_source: &str,
+    resolved: &[ResolvedDependency],
+    packages_without_metadata: &[String],
+    python_version: &str,
+    store: &mut CacheStore,
+    config: &ResolveConfig,
+    report: &mut crate::ResolutionReport,
+) -> (Vec<ResolvedDependency>, Vec<String>) {
+    let packages_set: BTreeSet<String> = packages_without_metadata
+        .iter()
+        .map(|pkg| pypi_client::requirement_name(pkg))
+        .collect();
+
+    // Partition resolved dependencies into those to keep and those to retry
+    let mut kept_resolved = Vec::new();
+    let mut imports_to_retry = Vec::new();
+
+    for dep in resolved {
+        let normalized_package = pypi_client::requirement_name(&dep.package_name);
+        if packages_set.contains(&normalized_package) {
+            // This dependency maps to a package with no metadata - retry it
+            imports_to_retry.push(dep.import_name.clone());
+            report.notes.push(format!(
+                "Package `{}` has no KGraph metadata. Retrying import `{}` with tier3_llm.",
+                dep.package_name, dep.import_name
+            ));
+        } else {
+            // Keep this dependency
+            kept_resolved.push(dep.clone());
+        }
+    }
+
+    if imports_to_retry.is_empty() {
+        return (resolved.to_vec(), Vec::new());
+    }
+
+    // Call tier3_llm with additional context about the missing metadata
+    let llm_result = tier3_llm::resolve_with_context(
+        &imports_to_retry,
+        snippet_source,
+        parse_result,
+        store,
+        config,
+        python_version,
+        Some(format!(
+            "Previous resolution failed because these packages have no version metadata in the package index: {}. Please suggest alternative package names that might provide these imports.",
+            packages_without_metadata.join(", ")
+        )),
+    );
+
+    report.llm_calls += llm_result.prompts_issued;
+    report.notes.append(&mut llm_result.notes.clone());
+
+    // Merge LLM resolutions with kept dependencies
+    let mut final_resolved = kept_resolved;
+    final_resolved.extend(llm_result.resolved);
+
+    (final_resolved, llm_result.unresolved)
 }

@@ -28,12 +28,8 @@ jwt	PyJWT	2.10.1	discrepancy
 jose	python-jose	3.3.0	discrepancy
 nacl	PyNaCl	1.5.0	discrepancy
 OpenSSL	pyOpenSSL	24.3.0	discrepancy
-Crypto	pycryptodome	3.21.0	discrepancy
-Cryptodome	pycryptodome	3.21.0	discrepancy
 MySQLdb	mysqlclient	2.2.6	discrepancy
 pymysql	PyMySQL	1.1.1	discrepancy
-bson	pymongo	4.10.1	discrepancy
-gridfs	pymongo	4.10.1	discrepancy
 git	GitPython	3.1.43	discrepancy
 github	PyGithub	2.5.0	discrepancy
 gitlab	python-gitlab	4.13.0	discrepancy
@@ -81,8 +77,6 @@ igraph	python-igraph	0.11.8	discrepancy
 shapefile	pyshp	2.3.1	discrepancy
 speech_recognition	SpeechRecognition	3.12.0	discrepancy
 redcap	pycap	2.7.1	discrepancy
-psycopg2	psycopg2-binary	2.9.10	discrepancy
-objc	pyobjc	10.3.1	discrepancy
 OpenGL	PyOpenGL	3.1.7	discrepancy
 cairo	pycairo	1.27.0	discrepancy
 vlc	python-vlc	3.0.21203	discrepancy
@@ -132,7 +126,6 @@ rich	rich	13.9.4	discrepancy
 tables	tables	3.10.1	discrepancy
 pyarrow	pyarrow	18.1.0	discrepancy
 polars	polars	1.16.0	discrepancy
-pyspark	pyspark	3.5.4	discrepancy
 dask	dask	2024.12.1	discrepancy
 cartopy	Cartopy	0.24.1	discrepancy
 folium	folium	0.18.0	discrepancy
@@ -177,7 +170,6 @@ graphviz	graphviz	0.20.3	discrepancy
 graphene	graphene	3.4.3	discrepancy
 networkx	networkx	3.4.2	discrepancy
 pydot	pydot	3.0.3	discrepancy
-IPython	ipython	8.30.0	discrepancy
 ipywidgets	ipywidgets	8.1.5	discrepancy
 nbformat	nbformat	5.10.4	discrepancy
 nbconvert	nbconvert	7.16.4	discrepancy
@@ -197,7 +189,6 @@ apt_pkg	python-apt	2.9.0	discrepancy
 gflags	python-gflags	3.1.2	discrepancy
 cjson	python-cjson	1.2.2	discrepancy
 xmpp	xmpppy	0.7.1	discrepancy
-objc_util	pyobjc	10.3.1	discrepancy
 AppKit	pyobjc-framework-Cocoa	10.3.1	discrepancy
 Foundation	pyobjc-framework-Cocoa	10.3.1	discrepancy
 Quartz	pyobjc-framework-Quartz	10.3.1	discrepancy

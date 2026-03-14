@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
 use crate::cache::store::CacheStore;
 use crate::docker;
@@ -73,21 +74,19 @@ pub fn solve_dependency_graph(
         return result;
     }
 
-    // Bulk pre-fetch all direct packages from KGraph in one subprocess call.
+    // Bulk pre-fetch direct packages from KGraph in one subprocess call.
     // This replaces many sequential subprocess invocations during solving.
-    let prefetch_packages: Vec<String> = state
-        .constraints
-        .keys()
-        .cloned()
-        .collect();
+    // Note: Transitive prefetch was tested but caused excessive overhead for large graphs.
+    let prefetch_packages: Vec<String> = state.constraints.keys().cloned().collect();
     pypi_client::bulk_prefetch_from_kgraph(store, &prefetch_packages);
 
     result.attempted = true;
-    let mut hard_failures = Vec::new();
-    let mut incomplete_failures = Vec::new();
-    for python_version in python_candidates {
+
+    // Optimization: for single Python version, use sequential solving to avoid thread overhead
+    if python_candidates.len() == 1 {
+        let python_version = &python_candidates[0];
         let mut budget = 12_000usize;
-        match solve_for_python(store, &state, &python_version, &mut budget) {
+        match solve_for_python(store, &state, python_version, &mut budget) {
             Ok(outcome) => {
                 let (requirements, transitive_packages) =
                     render_lockfile(&outcome.selected, &direct_packages);
@@ -106,13 +105,88 @@ pub fn solve_dependency_graph(
                 return result;
             }
             Err(SolveError::Hard(reason)) => {
-                hard_failures.push(format!("{python_version}: {reason}"));
+                result.hard_unsat = true;
+                result.reason = Some(format!(
+                    "SMT pre-solve could not find a compatible dependency assignment. {python_version}: {reason}"
+                ));
+                result.notes.push(result.reason.clone().unwrap_or_default());
+                return result;
             }
             Err(SolveError::Incomplete(reason)) => {
-                incomplete_failures.push(format!("{python_version}: {reason}"));
+                result.reason = Some(format!(
+                    "SMT pre-solve fell back because dependency metadata was incomplete. {python_version}: {reason}"
+                ));
+                result.notes.push(result.reason.clone().unwrap_or_default());
+                return result;
             }
         }
     }
+
+    // For multiple Python versions, use parallel solving for faster resolution.
+    // Each thread gets a cloned CacheStore (cheap since all data is already prefetched).
+    let success = Arc::new(Mutex::new(None::<SolveOutcome>));
+    let hard_failures = Arc::new(Mutex::new(Vec::new()));
+    let incomplete_failures = Arc::new(Mutex::new(Vec::new()));
+
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for python_version in python_candidates {
+            let state_clone = state.clone();
+            let mut store_clone = store.clone();
+            let success_ref = Arc::clone(&success);
+            let hard_ref = Arc::clone(&hard_failures);
+            let incomplete_ref = Arc::clone(&incomplete_failures);
+
+            let handle = scope.spawn(move || {
+                // Check if another thread already succeeded
+                if success_ref.lock().unwrap().is_some() {
+                    return;
+                }
+
+                let mut budget = 12_000usize;
+                match solve_for_python(&mut store_clone, &state_clone, &python_version, &mut budget) {
+                    Ok(outcome) => {
+                        let mut success_guard = success_ref.lock().unwrap();
+                        if success_guard.is_none() {
+                            *success_guard = Some(outcome);
+                        }
+                    }
+                    Err(SolveError::Hard(reason)) => {
+                        hard_ref.lock().unwrap().push(format!("{python_version}: {reason}"));
+                    }
+                    Err(SolveError::Incomplete(reason)) => {
+                        incomplete_ref.lock().unwrap().push(format!("{python_version}: {reason}"));
+                    }
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            let _ = handle.join();
+        }
+    });
+
+    if let Some(outcome) = Arc::try_unwrap(success).unwrap().into_inner().unwrap() {
+        let (requirements, transitive_packages) =
+            render_lockfile(&outcome.selected, &direct_packages);
+        result.satisfiable = true;
+        result.selected_python_version = outcome.python_version;
+        result.lockfile_requirements = requirements;
+        result.transitive_packages = transitive_packages;
+        result.assigned_versions = outcome.selected;
+        result.notes.push(format!(
+            "SMT pre-solve pinned {} packages for Python {} ({} direct, {} transitive).",
+            result.assigned_versions.len(),
+            result.selected_python_version,
+            result.direct_packages.len(),
+            result.transitive_packages.len()
+        ));
+        return result;
+    }
+
+    let hard_failures = Arc::try_unwrap(hard_failures).unwrap().into_inner().unwrap();
+    let incomplete_failures = Arc::try_unwrap(incomplete_failures).unwrap().into_inner().unwrap();
 
     if !hard_failures.is_empty() && incomplete_failures.is_empty() {
         result.hard_unsat = true;
@@ -499,3 +573,4 @@ fn dedupe_strings(values: Vec<String>) -> Vec<String> {
     }
     deduped
 }
+

@@ -728,22 +728,22 @@ fn sanitized_image_tag(build_key: &str, python_version: &str) -> String {
 
 fn find_python_interpreter(python_version: &str) -> Option<PathBuf> {
     for candidate in python_interpreter_candidates(python_version) {
-        let output = Command::new(&candidate)
-            .arg("-c")
-            .arg("import sys; sys.stdout.write('%s.%s' % (sys.version_info[0], sys.version_info[1]))")
-            .output();
-        let Ok(output) = output else {
-            continue;
-        };
-        if !output.status.success() {
-            continue;
-        }
-        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if version == python_version {
+        if path_matches_python_version(&candidate, python_version) {
             return Some(candidate);
         }
     }
     None
+}
+
+fn path_matches_python_version(candidate: &Path, python_version: &str) -> bool {
+    let output = Command::new(candidate)
+        .arg("-c")
+        .arg("import sys; sys.stdout.write('%s.%s' % (sys.version_info[0], sys.version_info[1]))")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == python_version
 }
 
 fn ensure_python_interpreter(python_version: &str) -> Result<PathBuf, String> {
@@ -847,6 +847,19 @@ fn attempt_python_auto_install(python_version: &str) -> String {
         }
     }
 
+    if !cfg!(windows) && !python_version.starts_with("2.") {
+        managers.push("miniforge".to_string());
+        match install_with_miniforge(python_version) {
+            Ok(detail) => {
+                if find_python_interpreter(python_version).is_some() {
+                    return detail;
+                }
+                last_output = detail;
+            }
+            Err(detail) => last_output = detail,
+        }
+    }
+
     if cfg!(windows) {
         if let Some(package_id) = windows_winget_python_package(python_version) {
             if command_on_path("winget") {
@@ -881,7 +894,11 @@ fn attempt_python_auto_install(python_version: &str) -> String {
         }
     }
 
-    if !cfg!(windows) && !python_version.starts_with("2.") && command_on_path("brew") {
+    if !cfg!(windows)
+        && !python_version.starts_with("2.")
+        && !matches!(python_version, "3.7" | "3.8")
+        && command_on_path("brew")
+    {
         managers.push("brew".to_string());
         let formula = format!("python@{python_version}");
         let (success, output) = run_install_command("brew", &["install", &formula]);
@@ -897,7 +914,7 @@ fn attempt_python_auto_install(python_version: &str) -> String {
             if cfg!(windows) {
                 "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, winget, or scoop."
             } else {
-                "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, or Homebrew."
+                "No supported manager was found. APDR can auto-install via uv, mise, pyenv, asdf, Miniforge, or Homebrew."
             },
         );
     }
@@ -924,11 +941,11 @@ fn attempt_python_auto_install(python_version: &str) -> String {
 
 fn missing_interpreter_message(python_version: &str, extra: &str) -> String {
     let mut message = format!(
-        "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, Windows launcher-managed installs, and common pyenv/asdf/mise/uv locations. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
+        "No local interpreter found for Python {python_version}. APDR auto-scanned PATH, Python framework installs, Windows launcher-managed installs, common pyenv/asdf/mise/uv locations, and APDR-managed Miniforge envs. Install a matching interpreter, set APDR_PYTHON_{}, or narrow the APDR Python search range.",
         python_version.replace('.', "_")
     );
     if python_version.starts_with("2.") {
-        message.push_str(" Python 2.7 is treated as a legacy runtime, so APDR will not try modern-only installers like uv for it.");
+        message.push_str(" Python 2.7 is treated as a legacy runtime, so APDR will not try modern-only installers like uv or Miniforge for it.");
     }
     if !extra.trim().is_empty() {
         message.push(' ');
@@ -1013,6 +1030,154 @@ fn summarize_command_output(output: &str) -> String {
     }
     let start = lines.len().saturating_sub(8);
     lines[start..].join(" | ")
+}
+
+fn install_with_miniforge(python_version: &str) -> Result<String, String> {
+    let conda = ensure_unix_miniforge()?;
+    let Some(root) = unix_miniforge_root() else {
+        return Err("Could not determine an APDR Miniforge root directory.".to_string());
+    };
+    let env_root = root.join("envs").join(format!("python-{python_version}"));
+    let env_python = env_root.join("bin").join("python");
+    if env_python.exists() && path_matches_python_version(&env_python, python_version) {
+        return Ok(format!("Installed Python {python_version} with Miniforge ({python_version})."));
+    }
+
+    let mut last_output = String::new();
+    for spec in python_install_specs(python_version) {
+        let mut command = Command::new(&conda);
+        if env_root.exists() {
+            command.args([
+                "install",
+                "-y",
+                "-p",
+                &env_root.display().to_string(),
+                &format!("python={spec}"),
+            ]);
+        } else {
+            command.args([
+                "create",
+                "-y",
+                "-p",
+                &env_root.display().to_string(),
+                &format!("python={spec}"),
+            ]);
+        }
+        let Ok(output) = command.output() else {
+            return Err("Failed to start Miniforge conda.".to_string());
+        };
+        if output.status.success() && env_python.exists() && path_matches_python_version(&env_python, python_version) {
+            return Ok(format!("Installed Python {python_version} with Miniforge ({spec})."));
+        }
+        last_output = combined_output(&output.stdout, &output.stderr);
+    }
+
+    Err(if last_output.trim().is_empty() {
+        "Miniforge finished without exposing a usable interpreter.".to_string()
+    } else {
+        summarize_command_output(&last_output)
+    })
+}
+
+fn ensure_unix_miniforge() -> Result<PathBuf, String> {
+    if cfg!(windows) {
+        return Err("Automatic Miniforge bootstrap is currently only implemented for macOS and Linux.".to_string());
+    }
+    let Some(root) = unix_miniforge_root() else {
+        return Err("Could not determine an APDR Miniforge root directory.".to_string());
+    };
+    let conda = root.join("bin").join("conda");
+    if conda.exists() {
+        return Ok(conda);
+    }
+
+    let Some(url) = unix_miniforge_installer_url() else {
+        return Err(format!(
+            "APDR does not have a Miniforge bootstrap URL for {}/{}.",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ));
+    };
+
+    let download_dir = root
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("downloads");
+    if fs::create_dir_all(&download_dir).is_err() {
+        return Err("Failed to create the APDR Miniforge download directory.".to_string());
+    }
+    let installer_path = download_dir.join(
+        url.rsplit('/')
+            .next()
+            .unwrap_or("Miniforge3-installer.sh"),
+    );
+    if !installer_path.exists() {
+        download_with_host_python(url, &installer_path)?;
+    }
+
+    let Ok(output) = Command::new("bash")
+        .args([
+            installer_path.as_os_str(),
+            "-b".as_ref(),
+            "-p".as_ref(),
+            root.as_os_str(),
+        ])
+        .output()
+    else {
+        return Err("Failed to start the Miniforge installer.".to_string());
+    };
+    if output.status.success() && conda.exists() {
+        return Ok(conda);
+    }
+    Err(summarize_command_output(&combined_output(
+        &output.stdout,
+        &output.stderr,
+    )))
+}
+
+fn download_with_host_python(url: &str, destination: &Path) -> Result<(), String> {
+    let Some(python) = host_python_for_metadata() else {
+        return Err("APDR could not find a host Python interpreter to download Miniforge.".to_string());
+    };
+    if let Some(parent) = destination.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let output = Command::new(python)
+        .args([
+            "-c",
+            "import pathlib, sys, urllib.request; path = pathlib.Path(sys.argv[2]); path.parent.mkdir(parents=True, exist_ok=True); urllib.request.urlretrieve(sys.argv[1], path)",
+            url,
+            &destination.display().to_string(),
+        ])
+        .output()
+        .map_err(|_| "Failed to start the host Python downloader.".to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(summarize_command_output(&combined_output(
+        &output.stdout,
+        &output.stderr,
+    )))
+}
+
+fn unix_miniforge_root() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .map(|home| home.join(".apdr").join("miniforge3"))
+}
+
+fn unix_miniforge_installer_url() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh"),
+        ("macos", "x86_64") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh"),
+        ("linux", "x86_64") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"),
+        ("linux", "aarch64") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"),
+        ("linux", "arm64") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"),
+        ("linux", "powerpc64") | ("linux", "powerpc64le") => Some("https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-ppc64le.sh"),
+        _ => None,
+    }
 }
 
 fn python_interpreter_candidates(python_version: &str) -> Vec<PathBuf> {
@@ -1114,6 +1279,8 @@ fn managed_python_roots() -> Vec<PathBuf> {
         roots.push(home.join(".asdf/installs/python"));
         roots.push(home.join(".local/share/mise/installs/python"));
         roots.push(home.join(".local/share/uv/python"));
+        roots.push(home.join(".apdr/miniforge3/envs"));
+        roots.push(home.join("miniforge3/envs"));
         roots.push(home.join("scoop/apps"));
     }
     if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
@@ -1133,6 +1300,7 @@ fn matching_version_dirs(root: &Path, version: &str) -> Vec<PathBuf> {
         version.to_string(),
         format!("{version}."),
         format!("{version}-"),
+        format!("python-{version}"),
         format!("Python-{version}"),
         format!("cpython-{version}"),
         format!("Python{compact}"),

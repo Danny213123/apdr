@@ -33,6 +33,20 @@ pub fn detect_maximum_python(source: &str) -> Option<String> {
 }
 
 fn looks_like_python_27(source: &str) -> bool {
+    // Check for Python 2-only stdlib imports
+    let py2_stdlib = [
+        "urllib2", "urlparse", "_winreg", "ConfigParser", "cPickle",
+        "cStringIO", "Queue", "HTMLParser", "httplib", "cookielib",
+        "robotparser",
+    ];
+    for import in &py2_stdlib {
+        if source.contains(&format!("import {import}"))
+            || source.contains(&format!("from {import} import"))
+        {
+            return true;
+        }
+    }
+
     for line in source.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("print ") && !trimmed.starts_with("print(") {

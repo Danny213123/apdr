@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,6 +43,7 @@ class BenchmarkService:
             "logs": [],
             "updatedAt": "",
         }
+        self._baseline_indexes = self._load_baseline_indexes()
         self._current_run = self._make_idle_run(default_config)
 
     def set_server_context(self, host: str, port: int, api_only: bool = False) -> None:
@@ -588,16 +590,20 @@ class BenchmarkService:
         snippet = str(result.get("snippet", ""))
         status = self._display_status(result)
         run_config = config or self._current_run["config"]
-        pllm_marker, legacy_marker, readpy_marker = self._tool_markers(run_config)
+        case_id = self._extract_case_id(snippet)
+        comparisons = self._baseline_comparisons(case_id, status)
         return {
             "status": status,
-            "caseId": self._extract_case_id(snippet),
+            "caseId": case_id,
             "python": self._extract_python_version(result.get("output_files", [])),
             "tries": str(run_config.get("loop_count", 0)),
             "seconds": f"{float(result.get('duration_seconds', 0.0)):.2f}",
-            "pllm": pllm_marker,
-            "legacy": legacy_marker,
-            "readpy": readpy_marker,
+            "pllm": comparisons["pllm"]["label"],
+            "legacy": comparisons["legacy"]["label"],
+            "readpy": comparisons["readpy"]["label"],
+            "pllmSummary": comparisons["pllm"]["summary"],
+            "legacySummary": comparisons["legacy"]["summary"],
+            "readpySummary": comparisons["readpy"]["summary"],
             "result": self._summarize_result(result),
             "dependencies": self._dependency_summary(snippet, result),
             "snippet": snippet,
@@ -938,20 +944,112 @@ class BenchmarkService:
     def _extract_python_version(self, output_files: list[str]) -> str:
         for item in output_files:
             name = os.path.basename(str(item))
-            if name.startswith("output_data_") and name.endswith(".yml"):
-                return name[len("output_data_") : -4]
+            version = self._extract_python_version_from_name(name)
+            if version:
+                return version
         version_info = platform.python_version_tuple()
         return f"{version_info[0]}.{version_info[1]}"
 
-    def _tool_markers(self, config: dict[str, Any]) -> tuple[str, str, str]:
-        tool = str(config.get("tool") or "").strip().lower()
-        if tool == "pllm":
-            return ("RUN", "--", "--")
-        if tool == "legacy":
-            return ("--", "RUN", "--")
-        if tool in {"readpy", "apdr"}:
-            return ("--", "--", tool.upper())
-        return ("--", "--", "--")
+    def _extract_python_version_from_name(self, name: str) -> str:
+        if name.startswith("output_data_") and name.endswith(".yml"):
+            return name[len("output_data_") : -4]
+        return ""
+
+    def _load_baseline_indexes(self) -> dict[str, dict[str, dict[str, str]]]:
+        return {
+            "pllm": self._load_pllm_baseline(self.state.repo_root / "pllm_results" / "csv" / "summary-all-runs.csv"),
+            "legacy": self._load_simple_baseline(self.state.repo_root / "pyego-results" / "pyego_results.csv", tool_label="PYEGO"),
+            "readpy": self._load_simple_baseline(self.state.repo_root / "readpy-results" / "readpy_results_total.csv", tool_label="READPY"),
+        }
+
+    def _load_pllm_baseline(self, path: Path) -> dict[str, dict[str, str]]:
+        index: dict[str, dict[str, str]] = {}
+        try:
+            with path.open(encoding="utf-8", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    case_id = str(row.get("name") or "").strip()
+                    if not case_id:
+                        continue
+                    pass_count = self._safe_int(row.get("passed"))
+                    status = "PASS" if pass_count > 0 else "FAIL"
+                    summary_parts = [f"PLLM {status} ({pass_count}/10)"]
+                    python_version = self._extract_python_version_from_name(str(row.get("file") or ""))
+                    result_label = str(row.get("result") or "").strip()
+                    modules = self._format_baseline_modules(str(row.get("python_modules") or ""))
+                    if python_version:
+                        summary_parts.append(f"py {python_version}")
+                    if result_label:
+                        summary_parts.append(result_label)
+                    if modules:
+                        summary_parts.append(f"deps {modules}")
+                    index[case_id] = {
+                        "status": status,
+                        "summary": " | ".join(summary_parts),
+                    }
+        except OSError:
+            return {}
+        return index
+
+    def _load_simple_baseline(self, path: Path, tool_label: str) -> dict[str, dict[str, str]]:
+        index: dict[str, dict[str, str]] = {}
+        try:
+            with path.open(encoding="utf-8", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    case_id = str(row.get("name") or "").strip()
+                    if not case_id:
+                        continue
+                    passed = self._as_bool(row.get("passed"))
+                    status = "PASS" if passed else "FAIL"
+                    result_label = str(row.get("result") or "").strip()
+                    modules = self._format_baseline_modules(str(row.get("python_modules") or ""))
+                    summary_parts = [f"{tool_label} {status}"]
+                    if result_label:
+                        summary_parts.append(result_label)
+                    if modules:
+                        summary_parts.append(f"deps {modules}")
+                    index[case_id] = {
+                        "status": status,
+                        "summary": " | ".join(summary_parts),
+                    }
+        except OSError:
+            return {}
+        return index
+
+    def _baseline_comparisons(self, case_id: str, status: str) -> dict[str, dict[str, str]]:
+        return {
+            "pllm": self._comparison_entry("pllm", "PLLM", case_id, status),
+            "legacy": self._comparison_entry("legacy", "PYEGO", case_id, status),
+            "readpy": self._comparison_entry("readpy", "READPY", case_id, status),
+        }
+
+    def _comparison_entry(self, key: str, label: str, case_id: str, status: str) -> dict[str, str]:
+        baseline = self._baseline_indexes.get(key, {}).get(case_id)
+        if not baseline:
+            return {"label": "--", "summary": f"{label} baseline unavailable."}
+        baseline_status = str(baseline.get("status") or "").strip().upper() or "FAIL"
+        match = status == baseline_status
+        if key == "pllm" and status == "SKIP" and baseline_status != "PASS":
+            match = True
+        comparison = "MATCH" if match else "DIFF"
+        return {
+            "label": comparison,
+            "summary": f"{comparison}: current {status} vs {baseline.get('summary') or f'{label} {baseline_status}'}",
+        }
+
+    def _format_baseline_modules(self, raw: str) -> str:
+        modules = [item.strip() for item in raw.split(";") if item.strip()]
+        if not modules:
+            return ""
+        preview = ", ".join(modules[:3])
+        if len(modules) > 3:
+            preview = f"{preview} +{len(modules) - 3}"
+        return preview[:96]
+
+    def _safe_int(self, value: Any) -> int:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return 0
 
     def _result_succeeded(self, result: dict[str, Any]) -> bool:
         if self._result_skipped(result):

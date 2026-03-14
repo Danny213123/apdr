@@ -225,6 +225,164 @@ pub fn resolve(
     }
 }
 
+pub fn resolve_with_context(
+    unresolved_imports: &[String],
+    snippet_source: &str,
+    parse_result: &ParseResult,
+    store: &mut CacheStore,
+    config: &ResolveConfig,
+    python_version: &str,
+    additional_context: Option<String>,
+) -> StageResult {
+    let mut llm_candidates = Vec::new();
+    let mut preserved_unresolved = Vec::new();
+    for import_name in unresolved_imports {
+        if looks_like_local_helper_import(parse_result, import_name) {
+            preserved_unresolved.push(import_name.clone());
+        } else {
+            llm_candidates.push(import_name.clone());
+        }
+    }
+    if llm_candidates.is_empty() {
+        return StageResult {
+            resolved: Vec::new(),
+            unresolved: preserved_unresolved,
+            notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
+            prompts_issued: 0,
+        };
+    }
+
+    let client = LlmClient::new(
+        &config.llm_provider,
+        &config.llm_model,
+        &config.llm_base_url,
+    );
+    if !client.is_available() {
+        return StageResult {
+            resolved: Vec::new(),
+            unresolved: unresolved_imports.to_vec(),
+            notes: fallback_notes(unresolved_imports, parse_result, false),
+            prompts_issued: 0,
+        };
+    }
+
+    // Assemble RAG context
+    let mut context = llm_candidates
+        .iter()
+        .flat_map(|import_name| rag::assemble_context(store, import_name))
+        .collect::<Vec<_>>();
+
+    // Add additional context about missing metadata
+    if let Some(extra) = additional_context {
+        context.insert(0, format!("IMPORTANT: {}", extra));
+    }
+
+    // Add snippet context to help LLM understand usage
+    context.push(format!(
+        "Code snippet showing import usage:\n```python\n{}\n```",
+        snippet_source.lines().take(50).collect::<Vec<_>>().join("\n")
+    ));
+
+    let benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        48_000,
+    )
+    .unwrap_or_default();
+
+    let prompt = prompts::package_resolution_prompt(
+        &llm_candidates,
+        python_version,
+        &context,
+        &benchmark_context,
+    );
+    let _ = persist_llm_trace(
+        config,
+        "package-resolution-with-context",
+        &prompt,
+        None,
+        &benchmark_context,
+        &context,
+    );
+    let _ = context::append_context_log(
+        config.benchmark_context_log.as_deref(),
+        "apdr-llm-prompt-retry",
+        &prompt,
+    );
+    let response = client.complete(&prompt);
+    let Some(response) = response else {
+        return StageResult {
+            resolved: Vec::new(),
+            unresolved: unresolved_imports.to_vec(),
+            notes: vec!["LLM package-resolution call returned no output.".to_string()],
+            prompts_issued: 1,
+        };
+    };
+    let _ = context::append_context_log(
+        config.benchmark_context_log.as_deref(),
+        "apdr-llm-response-retry",
+        &response,
+    );
+    let _ = persist_llm_trace(
+        config,
+        "package-resolution-with-context",
+        &prompt,
+        Some(&response),
+        &benchmark_context,
+        &context,
+    );
+
+    let mut resolved = Vec::new();
+    let mut still_unresolved = Vec::new();
+    let mut notes = Vec::new();
+
+    for import_name in &llm_candidates {
+        let mapped = parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
+        let version = if mapped != *import_name {
+            let versions = pypi_client::compatible_versions(store, &mapped, python_version);
+            let picked = (!versions.is_empty()).then(|| {
+                let version_prompt = prompts::version_inference_prompt(
+                    &mapped,
+                    &versions,
+                    python_version,
+                    &benchmark_context,
+                );
+                let reply = client.complete(&version_prompt)?;
+                let _ = context::append_context_log(
+                    config.benchmark_context_log.as_deref(),
+                    &format!("apdr-llm-version-retry({})", mapped),
+                    &reply,
+                );
+                parse_version_line(&reply, &versions)
+            }).flatten();
+            picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
+        } else {
+            None
+        };
+        if pypi_client::package_exists(store, &mapped, python_version) {
+            let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm-retry");
+            resolved.push(ResolvedDependency {
+                import_name: import_name.clone(),
+                package_name: mapped.clone(),
+                version,
+                strategy: "llm-retry".to_string(),
+                confidence: 0.73,
+            });
+            notes.push(format!("LLM retry resolved {import_name} -> {mapped}."));
+        } else {
+            still_unresolved.push(import_name.clone());
+        }
+    }
+
+    still_unresolved.extend(preserved_unresolved);
+
+    StageResult {
+        resolved,
+        unresolved: still_unresolved,
+        notes,
+        prompts_issued: 1 + llm_candidates.len(),
+    }
+}
+
 pub fn single_package_hint(
     import_name: &str,
     parse_result: &ParseResult,

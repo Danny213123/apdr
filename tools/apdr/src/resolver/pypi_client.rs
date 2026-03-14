@@ -1,9 +1,16 @@
 use std::cmp::Ordering;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::cache::pypi_index;
 use crate::cache::store::{normalize, CacheStore};
+
+// Lazy-initialized TCP connection to smartPip server (port 8888)
+static SMARTPIP_CONNECTION: Mutex<Option<TcpStream>> = Mutex::new(None);
 
 pub fn latest_known_version(store: &CacheStore, package_name: &str) -> Option<String> {
     pypi_index::compatible_versions(store, package_name)
@@ -83,6 +90,23 @@ pub fn dependency_specs(
         return specs.clone();
     }
 
+    // Try TCP connection to smartPip server first (fast path)
+    if let Some(specs) = try_smartpip_tcp_deps(package_name, version) {
+        if !specs.is_empty() {
+            let _ = store.save_version_dependency_specs(package_name, version, &specs);
+            let dep_names: Vec<String> = specs
+                .iter()
+                .map(|s| requirement_name(s))
+                .filter(|n| !n.is_empty())
+                .collect();
+            if !dep_names.is_empty() {
+                let _ = store.save_dependency_graph_entry(package_name, &dep_names);
+            }
+            return specs;
+        }
+    }
+
+    // Fallback to subprocess (slow path)
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return Vec::new();
     };
@@ -237,6 +261,15 @@ pub fn version_satisfies(version: &str, constraint: &str) -> bool {
 }
 
 fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec<String> {
+    // Try TCP connection to smartPip server first (fast path)
+    if let Some(versions) = try_smartpip_tcp_versions(package_name) {
+        if !versions.is_empty() {
+            let _ = store.save_pypi_versions(package_name, &versions);
+            return versions;
+        }
+    }
+
+    // Fallback to subprocess (slow path)
     let Some(kgraph_path) = smtpip_kgraph_path(store) else {
         return Vec::new();
     };
@@ -279,6 +312,93 @@ fn smtpip_kgraph_path(store: &CacheStore) -> Option<PathBuf> {
         .into_iter()
         .map(|path| path.canonicalize().unwrap_or(path))
         .find(|path| path.exists())
+}
+
+/// Try to query smartPip TCP server for package versions.
+/// Returns None if TCP connection fails, allowing fallback to subprocess.
+fn try_smartpip_tcp_versions(package_name: &str) -> Option<Vec<String>> {
+    let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
+
+    // Establish connection if not already connected
+    if conn_guard.is_none() {
+        match TcpStream::connect_timeout(
+            &"127.0.0.1:8888".parse().ok()?,
+            Duration::from_millis(500)
+        ) {
+            Ok(stream) => {
+                stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+                stream.set_write_timeout(Some(Duration::from_secs(5))).ok()?;
+                *conn_guard = Some(stream);
+            }
+            Err(_) => return None,
+        }
+    }
+
+    let stream = conn_guard.as_mut()?;
+
+    // Send request: "VERSIONS package_name\n"
+    let request = format!("VERSIONS {}\n", normalize(package_name));
+    if stream.write_all(request.as_bytes()).is_err() {
+        *conn_guard = None; // Connection failed, reset
+        return None;
+    }
+
+    // Read response: "version1,version2,version3\n"
+    let mut reader = BufReader::new(stream.try_clone().ok()?);
+    let mut response = String::new();
+    if reader.read_line(&mut response).is_err() {
+        *conn_guard = None;
+        return None;
+    }
+
+    let versions = response
+        .trim()
+        .split(',')
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect::<Vec<_>>();
+
+    if versions.is_empty() {
+        None
+    } else {
+        Some(versions)
+    }
+}
+
+/// Try to query smartPip TCP server for dependency specs.
+/// Returns None if TCP connection fails, allowing fallback to subprocess.
+fn try_smartpip_tcp_deps(package_name: &str, version: &str) -> Option<Vec<String>> {
+    let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
+
+    if conn_guard.is_none() {
+        return None; // Connection not established
+    }
+
+    let stream = conn_guard.as_mut()?;
+
+    // Send request: "DEPS package_name version\n"
+    let request = format!("DEPS {} {}\n", normalize(package_name), version);
+    if stream.write_all(request.as_bytes()).is_err() {
+        *conn_guard = None;
+        return None;
+    }
+
+    // Read response: "spec1|spec2|spec3\n"
+    let mut reader = BufReader::new(stream.try_clone().ok()?);
+    let mut response = String::new();
+    if reader.read_line(&mut response).is_err() {
+        *conn_guard = None;
+        return None;
+    }
+
+    let specs = response
+        .trim()
+        .split('|')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+
+    Some(specs)
 }
 
 fn smtpip_db_path(store: &CacheStore) -> PathBuf {

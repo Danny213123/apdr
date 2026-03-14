@@ -631,6 +631,15 @@ function renderActivityList(container, items, emptyText, formatter) {
 }
 
 function markerClass(value) {
+  if (value === "MATCH" || value === "PASS") {
+    return "text-green";
+  }
+  if (value === "DIFF" || value === "FAIL") {
+    return "text-red";
+  }
+  if (value === "SKIP") {
+    return "text-yellow";
+  }
   return value && value !== "--" ? "text-yellow" : "text-muted";
 }
 
@@ -650,6 +659,9 @@ function renderCaseDetails(container, item) {
     ["Snippet", item.snippet || "-"],
     ["Result", item.result || "-"],
     ["Dependencies", item.dependencies || "-"],
+    ["PLLM", item.pllmSummary || item.pllm || "-"],
+    ["PYEGO", item.legacySummary || item.legacy || "-"],
+    ["READPY", item.readpySummary || item.readpy || "-"],
     ["Outputs", String((item.outputFiles || []).length)],
   ]);
 
@@ -691,6 +703,12 @@ function filteredCases() {
   return cases.filter((item) => {
     const haystack = [
       item.caseId,
+      item.pllm,
+      item.pllmSummary,
+      item.legacy,
+      item.legacySummary,
+      item.readpy,
+      item.readpySummary,
       item.result,
       item.dependencies,
       item.snippet,
@@ -740,14 +758,17 @@ function renderCases() {
     const pllm = node.querySelector(".case-pllm");
     pllm.textContent = item.pllm || "-";
     pllm.classList.add(markerClass(item.pllm));
+    pllm.title = item.pllmSummary || "";
 
     const pyego = node.querySelector(".case-pyego");
     pyego.textContent = item.legacy || "-";
     pyego.classList.add(markerClass(item.legacy));
+    pyego.title = item.legacySummary || "";
 
     const readpy = node.querySelector(".case-readpy");
     readpy.textContent = item.readpy || "-";
     readpy.classList.add(markerClass(item.readpy));
+    readpy.title = item.readpySummary || "";
 
     node.querySelector(".case-result").textContent = item.result || "-";
     node.querySelector(".case-dependencies").textContent = item.dependencies || "-";

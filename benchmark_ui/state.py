@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 import json
 import os
+import platform
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -687,7 +689,7 @@ class AppState:
         if missing:
             parts.append("Missing: " + ", ".join(missing))
         parts.append(
-            "APDR auto-scans PATH, Python framework installs, Windows launcher-managed installs, and common pyenv/asdf/mise/uv locations, and the Doctor can auto-install missing interpreters with supported managers."
+            "APDR auto-scans PATH, Python framework installs, Windows launcher-managed installs, common pyenv/asdf/mise/uv locations, and APDR-managed Miniforge envs, and the Doctor can auto-install missing interpreters with supported managers."
         )
         return " ".join(parts)
 
@@ -697,6 +699,114 @@ class AppState:
             if candidate not in specs:
                 specs.append(candidate)
         return specs
+
+    def _apdr_miniforge_root(self) -> Path:
+        return Path.home() / ".apdr" / "miniforge3"
+
+    def _apdr_miniforge_conda(self) -> Path:
+        root = self._apdr_miniforge_root()
+        if self._is_windows():
+            return root / "Scripts" / "conda.exe"
+        return root / "bin" / "conda"
+
+    def _apdr_miniforge_env_python(self, version: str) -> Path:
+        env_root = self._apdr_miniforge_root() / "envs" / f"python-{version}"
+        if self._is_windows():
+            return env_root / "python.exe"
+        return env_root / "bin" / "python"
+
+    def _unix_miniforge_installer_url(self) -> str:
+        machine = platform.machine().lower()
+        if sys.platform == "darwin":
+            suffix_map = {
+                "arm64": "MacOSX-arm64",
+                "aarch64": "MacOSX-arm64",
+                "x86_64": "MacOSX-x86_64",
+                "amd64": "MacOSX-x86_64",
+            }
+        elif sys.platform.startswith("linux"):
+            suffix_map = {
+                "x86_64": "Linux-x86_64",
+                "amd64": "Linux-x86_64",
+                "aarch64": "Linux-aarch64",
+                "arm64": "Linux-aarch64",
+                "ppc64le": "Linux-ppc64le",
+            }
+        else:
+            suffix_map = {}
+        suffix = suffix_map.get(machine, "")
+        if not suffix:
+            return ""
+        return f"https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-{suffix}.sh"
+
+    def _ensure_apdr_miniforge(self) -> tuple[bool, str]:
+        conda_path = self._apdr_miniforge_conda()
+        if conda_path.exists():
+            return True, "Miniforge is already available."
+        if self._is_windows():
+            return False, "Automatic Miniforge bootstrap is currently only implemented for macOS and Linux."
+        url = self._unix_miniforge_installer_url()
+        if not url:
+            return False, f"APDR does not have a Miniforge bootstrap URL for {sys.platform}/{platform.machine()}."
+        download_dir = Path.home() / ".apdr" / "downloads"
+        download_dir.mkdir(parents=True, exist_ok=True)
+        installer_path = download_dir / Path(url).name
+
+        # Try downloading with SSL verification first, then fall back to unverified if needed
+        download_error = None
+        try:
+            urllib.request.urlretrieve(url, installer_path)
+        except urllib.error.URLError as exc:
+            download_error = exc
+            # Check if it's an SSL certificate error
+            if "SSL" in str(exc) or "CERTIFICATE" in str(exc):
+                try:
+                    # Retry with unverified SSL context (Miniforge is a trusted source)
+                    ssl_context = ssl._create_unverified_context()
+                    with urllib.request.urlopen(url, context=ssl_context) as response:
+                        installer_path.write_bytes(response.read())
+                    download_error = None  # Download succeeded with unverified context
+                except Exception as retry_exc:
+                    return False, f"Failed to download Miniforge installer even with unverified SSL: {retry_exc}"
+            else:
+                return False, f"Failed to download Miniforge installer: {exc}"
+        except Exception as exc:
+            return False, f"Failed to download Miniforge installer: {exc}"
+
+        if download_error:
+            return False, f"Failed to download Miniforge installer: {download_error}"
+
+        self._apdr_miniforge_root().parent.mkdir(parents=True, exist_ok=True)
+        code, output = self._run_command(
+            ["bash", str(installer_path), "-b", "-p", str(self._apdr_miniforge_root())],
+            cwd=self.repo_root,
+            timeout=7200,
+        )
+        if code == 0 and conda_path.exists():
+            return True, "Installed Miniforge."
+        return False, self._summarize_output(output) or "Miniforge installer did not expose a usable conda executable."
+
+    def _auto_install_apdr_python_with_miniforge(self, version: str) -> tuple[bool, str]:
+        ready, detail = self._ensure_apdr_miniforge()
+        if not ready:
+            return False, detail
+
+        conda_path = self._apdr_miniforge_conda()
+        env_root = self._apdr_miniforge_root() / "envs" / f"python-{version}"
+        env_python = self._apdr_miniforge_env_python(version)
+        if env_python.exists() and self._command_matches_python_version([str(env_python)], version):
+            return True, f"Installed with Miniforge ({version})."
+
+        for spec in self._apdr_python_install_specs(version):
+            if env_root.exists():
+                args = [str(conda_path), "install", "-y", "-p", str(env_root), f"python={spec}"]
+            else:
+                args = [str(conda_path), "create", "-y", "-p", str(env_root), f"python={spec}"]
+            code, output = self._run_command(args, cwd=self.repo_root, timeout=7200)
+            if code == 0 and env_python.exists() and self._command_matches_python_version([str(env_python)], version):
+                return True, f"Installed with Miniforge ({spec})."
+            detail = self._summarize_output(output)
+        return False, detail or "Miniforge finished without exposing a usable interpreter."
 
     def _auto_install_apdr_python(self, version: str) -> tuple[bool, str]:
         supported_managers: list[str] = []
@@ -774,7 +884,19 @@ class AppState:
                     return True, f"Installed with scoop ({scoop_package})."
                 last_output = self._summarize_output(output)
 
-        if not self._is_windows() and not version.startswith("2.") and shutil.which("brew"):
+        if not self._is_windows() and not version.startswith("2."):
+            supported_managers.append("miniforge")
+            success, detail = self._auto_install_apdr_python_with_miniforge(version)
+            if success and already_available():
+                return True, detail
+            last_output = self._summarize_output(detail)
+
+        if (
+            not self._is_windows()
+            and not version.startswith("2.")
+            and version not in {"3.7", "3.8"}
+            and shutil.which("brew")
+        ):
             supported_managers.append("brew")
             code, output = self._run_command(["brew", "install", f"python@{version}"], cwd=self.repo_root, timeout=7200)
             if code == 0 and already_available():
@@ -790,10 +912,10 @@ class AppState:
         if version.startswith("2."):
             if self._is_windows():
                 return False, "No supported legacy Python 2.7 manager was found. APDR will not ask uv, winget, or scoop for 2.7; use mise, pyenv, or asdf."
-            return False, "No supported legacy Python 2.7 manager was found. APDR will not ask uv or Homebrew for 2.7; use mise, pyenv, or asdf."
+            return False, "No supported legacy Python 2.7 manager was found. APDR will not ask uv, Homebrew, or Miniforge for 2.7; use mise, pyenv, or asdf."
         if self._is_windows():
             return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, winget, or scoop."
-        return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, or Homebrew."
+        return False, "No supported Python manager was found. APDR currently auto-installs via uv, mise, pyenv, asdf, Miniforge, or Homebrew."
 
     def _find_python_interpreter_command(self, version: str) -> list[str]:
         env_name = f"APDR_PYTHON_{version.replace('.', '_')}"
@@ -884,6 +1006,8 @@ class AppState:
             home / ".asdf" / "installs" / "python",
             home / ".local" / "share" / "mise" / "installs" / "python",
             home / ".local" / "share" / "uv" / "python",
+            home / ".apdr" / "miniforge3" / "envs",
+            home / "miniforge3" / "envs",
         ]
         if self._is_windows():
             local_appdata_value = os.environ.get("LOCALAPPDATA", "").strip()
@@ -926,6 +1050,7 @@ class AppState:
             version,
             f"{version}.",
             f"{version}-",
+            f"python-{version}",
             f"Python-{version}",
             f"cpython-{version}",
             f"Python{compact}",
