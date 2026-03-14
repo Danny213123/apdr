@@ -43,7 +43,7 @@ fn load_file(path: &Path) -> io::Result<BTreeSet<String>> {
         if item.is_empty() || item.starts_with('#') {
             continue;
         }
-        modules.insert(item.to_string());
+        modules.insert(item.to_lowercase());
     }
     Ok(modules)
 }

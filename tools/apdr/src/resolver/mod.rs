@@ -38,61 +38,84 @@ pub fn resolve_path(
     let mut selected_python = selected_python_version(&parse_result, config);
     let mut report = ResolutionReport::default();
     write_parse_artifacts(&config.output_dir, snippet_path, &parse_result, &selected_python)?;
-    let solvability = if config.allow_llm {
-        tier3_llm::assess_solvability(&snippet_source, &parse_result, config)
+
+    // Run tier1 (cache) + tier2 (heuristic) first — these are fast (~ms)
+    let mut stage1 = tier1_cache::resolve(&parse_result, &mut store, &selected_python);
+    report.cache_hits += stage1.cache_hits;
+    let mut stage2 =
+        tier2_heuristic::resolve(&stage1.unresolved, &parse_result, &mut store, &selected_python);
+    report.heuristic_hits += stage2.heuristic_hits;
+    let mut resolved = Vec::new();
+    resolved.append(&mut stage1.resolved);
+    resolved.append(&mut stage2.resolved);
+    let mut unresolved = stage2.unresolved;
+
+    // Only invoke the LLM solvability assessment when there are unresolved imports
+    // (avoids 3-8s Ollama overhead when tier1/tier2 already resolved everything)
+    let solvability = if !unresolved.is_empty() && config.allow_llm {
+        let assessment = tier3_llm::assess_solvability(&snippet_source, &parse_result, config);
+        if let Some(ref a) = assessment {
+            report.notes.push(format!(
+                "LLM solvability assessment: decision={} confidence={:.2} reason={}",
+                a.decision, a.confidence, a.reason
+            ));
+        }
+        if should_skip_from_assessment(assessment.as_ref()) {
+            let reason = assessment
+                .as_ref()
+                .map(|item| format!("LLM skipped snippet at confidence {:.2}: {}", item.confidence, item.reason))
+                .unwrap_or_else(|| "LLM skipped snippet as unsolvable.".to_string());
+            let mut validation = skipped_validation_summary(
+                "skipped-unsolvable",
+                &reason,
+                &selected_python,
+                &config.output_dir,
+                config,
+                &render_requirements(&[]),
+            );
+            validation.solve_duration_ms = started.elapsed().as_millis();
+            report.unresolved = parse_result.imports.clone();
+            report.duration = started.elapsed();
+            write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
+            write_state_artifacts(
+                &config.output_dir,
+                "resolved-final.txt",
+                &format_dependency_state(&[], &parse_result.imports),
+            )?;
+            return Ok(ResolveResult {
+                snippet_path: snippet_path.to_path_buf(),
+                python_version: selected_python.clone(),
+                parse_result,
+                solvability: assessment,
+                resolved: Vec::new(),
+                unresolved: report.unresolved.clone(),
+                requirements_txt: String::new(),
+                lockfile: Some(String::new()),
+                build_image_id: None,
+                validation,
+                resolution_report: report,
+            });
+        }
+
+        // Run tier3 (LLM) for remaining unresolved imports
+        let mut stage3 =
+            tier3_llm::resolve(&unresolved, &parse_result, &mut store, config, &selected_python);
+        report.llm_calls += stage3.prompts_issued;
+        report.notes.append(&mut stage3.notes);
+        resolved.append(&mut stage3.resolved);
+        unresolved = stage3.unresolved;
+
+        assessment
+    } else if !unresolved.is_empty() {
+        report.notes.extend(tier3_llm::fallback_notes(
+            &unresolved,
+            &parse_result,
+            config.allow_llm,
+        ));
+        None
     } else {
         None
     };
-    if let Some(assessment) = solvability.as_ref() {
-        report.notes.push(format!(
-            "LLM solvability assessment: decision={} confidence={:.2} reason={}",
-            assessment.decision, assessment.confidence, assessment.reason
-        ));
-    }
-    if should_skip_from_assessment(solvability.as_ref()) {
-        let reason = solvability
-            .as_ref()
-            .map(|item| format!("LLM skipped snippet at confidence {:.2}: {}", item.confidence, item.reason))
-            .unwrap_or_else(|| "LLM skipped snippet as unsolvable.".to_string());
-        let mut validation = skipped_validation_summary(
-            "skipped-unsolvable",
-            &reason,
-            &selected_python,
-            &config.output_dir,
-            config,
-            &render_requirements(&[]),
-        );
-        validation.solve_duration_ms = started.elapsed().as_millis();
-        report.unresolved = parse_result.imports.clone();
-        report.duration = started.elapsed();
-        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
-        write_state_artifacts(
-            &config.output_dir,
-            "resolved-final.txt",
-            &format_dependency_state(&[], &parse_result.imports),
-        )?;
-        return Ok(ResolveResult {
-            snippet_path: snippet_path.to_path_buf(),
-            python_version: selected_python.clone(),
-            parse_result,
-            solvability,
-            resolved: Vec::new(),
-            unresolved: report.unresolved.clone(),
-            requirements_txt: String::new(),
-            lockfile: Some(String::new()),
-            build_image_id: None,
-            validation,
-            resolution_report: report,
-        });
-    }
-
-    let (mut resolved, unresolved) = resolve_dependencies(
-        &parse_result,
-        &selected_python,
-        &mut store,
-        config,
-        &mut report,
-    );
 
     dedupe_dependencies(&mut resolved);
     for note in apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config) {
@@ -330,42 +353,6 @@ fn skipped_validation_summary(
     }
 }
 
-fn resolve_dependencies(
-    parse_result: &crate::ParseResult,
-    python_version: &str,
-    store: &mut CacheStore,
-    config: &ResolveConfig,
-    report: &mut ResolutionReport,
-) -> (Vec<ResolvedDependency>, Vec<String>) {
-    let mut stage1 = tier1_cache::resolve(parse_result, store, python_version);
-    report.cache_hits += stage1.cache_hits;
-
-    let mut stage2 =
-        tier2_heuristic::resolve(&stage1.unresolved, parse_result, store, python_version);
-    report.heuristic_hits += stage2.heuristic_hits;
-
-    let mut resolved = Vec::new();
-    resolved.append(&mut stage1.resolved);
-    resolved.append(&mut stage2.resolved);
-
-    let mut unresolved = stage2.unresolved;
-    if !unresolved.is_empty() && config.allow_llm {
-        let mut stage3 =
-            tier3_llm::resolve(&unresolved, parse_result, store, config, python_version);
-        report.llm_calls += stage3.prompts_issued;
-        report.notes.append(&mut stage3.notes);
-        resolved.append(&mut stage3.resolved);
-        unresolved = stage3.unresolved;
-    } else if !unresolved.is_empty() {
-        report.notes.extend(tier3_llm::fallback_notes(
-            &unresolved,
-            parse_result,
-            config.allow_llm,
-        ));
-    }
-
-    (resolved, unresolved)
-}
 
 fn validate_with_retries(
     snippet_path: &Path,

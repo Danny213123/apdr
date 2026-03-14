@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 - 2026-03-14
+
+- Reduced APDR solve overhead by running the LLM solvability assessment only when tier1/tier2 still leave unresolved imports, which avoids several seconds of Ollama latency on already-resolved cases.
+- Refactored the APDR dependency-resolution flow so the fast cache and heuristic tiers run before the optional solvability/LLM tier, while preserving skip behavior for genuinely unsolvable snippets.
+- Fixed stdlib/module normalization in the AST parser by lowercasing loaded module names, which improves matching consistency against parser import output and seeded stdlib data.
+
 ## 0.2.6 - 2026-03-14
 
 - Fixed APDR phase-timing propagation so top-level case outputs now preserve `solve`, `validation`, `install`, and `smoke` timings from the real validation attempts instead of dropping install/smoke totals during retry aggregation.
