@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.10 - 2026-03-16
+
+- Added selectable APDR validation backends across the web UI, benchmark runner, saved loadouts, and Doctor flow, so runs can now target local env validation, Docker validation, or the new LLM resolver mode from the same control plane.
+- Reintroduced Docker-based APDR validation with Rust-side backend routing, Dockerfile generation improvements, smarter apt package inference/retry handling, and richer per-attempt metadata so container validation is easier to diagnose and recover.
+- Added the new `tools/apdr/docker_agent` LangGraph-style fallback pipeline plus shared system-dependency heuristics, allowing APDR's `llm` backend to try local env validation first and then escalate to an agent-guided repair loop when deterministic validation fails.
+
 ## 0.2.9 - 2026-03-15
 
 - Fixed APDR's Windows 11 environment tooling by teaching interpreter discovery to resolve Windows launcher-managed installs through `py -<version>`, so launcher-managed Python runtimes can be selected for validation and environment creation instead of being reported missing.

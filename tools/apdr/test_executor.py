@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-r", "--range", type=int, default=1, help="Python version search range")
     parser.add_argument("-ra", "--rag", default="true", help="Enable APDR's optional LLM-assisted resolution tier")
     parser.add_argument("--docker-timeout", type=int, default=300, help="Validation install/import timeout in seconds")
+    parser.add_argument(
+        "--validation-backend",
+        choices=("env", "docker", "llm"),
+        default="env",
+        help="Validation backend: env (local venvs), docker, or llm (env first, then LLM agent fallback)",
+    )
     parser.add_argument("--no-validate", action="store_true", help="Skip APDR validation")
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
@@ -140,6 +146,8 @@ def main() -> int:
             str(args.loop),
             "--docker-timeout",
             str(args.docker_timeout),
+            "--validation-backend",
+            str(args.validation_backend),
             "--llm-provider",
             "ollama",
             "--llm-model",
@@ -148,7 +156,7 @@ def main() -> int:
             str(args.base),
         ]
     )
-    if str(args.rag).lower() in {"true", "1", "yes", "y"}:
+    if str(args.rag).lower() in {"true", "1", "yes", "y"} or args.validation_backend == "llm":
         command.append("--allow-llm")
     if args.no_validate:
         command.append("--no-validate")

@@ -222,17 +222,20 @@ class BenchmarkService:
                 return {"doctor": self._doctor_snapshot()}
             tool = str(payload.get("tool") or self.state.default_run_config()["tool"]).strip()
             python_command = str(payload.get("python_command") or payload.get("pythonCommand") or "").strip()
+            validation_backend = str(
+                payload.get("validation_backend") or payload.get("validationBackend") or ""
+            ).strip()
             self._doctor_state = {
                 "busy": True,
                 "mode": "doctor",
-                "summary": self._doctor_intro_summary(tool),
+                "summary": self._doctor_intro_summary(tool, validation_backend),
                 "results": [],
                 "logs": [],
                 "updatedAt": self.state.now_iso(),
             }
             self._doctor_thread = threading.Thread(
                 target=self._doctor_worker,
-                args=(tool, python_command),
+                args=(tool, python_command, validation_backend),
                 daemon=True,
             )
             self._doctor_thread.start()
@@ -244,6 +247,9 @@ class BenchmarkService:
                 return {"doctor": self._doctor_snapshot()}
             tool = str(payload.get("tool") or self.state.default_run_config()["tool"]).strip()
             python_command = str(payload.get("python_command") or payload.get("pythonCommand") or "").strip()
+            validation_backend = str(
+                payload.get("validation_backend") or payload.get("validationBackend") or ""
+            ).strip()
             self._doctor_state = {
                 "busy": True,
                 "mode": "fix",
@@ -254,16 +260,16 @@ class BenchmarkService:
             }
             self._doctor_thread = threading.Thread(
                 target=self._doctor_fix_worker,
-                args=(tool, python_command),
+                args=(tool, python_command, validation_backend),
                 daemon=True,
             )
             self._doctor_thread.start()
             return {"doctor": self._doctor_snapshot()}
 
-    def _doctor_worker(self, tool: str, python_command: str) -> None:
+    def _doctor_worker(self, tool: str, python_command: str, validation_backend: str) -> None:
         try:
             base_url = self.state.load_model_config(tool).base_url if tool else ""
-            results = self.state.doctor_checks(tool, base_url, python_command)
+            results = self.state.doctor_checks(tool, base_url, python_command, validation_backend)
             with self._lock:
                 self._doctor_state["results"] = results
                 self._doctor_state["summary"] = self._doctor_summary(results)
@@ -272,14 +278,16 @@ class BenchmarkService:
             with self._lock:
                 self._doctor_state["busy"] = False
 
-    def _doctor_fix_worker(self, tool: str, python_command: str) -> None:
+    def _doctor_fix_worker(self, tool: str, python_command: str, validation_backend: str) -> None:
         def log(message: str) -> None:
             with self._lock:
                 self._doctor_state["logs"].append(message)
                 self._doctor_state["logs"] = self._doctor_state["logs"][-250:]
 
         try:
-            results = self.state.auto_fix_doctor_issues(tool, python_command, logger=log)
+            results = self.state.auto_fix_doctor_issues(
+                tool, python_command, validation_backend, logger=log
+            )
             with self._lock:
                 self._doctor_state["results"] = results
                 self._doctor_state["logs"].append("Automatic setup finished. Refreshing Doctor results.")
@@ -368,6 +376,10 @@ class BenchmarkService:
             "verbose": self._as_bool(payload.get("verbose", defaults["verbose"])),
             "snippet_limit": snippet_limit,
             "python_command": str(payload.get("python_command") or payload.get("pythonCommand") or defaults["python_command"]).strip(),
+            "validation_backend": self.state.normalize_validation_backend(
+                tool,
+                str(payload.get("validation_backend") or payload.get("validationBackend") or defaults["validation_backend"]).strip(),
+            ),
             "loadout_name": str(payload.get("loadout_name") or payload.get("loadoutName") or "").strip(),
             "model": str(payload.get("model") or "").strip(),
             "base_url": str(payload.get("base_url") or payload.get("baseUrl") or "").strip(),
@@ -694,6 +706,7 @@ class BenchmarkService:
             "verbose": config["verbose"],
             "snippet_limit": config["snippet_limit"],
             "python_command": config["python_command"],
+            "validation_backend": config["validation_backend"],
             "loadout_name": config["loadout_name"],
         }
 
@@ -897,6 +910,9 @@ class BenchmarkService:
 
     def _info_fields(self, config: dict[str, Any], run: dict[str, Any]) -> list[dict[str, str]]:
         tool = config.get("tool") or ""
+        validation_backend = self.state.normalize_validation_backend(
+            tool, str(config.get("validation_backend") or "")
+        )
         selected = self.state.load_model_config(tool) if tool else None
         model_name = str(config.get("model") or (selected.model if selected else "not selected"))
         base_url = str(config.get("base_url") or (selected.base_url if selected else "--"))
@@ -936,9 +952,16 @@ class BenchmarkService:
             {"label": "Artifacts", "value": artifacts},
         ]
         if tool == "apdr":
-            available, missing = self.state.apdr_local_interpreters()
-            fields.insert(14, {"label": "Validation", "value": "local Python environments"})
-            fields.insert(15, {"label": "Py envs", "value": self._compact_apdr_interpreter_label(available, missing)})
+            fields.insert(
+                14,
+                {
+                    "label": "Validation",
+                    "value": "Docker build + run" if validation_backend == "docker" else "LLM resolver (env + agent fallback)" if validation_backend == "llm" else "local Python environments",
+                },
+            )
+            if validation_backend in ("env", "llm"):
+                available, missing = self.state.apdr_local_interpreters()
+                fields.insert(15, {"label": "Py envs", "value": self._compact_apdr_interpreter_label(available, missing)})
         elif tool == "pllm":
             fields.insert(14, {"label": "Validation", "value": "Docker build + run"})
         return fields
@@ -1388,8 +1411,13 @@ class BenchmarkService:
         warnings = sum(1 for row in results if row["status"] == "WARN")
         return f"Doctor finished with {failing} failures and {warnings} warnings."
 
-    def _doctor_intro_summary(self, tool: str) -> str:
+    def _doctor_intro_summary(self, tool: str, validation_backend: str = "") -> str:
         if tool == "apdr":
+            resolved_backend = self.state.normalize_validation_backend(tool, validation_backend)
+            if resolved_backend == "docker":
+                return "Doctor is checking Docker, Ollama, dataset readiness, and each tool runtime."
+            if resolved_backend == "llm":
+                return "Doctor is checking local Python interpreters, LLM agent, Ollama, dataset readiness, and each tool runtime."
             return "Doctor is checking local Python interpreters, Ollama, dataset readiness, and each tool runtime."
         if tool == "pllm":
             return "Doctor is checking Docker, Ollama, dataset readiness, and each tool runtime."

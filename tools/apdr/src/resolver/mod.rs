@@ -260,6 +260,7 @@ pub fn resolve_path(
                 succeeded: false,
                 status: "unsatisfiable".to_string(),
                 reason: pre_solve.reason.clone(),
+                validation_backend: config.validation_backend().to_string(),
                 selected_python_version: Some(pre_solve.selected_python_version.clone()),
                 lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
                 build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
@@ -291,13 +292,15 @@ pub fn resolve_path(
             } else {
                 "unresolved".to_string()
             },
+            validation_backend: config.validation_backend().to_string(),
             reason: if let Some(reason) = unsat_reason {
                 Some(reason)
             } else if unresolved.is_empty() {
                 None
             } else {
                 Some(format!(
-                    "Skipped local environment validation with {} unresolved imports.",
+                    "Skipped {} validation with {} unresolved imports.",
+                    config.validation_backend(),
                     unresolved.len()
                 ))
             },
@@ -392,6 +395,7 @@ fn skipped_validation_summary(
         succeeded: false,
         status: status.to_string(),
         reason: Some(reason.to_string()),
+        validation_backend: config.validation_backend().to_string(),
         selected_python_version: Some(selected_python.to_string()),
         lockfile_key: Some(lockfile_key.clone()),
         build_cache_key: Some(lockfile_key),
@@ -634,7 +638,7 @@ fn validate_with_retries(
         validation.reason = infer_validation_reason(&validation, report);
     }
     if validation.validation_backend.is_empty() && !validation.attempts.is_empty() {
-        validation.validation_backend = "env".to_string();
+        validation.validation_backend = config.validation_backend().to_string();
     }
 
     Ok(validation)
@@ -711,7 +715,10 @@ fn apply_recovery_fix(
             let module_name = extract_missing_module(log)?;
             // Skip recovery for modules in the stdlib list (e.g. Pythonista builtins
             // like `console` that were intentionally excluded from resolution).
-            if parse_result.stdlib_modules.contains(&module_name.to_lowercase()) {
+            if parse_result
+                .stdlib_modules
+                .contains(&module_name.to_lowercase())
+            {
                 return None;
             }
             if let Some(package_name) = python_backport_package(&module_name, python_version) {
@@ -842,8 +849,7 @@ fn apply_recovery_fix(
                 let top_versions =
                     pypi_client::compatible_versions(store, top_level, python_version);
                 if !top_versions.is_empty() {
-                    let version =
-                        version_sampler::equally_distanced_sample(&top_versions, &[]);
+                    let version = version_sampler::equally_distanced_sample(&top_versions, &[]);
                     if upsert_dependency(
                         resolved,
                         &module_name,
@@ -916,10 +922,7 @@ fn apply_recovery_fix(
             // "Numerical Python (NumPy) is not installed" and similar.
             if let Some(dep_name) = extract_build_dependency(log) {
                 let dep_lower = dep_name.to_lowercase();
-                if parse_result
-                    .stdlib_modules
-                    .contains(&dep_lower)
-                {
+                if parse_result.stdlib_modules.contains(&dep_lower) {
                     return None;
                 }
                 // Try cache lookup first.
@@ -945,11 +948,9 @@ fn apply_recovery_fix(
                     }
                 }
                 // Try as a direct package name.
-                let versions =
-                    pypi_client::compatible_versions(store, &dep_lower, python_version);
+                let versions = pypi_client::compatible_versions(store, &dep_lower, python_version);
                 if !versions.is_empty() {
-                    let version =
-                        version_sampler::equally_distanced_sample(&versions, &[]);
+                    let version = version_sampler::equally_distanced_sample(&versions, &[]);
                     if upsert_dependency(
                         resolved,
                         &dep_name,
@@ -1191,7 +1192,11 @@ fn extract_build_dependency(log: &str) -> Option<String> {
             .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
         if !word.is_empty()
             && word.len() < 40
-            && word.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+            && word
+                .chars()
+                .next()
+                .map(|c| c.is_alphabetic())
+                .unwrap_or(false)
         {
             return Some(word.to_string());
         }
@@ -1996,29 +2001,20 @@ mod tests {
     fn extract_build_dependency_parenthesized_name() {
         // Pattern: "Numerical Python (NumPy) is not installed"
         let log = "running build\n\nNumerical Python (NumPy) is not installed.\n\nThis package is required.";
-        assert_eq!(
-            extract_build_dependency(log),
-            Some("NumPy".to_string()),
-        );
+        assert_eq!(extract_build_dependency(log), Some("NumPy".to_string()),);
     }
 
     #[test]
     fn extract_build_dependency_bare_name() {
         // Pattern: "foo is not installed"
         let log = "running build\nCython is not installed\nPlease install it.";
-        assert_eq!(
-            extract_build_dependency(log),
-            Some("Cython".to_string()),
-        );
+        assert_eq!(extract_build_dependency(log), Some("Cython".to_string()),);
     }
 
     #[test]
     fn extract_build_dependency_please_install() {
         let log = "Error: please install numpy before building this package.";
-        assert_eq!(
-            extract_build_dependency(log),
-            Some("numpy".to_string()),
-        );
+        assert_eq!(extract_build_dependency(log), Some("numpy".to_string()),);
     }
 
     #[test]
@@ -2033,6 +2029,9 @@ mod tests {
 
     #[test]
     fn extract_build_dependency_returns_none_for_clean_log() {
-        assert_eq!(extract_build_dependency("Successfully installed numpy-1.26.4"), None);
+        assert_eq!(
+            extract_build_dependency("Successfully installed numpy-1.26.4"),
+            None
+        );
     }
 }

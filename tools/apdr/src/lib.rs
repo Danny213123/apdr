@@ -14,6 +14,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+pub const VALIDATION_BACKEND_ENV: &str = "env";
+pub const VALIDATION_BACKEND_DOCKER: &str = "docker";
+pub const VALIDATION_BACKEND_LLM: &str = "llm";
+
 #[derive(Clone, Debug)]
 pub struct ConfigDep {
     pub package: String,
@@ -52,6 +56,7 @@ pub struct ResolveConfig {
     pub llm_base_url: String,
     pub benchmark_context_log: Option<PathBuf>,
     pub validate: bool,
+    pub validation_backend: String,
     pub execute_snippet: bool,
 }
 
@@ -207,8 +212,21 @@ impl ResolveConfig {
             llm_base_url: "http://localhost:11434".to_string(),
             benchmark_context_log: None,
             validate: true,
+            validation_backend: VALIDATION_BACKEND_ENV.to_string(),
             execute_snippet: true,
         }
+    }
+
+    pub fn validation_backend(&self) -> &str {
+        normalize_validation_backend(&self.validation_backend)
+    }
+}
+
+pub fn normalize_validation_backend(value: &str) -> &str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        VALIDATION_BACKEND_DOCKER => VALIDATION_BACKEND_DOCKER,
+        VALIDATION_BACKEND_LLM => VALIDATION_BACKEND_LLM,
+        _ => VALIDATION_BACKEND_ENV,
     }
 }
 

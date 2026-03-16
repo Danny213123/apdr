@@ -35,6 +35,7 @@ const ui = {
   homeStatus: document.querySelector("#home-status"),
   homeNote: document.querySelector("#home-note"),
   toolSelect: document.querySelector("#tool-select"),
+  validationBackendSelect: document.querySelector("#validation-backend-select"),
   homeLoadoutSelect: document.querySelector("#home-loadout-select"),
   datasetInput: document.querySelector("#dataset-input"),
   datasetDefaultButton: document.querySelector("#dataset-default-button"),
@@ -347,6 +348,13 @@ function setupDropdowns() {
   dropdowns.tool = createDropdown(ui.toolSelect, {
     onChange: (value) => {
       state.form.tool = value;
+      syncValidationBackendDropdown();
+      requestPreview();
+    },
+  });
+  dropdowns.validationBackend = createDropdown(ui.validationBackendSelect, {
+    onChange: (value) => {
+      state.form.validation_backend = value;
       requestPreview();
     },
   });
@@ -382,6 +390,7 @@ function setupDropdowns() {
     state.caseFilter,
   );
   setDropdownOptions(dropdowns.runHistory, [], state.selectedHistoryRunId);
+  syncValidationBackendDropdown();
 
   document.addEventListener("click", (event) => {
     const insideDropdown = Object.values(dropdowns).some((dropdown) => dropdown?.root.contains(event.target));
@@ -499,6 +508,35 @@ function populateToolSelect() {
   );
 }
 
+function validationBackendOptions(tool) {
+  if (tool === "pllm") {
+    return [{ value: "docker", label: "Docker" }];
+  }
+  if (tool === "apdr") {
+    return [
+      { value: "env", label: "Local envs" },
+      { value: "docker", label: "Docker" },
+      { value: "llm", label: "LLM resolver" },
+    ];
+  }
+  return [{ value: "env", label: "Local envs" }];
+}
+
+function syncValidationBackendDropdown() {
+  if (!dropdowns.validationBackend) {
+    return;
+  }
+  const tool = state.form?.tool || "";
+  const options = validationBackendOptions(tool);
+  const requested = state.form?.validation_backend || options[0]?.value || "env";
+  const allowed = options.some((option) => option.value === requested);
+  const nextValue = allowed ? requested : (options[0]?.value || "env");
+  if (state.form) {
+    state.form.validation_backend = nextValue;
+  }
+  setDropdownOptions(dropdowns.validationBackend, options, nextValue);
+}
+
 function populateLoadoutSelect() {
   setDropdownOptions(
     dropdowns.loadout,
@@ -538,6 +576,7 @@ function syncControlsFromForm() {
   ui.ragCheckbox.checked = Boolean(state.form.rag);
   ui.verboseCheckbox.checked = Boolean(state.form.verbose);
   setDropdownValue(dropdowns.tool, state.form.tool || "", { emit: false });
+  syncValidationBackendDropdown();
   populateLoadoutSelect();
 }
 
@@ -604,7 +643,9 @@ function renderProgress() {
     <span class="kv-label">Runtime</span>
     <span class="kv-value">tool=${escapeHtml(config.tool || "-")} loop=${escapeHtml(
       String(config.loop_count ?? "-"),
-    )} range=${escapeHtml(String(config.search_range ?? "-"))} rag=${escapeHtml(
+    )} range=${escapeHtml(String(config.search_range ?? "-"))} backend=${escapeHtml(
+      config.validation_backend || "-",
+    )} rag=${escapeHtml(
       config.rag ? "on" : "off",
     )} verbose=${escapeHtml(config.verbose ? "on" : "off")} solve=${escapeHtml(
       run.solveAverage || "--",
@@ -961,6 +1002,7 @@ function applyLoadoutToForm(loadout) {
     verbose: Boolean(loadout.verbose),
     snippet_limit: loadout.snippet_limit || "",
     python_command: loadout.python_command || "",
+    validation_backend: loadout.validation_backend || state.form.validation_backend || "env",
     loadout_name: loadout.name || "",
   };
   state.selectedLoadoutSlug = loadout.slug;
@@ -1292,6 +1334,7 @@ function wireDoctor() {
       const payload = await sendJson("/api/doctor/run", {
         tool: state.form.tool,
         python_command: state.form.python_command,
+        validation_backend: state.form.validation_backend,
       });
       state.doctor = payload.doctor;
       renderDoctor();
@@ -1305,6 +1348,7 @@ function wireDoctor() {
       const payload = await sendJson("/api/doctor/fix", {
         tool: state.form.tool,
         python_command: state.form.python_command,
+        validation_backend: state.form.validation_backend,
       });
       state.doctor = payload.doctor;
       renderDoctor();

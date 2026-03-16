@@ -42,7 +42,9 @@ class BenchmarkWorker(threading.Thread):
 
             runner = self.state.choose_runner(tool, str(self.run_config.get("python_command", "")))
             runtime_ok, runtime_detail, runtime_runner = self.state.validate_tool_runtime(
-                tool, str(self.run_config.get("python_command", ""))
+                tool,
+                str(self.run_config.get("python_command", "")),
+                str(self.run_config.get("validation_backend", "")),
             )
             if not runtime_ok:
                 raise RuntimeError(
@@ -101,6 +103,7 @@ class BenchmarkWorker(threading.Thread):
                 "verbose": bool(self.run_config["verbose"]),
                 "snippet_limit": snippet_limit or "",
                 "python_command": str(self.run_config.get("python_command", "")),
+                "validation_backend": str(self.run_config.get("validation_backend", "")),
                 "started_at": self.state.now_iso(),
                 "status": "running",
                 "results": resume_results,
@@ -164,6 +167,13 @@ class BenchmarkWorker(threading.Thread):
                     "-ra",
                     "true" if self.run_config["rag"] else "false",
                 ]
+                if tool == "apdr":
+                    command.extend(
+                        [
+                            "--validation-backend",
+                            str(self.run_config.get("validation_backend") or "env"),
+                        ]
+                    )
                 if self.run_config["verbose"]:
                     command.append("-v")
                 command.extend(["--benchmark-context-log", str(context_log)])

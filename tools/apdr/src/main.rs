@@ -9,7 +9,7 @@ use apdr::cache::store::CacheStore;
 use apdr::context;
 use apdr::recovery::classifier;
 use apdr::resolver;
-use apdr::ResolveConfig;
+use apdr::{ResolveConfig, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM};
 
 fn main() {
     if let Err(error) = run() {
@@ -82,6 +82,22 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     "--validation-timeout must be an integer number of seconds".to_string()
                 })?;
                 config.validation_timeout = std::time::Duration::from_secs(seconds);
+            }
+            "--validation-backend" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--validation-backend expects a value")?;
+                config.validation_backend = match value.trim().to_ascii_lowercase().as_str() {
+                    VALIDATION_BACKEND_ENV => VALIDATION_BACKEND_ENV.to_string(),
+                    VALIDATION_BACKEND_DOCKER => VALIDATION_BACKEND_DOCKER.to_string(),
+                    VALIDATION_BACKEND_LLM => VALIDATION_BACKEND_LLM.to_string(),
+                    _ => {
+                        return Err(
+                            "--validation-backend must be `env`, `docker`, or `llm`".to_string()
+                        )
+                    }
+                };
             }
             "--cache-path" => {
                 index += 1;
@@ -156,11 +172,12 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         config.benchmark_context_log.as_deref(),
         "apdr-resolve-command",
         &format!(
-            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate={}\npython_override={}\nrange={}\nmax_retries={}",
+            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate={}\nvalidation_backend={}\npython_override={}\nrange={}\nmax_retries={}",
             snippet_path.display(),
             config.output_dir.display(),
             config.allow_llm,
             config.validate,
+            config.validation_backend(),
             config.python_version.as_deref().unwrap_or(""),
             config.python_version_range,
             config.max_retries
@@ -473,7 +490,9 @@ fn print_help() {
     println!(
         "              [--llm-base-url http://localhost:11434] [--benchmark-context-log trace.log]"
     );
-    println!("              [--docker-timeout 300] [--no-validate]");
+    println!(
+        "              [--docker-timeout 300] [--validation-backend env|docker|llm] [--no-validate]"
+    );
     println!("              [--no-execute-snippet]");
     println!("              [--no-parallel-versions] [--no-config-scan]");
     println!("  apdr classify-log <build.log>");

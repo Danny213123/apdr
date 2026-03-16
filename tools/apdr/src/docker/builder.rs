@@ -11,8 +11,11 @@ use crate::cache::build_cache;
 use crate::cache::maintenance;
 use crate::cache::store::CacheStore;
 use crate::context;
-use crate::docker::smoke_test;
-use crate::{ResolveConfig, ValidationAttempt, ValidationSummary};
+use crate::docker::{smoke_test, system_deps, templates};
+use crate::{
+    ResolveConfig, ValidationAttempt, ValidationSummary, VALIDATION_BACKEND_DOCKER,
+    VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
+};
 
 struct CommandResult {
     success: bool,
@@ -23,6 +26,46 @@ struct CommandResult {
 }
 
 pub fn validate_requirements(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    match config.validation_backend() {
+        VALIDATION_BACKEND_DOCKER => validate_requirements_docker(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            attempt_offset,
+            config,
+            store,
+        ),
+        VALIDATION_BACKEND_LLM => validate_requirements_llm(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            attempt_offset,
+            config,
+            store,
+        ),
+        _ => validate_requirements_env(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            attempt_offset,
+            config,
+            store,
+        ),
+    }
+}
+
+fn validate_requirements_env(
     snippet_path: &Path,
     requirements_txt: &str,
     imports: &[String],
@@ -87,7 +130,7 @@ pub fn validate_requirements(
                 let attempt = ValidationAttempt {
                     attempt_index,
                     python_version: python_version.clone(),
-                    validation_backend: "env".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
                     env_label: Some(env_label.clone()),
                     status: "build-failed".to_string(),
                     log_excerpt: truncate_log(&detail),
@@ -161,7 +204,7 @@ pub fn validate_requirements(
         let mut attempt = ValidationAttempt {
             attempt_index,
             python_version: python_version.clone(),
-            validation_backend: "env".to_string(),
+            validation_backend: VALIDATION_BACKEND_ENV.to_string(),
             env_label: Some(env_label.clone()),
             env_dir: Some(env_dir.display().to_string()),
             used_cached_lockfile: store.lockfile(&build_key).is_some(),
@@ -173,7 +216,7 @@ pub fn validate_requirements(
             context_snapshot_path: Some(context_snapshot_path.display().to_string()),
             ..Default::default()
         };
-        summary.validation_backend = "env".to_string();
+        summary.validation_backend = VALIDATION_BACKEND_ENV.to_string();
 
         // Check validated-env cache: prefer compressed archive, fall back to legacy dir
         let cached_archive = validated_env_archive_path(&validated_envs_dir, &build_key);
@@ -181,8 +224,7 @@ pub fn validate_requirements(
         let (cache_hit, cache_is_archive) = if cached_archive.exists() {
             (true, true)
         } else if cached_env_dir.exists()
-            && (cached_env_dir.join("bin").exists()
-                || cached_env_dir.join("Scripts").exists())
+            && (cached_env_dir.join("bin").exists() || cached_env_dir.join("Scripts").exists())
         {
             (true, false)
         } else {
@@ -366,6 +408,607 @@ pub fn validate_requirements(
     }
 
     Ok(summary)
+}
+
+fn validate_requirements_llm(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    // Phase 1: Try the traditional env-based validation first
+    let env_summary = validate_requirements_env(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        attempt_offset,
+        config,
+        store,
+    )?;
+
+    if env_summary.succeeded {
+        return Ok(env_summary);
+    }
+
+    // Phase 2: Env validation failed — fall back to the LangGraph multi-agent pipeline
+    eprintln!(
+        "[llm-resolver] env validation failed ({} attempt(s)), trying LangGraph agent…",
+        env_summary.attempts.len()
+    );
+    if let Some(mut agent_summary) = attempt_langgraph_agent(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        config,
+    ) {
+        // Carry over the env attempts into the agent summary so we don't lose history
+        let mut combined_attempts = env_summary.attempts;
+        combined_attempts.append(&mut agent_summary.attempts);
+        agent_summary.attempts = combined_attempts;
+        agent_summary.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+        return Ok(agent_summary);
+    }
+
+    // Agent unavailable or also failed — return the original env result
+    eprintln!("[llm-resolver] LangGraph agent unavailable or failed, returning env result");
+    Ok(env_summary)
+}
+
+fn attempt_langgraph_agent(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    config: &ResolveConfig,
+) -> Option<ValidationSummary> {
+    // Find the docker_agent Python module relative to this binary's directory.
+    // The module lives at tools/apdr/docker_agent/ — we discover it by walking
+    // up from the binary's directory or from CARGO_MANIFEST_DIR at test time.
+    let agent_parent = find_docker_agent_parent()?;
+
+    // Check that python3 can import the module
+    let check = Command::new("python3")
+        .args(["-c", "import docker_agent"])
+        .env("PYTHONPATH", &agent_parent)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if !check.status.success() {
+        eprintln!("[docker-agent] python3 cannot import docker_agent, skipping LLM agent");
+        return None;
+    }
+
+    // Write JSON config for the Python agent
+    let agent_output_dir = config.output_dir.join("agent");
+    fs::create_dir_all(&agent_output_dir).ok()?;
+    let config_path = agent_output_dir.join("agent-config.json");
+
+    let config_json = format!(
+        r#"{{
+  "snippet_path": "{}",
+  "requirements_txt": "{}",
+  "imports": [{}],
+  "candidate_versions": [{}],
+  "llm_provider": "{}",
+  "llm_model": "{}",
+  "llm_base_url": "{}",
+  "cache_path": "{}",
+  "output_dir": "{}",
+  "validation_timeout_secs": {},
+  "max_attempts": 5
+}}"#,
+        snippet_path.display().to_string().replace('\\', "\\\\").replace('"', "\\\""),
+        requirements_txt.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"),
+        imports
+            .iter()
+            .map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(", "),
+        candidate_versions
+            .iter()
+            .map(|s| format!("\"{}\"", s))
+            .collect::<Vec<_>>()
+            .join(", "),
+        config.llm_provider,
+        config.llm_model,
+        config.llm_base_url,
+        config.cache_path.display(),
+        agent_output_dir.display(),
+        config.validation_timeout.as_secs(),
+    );
+    fs::write(&config_path, &config_json).ok()?;
+
+    eprintln!("[docker-agent] invoking LangGraph multi-agent pipeline…");
+    let mut cmd = Command::new("python3");
+    cmd.arg("-m")
+        .arg("docker_agent")
+        .arg("--config")
+        .arg(&config_path)
+        .env("PYTHONPATH", &agent_parent)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let agent_output = run_command_with_timeout(&mut cmd, config.validation_timeout).ok()?;
+
+    if !agent_output.success {
+        eprintln!(
+            "[docker-agent] agent process failed (exit={}): {}",
+            agent_output
+                .exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".to_string()),
+            truncate_log(&agent_output.combined_output)
+        );
+        return None;
+    }
+
+    // Parse JSON result from stdout (last line is the JSON)
+    let stdout = &agent_output.combined_output;
+    let json_line = stdout.lines().last()?;
+    parse_agent_result(json_line)
+}
+
+fn find_docker_agent_parent() -> Option<PathBuf> {
+    // At test/dev time, CARGO_MANIFEST_DIR points to tools/apdr/
+    if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
+        let candidate = PathBuf::from(&manifest);
+        if candidate.join("docker_agent").join("__init__.py").exists() {
+            return Some(candidate);
+        }
+    }
+    // At runtime, try relative to the binary
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().skip(1).take(5) {
+            let candidate = ancestor.join("docker_agent").join("__init__.py");
+            if candidate.exists() {
+                return Some(ancestor.to_path_buf());
+            }
+        }
+    }
+    // Fallback: try CWD
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.join("docker_agent").join("__init__.py").exists() {
+            return Some(cwd);
+        }
+    }
+    None
+}
+
+fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
+    // Minimal JSON parsing without pulling in serde for this one spot.
+    // The agent output is: {"status":"passed","selected_python_version":"3.11",
+    //   "final_requirements":"...","confidence":0.85,"attempts":[...],"total_duration_ms":123}
+    let trimmed = json_str.trim();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+
+    let status = extract_json_string(trimmed, "status")?;
+    if status != "passed" {
+        eprintln!("[docker-agent] agent returned status={status}, falling back to deterministic");
+        return None;
+    }
+
+    let mut summary = ValidationSummary::default();
+    summary.succeeded = true;
+    summary.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
+    summary.selected_python_version = extract_json_string(trimmed, "selected_python_version");
+
+    if let Some(dur) = extract_json_number(trimmed, "total_duration_ms") {
+        summary.validation_duration_ms = dur as u128;
+    }
+
+    // The agent may have modified requirements; we record that info but
+    // it does not change the resolved list (the Rust side already resolved).
+    Some(summary)
+}
+
+fn extract_json_string(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\"", key);
+    let pos = json.find(&needle)?;
+    let after_key = &json[pos + needle.len()..];
+    // Skip whitespace and colon
+    let after_colon = after_key.trim_start().strip_prefix(':')?;
+    let after_ws = after_colon.trim_start();
+    if after_ws.starts_with("null") {
+        return None;
+    }
+    let value_start = after_ws.strip_prefix('"')?;
+    let end = value_start.find('"')?;
+    Some(value_start[..end].to_string())
+}
+
+fn extract_json_number(json: &str, key: &str) -> Option<f64> {
+    let needle = format!("\"{}\"", key);
+    let pos = json.find(&needle)?;
+    let after_key = &json[pos + needle.len()..];
+    let after_colon = after_key.trim_start().strip_prefix(':')?;
+    let after_ws = after_colon.trim_start();
+    // Read digits, dots, minus
+    let end = after_ws
+        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+        .unwrap_or(after_ws.len());
+    after_ws[..end].parse::<f64>().ok()
+}
+
+fn validate_requirements_docker(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    let mut summary = ValidationSummary::default();
+    summary.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
+    context::ensure_debug_layout(&config.output_dir)?;
+
+    // Try LangGraph multi-agent pipeline first when LLM is enabled
+    if config.allow_llm {
+        if let Some(agent_summary) = attempt_langgraph_agent(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            config,
+        ) {
+            return Ok(agent_summary);
+        }
+        // Fall through to deterministic loop if agent is unavailable or failed
+        eprintln!("[docker-agent] falling back to deterministic Docker validation");
+    }
+
+    if !command_on_path("docker") {
+        return docker_backend_unavailable(
+            candidate_versions,
+            attempt_offset,
+            config,
+            requirements_txt,
+            "Docker CLI is not installed or not on PATH.",
+        );
+    }
+
+    let validation_started = Instant::now();
+    let total_budget = config.validation_timeout;
+
+    // Infer system deps deterministically from requirements
+    let mut sys_deps = system_deps::infer_system_deps_from_requirements(requirements_txt);
+
+    let max_build_retries: usize = 2;
+    let mut global_attempt = 0usize;
+
+    for (local_index, python_version) in candidate_versions.iter().enumerate() {
+        let elapsed = validation_started.elapsed();
+        if elapsed >= total_budget {
+            eprintln!(
+                "[validation] total budget exhausted ({:.1}s >= {:.1}s), skipping remaining {} version(s)",
+                elapsed.as_secs_f64(),
+                total_budget.as_secs_f64(),
+                candidate_versions.len() - local_index
+            );
+            break;
+        }
+
+        let build_key = build_cache::key_for(requirements_txt, python_version);
+        summary.lockfile_key = Some(build_key.clone());
+        summary.build_cache_key = Some(build_key.clone());
+        let image_tag = docker_image_tag(&build_key, python_version);
+
+        // Inner retry loop: retry Docker build when new system deps are discovered
+        for build_retry in 0..=max_build_retries {
+            let elapsed = validation_started.elapsed();
+            if elapsed >= total_budget {
+                break;
+            }
+
+            global_attempt += 1;
+            let attempt_index = attempt_offset + global_attempt;
+            let work_dir =
+                context::attempt_dir(&config.output_dir, attempt_index, python_version);
+            fs::create_dir_all(&work_dir)?;
+
+            let dockerfile_path = work_dir.join("Dockerfile");
+            let build_log_path = work_dir.join("build.log");
+            let run_log_path = work_dir.join("run.log");
+            let combined_log_path = work_dir.join("combined.log");
+            let metadata_path = work_dir.join("metadata.txt");
+            let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
+            let build_command = format!(
+                "docker build --progress=plain -t {image_tag} {}",
+                work_dir.display()
+            );
+            let container_name =
+                docker_container_name(&build_key, python_version, attempt_index);
+            let run_command =
+                format!("docker run --rm --name {container_name} {image_tag}");
+
+            fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
+            fs::write(
+                work_dir.join("smoke_test.py"),
+                smoke_test::generate(imports, config.execute_snippet),
+            )?;
+            fs::copy(snippet_path, work_dir.join("snippet.py"))?;
+            // Generate Dockerfile with inferred system deps
+            fs::write(
+                &dockerfile_path,
+                templates::python_slim_template(python_version, &sys_deps),
+            )?;
+            fs::write(work_dir.join("docker-build.command.txt"), &build_command)?;
+            fs::write(work_dir.join("docker-run.command.txt"), &run_command)?;
+            fs::write(&run_log_path, "")?;
+            fs::write(&combined_log_path, "")?;
+            if let Ok(tail) =
+                context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+            {
+                fs::write(&context_snapshot_path, tail)?;
+            } else {
+                fs::write(&context_snapshot_path, "")?;
+            }
+
+            let mut attempt = ValidationAttempt {
+                attempt_index,
+                python_version: python_version.clone(),
+                validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+                env_label: Some(image_tag.clone()),
+                used_cached_lockfile: store.lockfile(&build_key).is_some(),
+                artifact_dir: Some(work_dir.display().to_string()),
+                build_log_path: Some(build_log_path.display().to_string()),
+                run_log_path: Some(run_log_path.display().to_string()),
+                combined_log_path: Some(combined_log_path.display().to_string()),
+                metadata_path: Some(metadata_path.display().to_string()),
+                context_snapshot_path: Some(context_snapshot_path.display().to_string()),
+                ..Default::default()
+            };
+
+            // Docker build with BuildKit enabled
+            let build_timeout = total_budget.saturating_sub(validation_started.elapsed());
+            let mut build = Command::new("docker");
+            build
+                .arg("build")
+                .arg("--progress=plain")
+                .arg("-t")
+                .arg(&image_tag)
+                .arg(&work_dir)
+                .env("DOCKER_BUILDKIT", "1");
+            let build_output = run_command_with_timeout(&mut build, build_timeout)?;
+            summary.install_duration_ms += build_output.duration_ms;
+            fs::write(&build_log_path, &build_output.combined_output)?;
+            let _ = context::append_context_log(
+                config.benchmark_context_log.as_deref(),
+                "apdr-docker-build",
+                &build_output.combined_output,
+            );
+
+            if build_output.timed_out || !build_output.success {
+                // On build failure, try to extract new system deps from the log
+                if !build_output.timed_out && build_retry < max_build_retries {
+                    let new_deps =
+                        system_deps::extract_system_deps_from_log(&build_output.combined_output);
+                    let prev_count = sys_deps.len();
+                    for dep in new_deps {
+                        if !sys_deps.contains(&dep) {
+                            sys_deps.push(dep);
+                        }
+                    }
+                    sys_deps.sort();
+                    sys_deps.dedup();
+                    if sys_deps.len() > prev_count {
+                        eprintln!(
+                            "[docker] build failed, discovered new system deps: {:?}, retrying",
+                            &sys_deps[prev_count..]
+                        );
+                        // Record this attempt but continue to retry
+                        attempt.status = "build-failed".to_string();
+                        attempt.log_excerpt = truncate_log(&build_output.combined_output);
+                        fs::write(&combined_log_path, &build_output.combined_output)?;
+                        fs::write(
+                            &metadata_path,
+                            attempt_metadata(
+                                &attempt,
+                                &build_key,
+                                &build_command,
+                                &run_command,
+                                build_output.exit_code,
+                                build_output.duration_ms,
+                                None,
+                                None,
+                            ),
+                        )?;
+                        summary.attempts.push(attempt);
+                        continue; // retry inner loop with updated sys_deps
+                    }
+                }
+
+                // No new deps found or timed out — record failure and move to next Python version
+                let status = if build_output.timed_out {
+                    "build-timeout"
+                } else {
+                    "build-failed"
+                };
+                attempt.status = status.to_string();
+                attempt.log_excerpt = truncate_log(&build_output.combined_output);
+                fs::write(&combined_log_path, &build_output.combined_output)?;
+                fs::write(
+                    &metadata_path,
+                    attempt_metadata(
+                        &attempt,
+                        &build_key,
+                        &build_command,
+                        &run_command,
+                        build_output.exit_code,
+                        build_output.duration_ms,
+                        None,
+                        None,
+                    ),
+                )?;
+                summary.attempts.push(attempt);
+                break; // break inner retry loop, try next Python version
+            }
+
+            // Build succeeded — run smoke test
+            let build_logs = build_output.combined_output;
+            let build_exit_code = build_output.exit_code;
+            let build_duration_ms = build_output.duration_ms;
+
+            let run_timeout = total_budget.saturating_sub(validation_started.elapsed());
+            let mut run = Command::new("docker");
+            run.arg("run")
+                .arg("--rm")
+                .arg("--name")
+                .arg(&container_name)
+                .arg(&image_tag);
+            let run_output = run_command_with_timeout(&mut run, run_timeout)?;
+            summary.smoke_duration_ms += run_output.duration_ms;
+            let combined = if build_logs.is_empty() {
+                run_output.combined_output.clone()
+            } else {
+                format!("{build_logs}\n{}", run_output.combined_output)
+            };
+            fs::write(&run_log_path, &run_output.combined_output)?;
+            fs::write(&combined_log_path, &combined)?;
+            let _ = context::append_context_log(
+                config.benchmark_context_log.as_deref(),
+                "apdr-docker-run",
+                &run_output.combined_output,
+            );
+
+            if run_output.timed_out {
+                attempt.status = "runtime-timeout".to_string();
+                attempt.log_excerpt = truncate_log(&combined);
+                fs::write(
+                    &metadata_path,
+                    attempt_metadata(
+                        &attempt,
+                        &build_key,
+                        &build_command,
+                        &run_command,
+                        build_exit_code,
+                        build_duration_ms,
+                        run_output.exit_code,
+                        Some(run_output.duration_ms),
+                    ),
+                )?;
+                summary.attempts.push(attempt);
+                break; // try next Python version
+            }
+
+            if run_output.success {
+                attempt.status = "passed".to_string();
+                attempt.log_excerpt = truncate_log(&combined);
+                fs::write(
+                    &metadata_path,
+                    attempt_metadata(
+                        &attempt,
+                        &build_key,
+                        &build_command,
+                        &run_command,
+                        build_exit_code,
+                        build_duration_ms,
+                        run_output.exit_code,
+                        Some(run_output.duration_ms),
+                    ),
+                )?;
+                summary.selected_python_version = Some(python_version.clone());
+                summary.build_cache_key = Some(build_key.clone());
+                summary.build_image_id = Some(image_tag.clone());
+                summary.succeeded = true;
+                summary.attempts.push(attempt);
+                return Ok(summary);
+            }
+
+            // Runtime failure — no system dep retry for runtime failures
+            attempt.status = "runtime-failed".to_string();
+            attempt.log_excerpt = truncate_log(&combined);
+            fs::write(
+                &metadata_path,
+                attempt_metadata(
+                    &attempt,
+                    &build_key,
+                    &build_command,
+                    &run_command,
+                    build_exit_code,
+                    build_duration_ms,
+                    run_output.exit_code,
+                    Some(run_output.duration_ms),
+                ),
+            )?;
+            summary.attempts.push(attempt);
+            break; // try next Python version
+        }
+    }
+
+    Ok(summary)
+}
+
+fn docker_backend_unavailable(
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    requirements_txt: &str,
+    detail: &str,
+) -> io::Result<ValidationSummary> {
+    let python_version = candidate_versions
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+    let attempt_index = attempt_offset + 1;
+    let build_key = build_cache::key_for(requirements_txt, &python_version);
+    let image_tag = docker_image_tag(&build_key, &python_version);
+    let work_dir = context::attempt_dir(&config.output_dir, attempt_index, &python_version);
+    fs::create_dir_all(&work_dir)?;
+    let build_log_path = work_dir.join("build.log");
+    let run_log_path = work_dir.join("run.log");
+    let combined_log_path = work_dir.join("combined.log");
+    let metadata_path = work_dir.join("metadata.txt");
+    let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
+    fs::write(&build_log_path, detail)?;
+    fs::write(&run_log_path, "")?;
+    fs::write(&combined_log_path, detail)?;
+    fs::write(&context_snapshot_path, "")?;
+
+    let attempt = ValidationAttempt {
+        attempt_index,
+        python_version,
+        status: "build-failed".to_string(),
+        validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+        env_label: Some(image_tag),
+        log_excerpt: truncate_log(detail),
+        artifact_dir: Some(work_dir.display().to_string()),
+        build_log_path: Some(build_log_path.display().to_string()),
+        run_log_path: Some(run_log_path.display().to_string()),
+        combined_log_path: Some(combined_log_path.display().to_string()),
+        metadata_path: Some(metadata_path.display().to_string()),
+        context_snapshot_path: Some(context_snapshot_path.display().to_string()),
+        ..Default::default()
+    };
+    fs::write(
+        &metadata_path,
+        attempt_metadata(
+            &attempt,
+            &build_key,
+            "docker unavailable",
+            "--",
+            None,
+            0,
+            None,
+            None,
+        ),
+    )?;
+
+    Ok(ValidationSummary {
+        validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+        lockfile_key: Some(build_key.clone()),
+        build_cache_key: Some(build_key),
+        attempts: vec![attempt],
+        ..Default::default()
+    })
 }
 
 /// Create env and install requirements. Returns (build_logs, build_exit_code, build_duration_ms).
@@ -631,6 +1274,41 @@ fn sanitized_env_label(build_key: &str, python_version: &str) -> String {
         "apdr-env:{}-py{}",
         build_key.replace(':', "-"),
         python_version.replace('.', "_")
+    )
+}
+
+fn docker_image_tag(build_key: &str, python_version: &str) -> String {
+    format!(
+        "apdr-validate:py{}-{}",
+        python_version.replace('.', "_"),
+        build_key
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+    )
+}
+
+fn docker_container_name(build_key: &str, python_version: &str, attempt_index: usize) -> String {
+    format!(
+        "apdr-validate-py{}-{}-{}",
+        python_version.replace('.', "_"),
+        build_key
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
+                    ch.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>(),
+        attempt_index
     )
 }
 
@@ -1671,10 +2349,7 @@ mod tests {
             windows_launcher_version_arg("3.11").as_deref(),
             Some("-3.11")
         );
-        assert_eq!(
-            windows_launcher_version_arg("2.7").as_deref(),
-            Some("-2.7")
-        );
+        assert_eq!(windows_launcher_version_arg("2.7").as_deref(), Some("-2.7"));
     }
 
     #[test]

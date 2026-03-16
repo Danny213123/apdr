@@ -193,6 +193,7 @@ class AppState:
             "verbose": False,
             "snippet_limit": "",
             "python_command": "",
+            "validation_backend": "docker" if tool == "pllm" else "env",
         }
 
     def load_loadouts(self) -> list[dict[str, Any]]:
@@ -272,6 +273,14 @@ class AppState:
             cleaned = f"http://{cleaned}"
         return cleaned.rstrip("/")
 
+    def normalize_validation_backend(self, tool: str, validation_backend: str = "") -> str:
+        requested = str(validation_backend or "").strip().lower()
+        if tool == "pllm":
+            return "docker"
+        if requested in ("docker", "llm"):
+            return requested
+        return "env"
+
     def choose_runner(self, tool: str, python_command: str = "") -> list[str]:
         if python_command.strip():
             return shlex.split(python_command.strip())
@@ -332,13 +341,18 @@ class AppState:
             return []
         return ["docker", "requests"]
 
-    def validate_tool_runtime(self, tool: str, python_command: str = "") -> tuple[bool, str, list[str]]:
+    def validate_tool_runtime(
+        self, tool: str, python_command: str = "", validation_backend: str = ""
+    ) -> tuple[bool, str, list[str]]:
         runner = self.choose_runner(tool, python_command)
         tool_dir = self.tool_dir(tool)
         if tool == "apdr":
+            resolved_backend = self.normalize_validation_backend(tool, validation_backend)
             binary_candidates = [
                 tool_dir / "target" / "release" / "apdr",
                 tool_dir / "target" / "debug" / "apdr",
+                tool_dir / "target" / "release" / "apdr.exe",
+                tool_dir / "target" / "debug" / "apdr.exe",
             ]
             built_binary = next((candidate for candidate in binary_candidates if candidate.exists()), None)
             code, output = self._run_command(
@@ -349,21 +363,47 @@ class AppState:
             if code != 0:
                 detail = output or "Unable to run the Python wrapper for APDR."
                 return False, detail, runner
+            backend_detail = (
+                "Docker build + run validation"
+                if resolved_backend == "docker"
+                else "isolated local Python env validation"
+            )
+            if built_binary:
+                runtime_detail = f"APDR binary ready at {self.relative_path(built_binary)} for {backend_detail}."
+            elif shutil.which("cargo"):
+                runtime_detail = (
+                    "APDR wrapper is usable and Cargo is available to build/run the Rust CLI "
+                    f"for {backend_detail}."
+                )
+            else:
+                return (
+                    False,
+                    "APDR needs either a built binary in tools/apdr/target or Cargo on PATH. Build it with `cargo build --release` in tools/apdr.",
+                    runner,
+                )
+
+            if resolved_backend == "docker":
+                if not shutil.which("docker"):
+                    return False, f"{runtime_detail} Docker CLI is not on PATH.", runner
+                code, output = self._run_command(
+                    ["docker", "info", "--format", "{{.ServerVersion}}"],
+                    cwd=self.repo_root,
+                    timeout=8,
+                )
+                if code != 0:
+                    detail = output or "Unable to talk to the Docker daemon."
+                    return (
+                        False,
+                        f"{runtime_detail} {detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor.",
+                        runner,
+                    )
+                return True, f"{runtime_detail} Docker daemon ready (server {output.strip()}).", runner
+
             available, missing = self.apdr_local_interpreters()
             interpreter_detail = self.format_apdr_interpreter_detail(available, missing)
-            if built_binary:
-                if not available:
-                    return False, f"APDR binary is ready at {self.relative_path(built_binary)}, but no local validation interpreters were found. {interpreter_detail}", runner
-                return True, f"APDR binary ready at {self.relative_path(built_binary)}. {interpreter_detail}", runner
-            if shutil.which("cargo"):
-                if not available:
-                    return False, f"APDR wrapper is usable and Cargo is available to build/run the Rust CLI, but no local validation interpreters were found. {interpreter_detail}", runner
-                return True, f"APDR wrapper is usable and Cargo is available to build/run the Rust CLI. {interpreter_detail}", runner
-            return (
-                False,
-                "APDR needs either a built binary in tools/apdr/target or Cargo on PATH. Build it with `cargo build --release` in tools/apdr.",
-                runner,
-            )
+            if not available:
+                return False, f"{runtime_detail} {interpreter_detail}", runner
+            return True, f"{runtime_detail} {interpreter_detail}", runner
 
         imports = self.tool_runtime_imports(tool)
         import_statement = ", ".join(imports)
@@ -457,10 +497,17 @@ class AppState:
         except ValueError:
             return str(candidate)
 
-    def doctor_checks(self, selected_tool: str = "", base_url: str = "", python_command: str = "") -> list[dict[str, str]]:
+    def doctor_checks(
+        self,
+        selected_tool: str = "",
+        base_url: str = "",
+        python_command: str = "",
+        validation_backend: str = "",
+    ) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
         tools = self.discover_tools()
         resolved_tool = selected_tool or (tools[0] if tools else "")
+        resolved_backend = self.normalize_validation_backend(resolved_tool, validation_backend)
 
         checks.append(self._doctor_row("PASS", "Repository", str(self.repo_root)))
         checks.append(
@@ -500,13 +547,20 @@ class AppState:
         else:
             checks.append(self._doctor_row("WARN", "Ollama CLI", "The `ollama` command is not on PATH."))
 
-        docker_optional = resolved_tool == "apdr"
+        docker_required = resolved_tool == "pllm" or (
+            resolved_tool == "apdr" and resolved_backend == "docker"
+        )
+        docker_optional = not docker_required
         if shutil.which("docker"):
             code, output = self._run_command(["docker", "--version"], cwd=self.repo_root, timeout=5)
-            docker_cli_label = "Docker CLI (PLLM only)" if docker_optional else "Docker CLI"
+            docker_cli_label = (
+                "Docker CLI (optional for APDR env validation)"
+                if resolved_tool == "apdr" and docker_optional
+                else "Docker CLI"
+            )
             docker_cli_status = "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL")
             docker_cli_detail = output or (
-                "Docker is installed, but APDR does not require it."
+                "Docker is installed, but the selected backend does not require it."
                 if docker_optional
                 else "Unable to read docker version."
             )
@@ -516,11 +570,15 @@ class AppState:
             if code != 0 and not docker_optional:
                 detail = f"{detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor."
             elif code != 0 and docker_optional:
-                detail = f"{detail} APDR does not require Docker, but PLLM still does."
+                detail = f"{detail} Docker is optional for the selected backend."
             checks.append(
                 self._doctor_row(
                     "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL"),
-                    "Docker daemon (PLLM only)" if docker_optional else "Docker daemon",
+                    (
+                        "Docker daemon (optional for APDR env validation)"
+                        if resolved_tool == "apdr" and docker_optional
+                        else "Docker daemon"
+                    ),
                     detail,
                 )
             )
@@ -529,8 +587,8 @@ class AppState:
                 checks.append(
                     self._doctor_row(
                         "WARN",
-                        "Docker (PLLM only)",
-                        "Docker is not installed. APDR no longer requires Docker, but PLLM still does.",
+                        "Docker (optional)",
+                        "Docker is not installed. The selected validation backend does not require it.",
                     )
                 )
             else:
@@ -538,29 +596,50 @@ class AppState:
                 checks.append(self._doctor_row("FAIL", "Docker daemon", "Skipped because the Docker CLI is missing."))
 
         for tool in tools:
+            tool_backend = resolved_backend if tool == resolved_tool else self.normalize_validation_backend(tool, "")
             is_valid, output, runner = self.validate_tool_runtime(
-                tool, python_command if tool == resolved_tool else ""
+                tool,
+                python_command if tool == resolved_tool else "",
+                tool_backend,
             )
             detail = f"{self.format_command(runner)} -> {output}"
             checks.append(self._doctor_row("PASS" if is_valid else "WARN", f"{tool} runtime", detail))
             if tool == "apdr":
-                available, missing = self.apdr_local_interpreters()
-                interpreter_status = "FAIL" if not available else ("WARN" if missing else "PASS")
                 checks.append(
                     self._doctor_row(
-                        interpreter_status,
-                        "apdr interpreters",
-                        self.format_apdr_interpreter_detail(available, missing),
+                        "PASS",
+                        "apdr validation backend",
+                        "Docker build + run validation"
+                        if tool_backend == "docker"
+                        else "Isolated local Python env validation",
                     )
                 )
-                venv_ok, venv_detail = self.apdr_env_tooling_available(available)
-                checks.append(
-                    self._doctor_row(
-                        "PASS" if venv_ok else "WARN",
-                        "apdr env tooling",
-                        venv_detail,
+                if tool_backend == "env":
+                    available, missing = self.apdr_local_interpreters()
+                    interpreter_status = "FAIL" if not available else ("WARN" if missing else "PASS")
+                    checks.append(
+                        self._doctor_row(
+                            interpreter_status,
+                            "apdr interpreters",
+                            self.format_apdr_interpreter_detail(available, missing),
+                        )
                     )
-                )
+                    venv_ok, venv_detail = self.apdr_env_tooling_available(available)
+                    checks.append(
+                        self._doctor_row(
+                            "PASS" if venv_ok else "WARN",
+                            "apdr env tooling",
+                            venv_detail,
+                        )
+                    )
+                else:
+                    checks.append(
+                        self._doctor_row(
+                            "PASS",
+                            "apdr env tooling",
+                            "Not required when APDR validation backend is Docker.",
+                        )
+                    )
                 kgraph_server_up = self.apdr_kgraph_server_available()
                 checks.append(
                     self._doctor_row(
@@ -580,33 +659,38 @@ class AppState:
         self,
         selected_tool: str = "",
         python_command: str = "",
+        validation_backend: str = "",
         logger: Any | None = None,
     ) -> list[dict[str, str]]:
         log = logger or (lambda _message: None)
         tools = self.discover_tools()
         log("Starting automatic setup checks.")
         resolved_tool = selected_tool or (tools[0] if tools else "")
-        if resolved_tool != "apdr":
+        resolved_backend = self.normalize_validation_backend(resolved_tool, validation_backend)
+        if resolved_tool != "apdr" or resolved_backend == "docker":
             self._auto_start_docker_if_needed(log)
         else:
-            log("Skipping Docker auto-start because APDR now validates with local Python interpreters.")
+            log("Skipping Docker auto-start because APDR is using local env validation.")
 
         if "apdr" in tools:
-            self._auto_fix_apdr(log)
+            self._auto_fix_apdr(log, resolved_backend)
             started, detail = self.ensure_apdr_kgraph_server()
             if started:
                 log(f"APDR KGraph server: {detail}")
             else:
                 log(f"APDR KGraph server: {detail}")
-            available, missing = self.apdr_local_interpreters()
-            log(f"APDR interpreter availability: {self.format_apdr_interpreter_detail(available, missing)}")
+            if resolved_backend == "env":
+                available, missing = self.apdr_local_interpreters()
+                log(f"APDR interpreter availability: {self.format_apdr_interpreter_detail(available, missing)}")
+            else:
+                log("APDR interpreter installation skipped because Docker validation was selected.")
 
         if "pllm" in tools and resolved_tool != "apdr":
             self._auto_fix_pllm(selected_tool, python_command, log)
 
         base_url = self.load_model_config(resolved_tool).base_url if resolved_tool else DEFAULT_BASE_URL
         log("Re-running Doctor after setup changes.")
-        return self.doctor_checks(selected_tool, base_url, python_command)
+        return self.doctor_checks(selected_tool, base_url, python_command, resolved_backend)
 
     def read_json(self, path: Path) -> Any:
         if not path.exists():
@@ -1272,39 +1356,43 @@ class AppState:
                 log("Waiting for Docker Desktop to finish starting...")
         log("Docker Desktop was launched, but the daemon is still unavailable.")
 
-    def _auto_fix_apdr(self, log: Any) -> None:
+    def _auto_fix_apdr(self, log: Any, validation_backend: str = "env") -> None:
         tool_dir = self.tool_dir("apdr")
-        available, missing = self.apdr_local_interpreters()
-        if missing:
-            log(f"Attempting to install missing APDR Python interpreters: {', '.join(missing)}")
-            for version in missing:
-                success, detail = self._auto_install_apdr_python(version)
-                if success:
-                    log(f"Python {version}: {detail}")
-                else:
-                    log(f"Python {version}: {detail}")
-        else:
-            log("APDR Python interpreters are already available.")
-
-        # Ensure virtualenv is available for Python 2.7 env creation
-        if "2.7" in available:
-            host_python = shutil.which("python3") or "python3"
-            code, _ = self._run_command(
-                [host_python, "-m", "virtualenv", "--version"], cwd=self.repo_root, timeout=5
-            )
-            if code != 0:
-                log("Installing virtualenv for Python 2.7 env creation.")
-                code, output = self._run_command(
-                    [host_python, "-m", "pip", "install", "--user", "virtualenv"],
-                    cwd=self.repo_root,
-                    timeout=120,
-                )
-                if code == 0:
-                    log("virtualenv installed successfully.")
-                else:
-                    log(f"virtualenv installation failed: {self._summarize_output(output)}")
+        resolved_backend = self.normalize_validation_backend("apdr", validation_backend)
+        if resolved_backend == "env":
+            available, missing = self.apdr_local_interpreters()
+            if missing:
+                log(f"Attempting to install missing APDR Python interpreters: {', '.join(missing)}")
+                for version in missing:
+                    success, detail = self._auto_install_apdr_python(version)
+                    if success:
+                        log(f"Python {version}: {detail}")
+                    else:
+                        log(f"Python {version}: {detail}")
             else:
-                log("virtualenv is already available for Python 2.7 env creation.")
+                log("APDR Python interpreters are already available.")
+
+            # Ensure virtualenv is available for Python 2.7 env creation
+            if "2.7" in available:
+                host_python = shutil.which("python3") or "python3"
+                code, _ = self._run_command(
+                    [host_python, "-m", "virtualenv", "--version"], cwd=self.repo_root, timeout=5
+                )
+                if code != 0:
+                    log("Installing virtualenv for Python 2.7 env creation.")
+                    code, output = self._run_command(
+                        [host_python, "-m", "pip", "install", "--user", "virtualenv"],
+                        cwd=self.repo_root,
+                        timeout=120,
+                    )
+                    if code == 0:
+                        log("virtualenv installed successfully.")
+                    else:
+                        log(f"virtualenv installation failed: {self._summarize_output(output)}")
+                else:
+                    log("virtualenv is already available for Python 2.7 env creation.")
+        else:
+            log("Skipping APDR interpreter installation because Docker validation was selected.")
 
         binary_candidates = [
             tool_dir / "target" / "release" / "apdr",
