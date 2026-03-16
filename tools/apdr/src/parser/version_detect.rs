@@ -33,27 +33,50 @@ pub fn detect_maximum_python(source: &str) -> Option<String> {
 }
 
 fn looks_like_python_27(source: &str) -> bool {
-    // Check for Python 2-only stdlib imports
+    // Check for Python 2-only stdlib imports (line-level to avoid false positives).
+    // e.g. "from html.parser import HTMLParser" contains the substring "import HTMLParser"
+    // but is Python 3, not Python 2. Checking at line level prevents this.
     let py2_stdlib = [
-        "urllib2", "urlparse", "_winreg", "ConfigParser", "cPickle",
-        "cStringIO", "Queue", "HTMLParser", "httplib", "cookielib",
+        "urllib2",
+        "urlparse",
+        "_winreg",
+        "ConfigParser",
+        "cPickle",
+        "cStringIO",
+        "StringIO",
+        "Queue",
+        "HTMLParser",
+        "httplib",
+        "cookielib",
         "robotparser",
     ];
-    for import in &py2_stdlib {
-        if source.contains(&format!("import {import}"))
-            || source.contains(&format!("from {import} import"))
-        {
-            return true;
-        }
-    }
 
     for line in source.lines() {
         let trimmed = line.trim();
+
+        for name in &py2_stdlib {
+            // Match: import <name>, import <name> as ..., import <name>, ...
+            let import_stmt = format!("import {name}");
+            if let Some(rest) = trimmed.strip_prefix(&import_stmt) {
+                if rest.is_empty() || !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
+                    return true;
+                }
+            }
+            // Match: from <name> import ..., from <name>.<sub> import ...
+            if trimmed.starts_with(&format!("from {name} "))
+                || trimmed.starts_with(&format!("from {name}."))
+            {
+                return true;
+            }
+        }
+
         if trimmed.starts_with("print ") && !trimmed.starts_with("print(") {
             return true;
         }
         if trimmed.contains("xrange(")
             || trimmed.contains("raw_input(")
+            || trimmed.contains("urllib.urlopen(")
+            || trimmed.contains("urllib.urlencode(")
             || trimmed.contains("unicode(")
             || trimmed.contains("long(")
             || trimmed.contains("basestring")

@@ -8,6 +8,7 @@ pub mod recovery;
 pub mod resolver;
 
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,7 @@ pub struct ParseResult {
     pub python_version_max: Option<String>,
     pub confidence: f64,
     pub scanned_files: Vec<String>,
+    pub stdlib_modules: std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -39,6 +41,9 @@ pub struct ResolveConfig {
     pub cache_path: PathBuf,
     pub output_dir: PathBuf,
     pub validation_timeout: Duration,
+    pub validated_env_cache_max_entries: usize,
+    pub validated_env_cache_max_bytes: Option<u64>,
+    pub package_repository_cache_enabled: bool,
     pub parallel_versions: bool,
     pub scan_config_files: bool,
     pub allow_llm: bool,
@@ -182,6 +187,18 @@ impl ResolveConfig {
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
             validation_timeout: Duration::from_secs(300),
+            validated_env_cache_max_entries: env_usize(
+                "APDR_VALIDATED_ENV_CACHE_MAX_ENTRIES",
+                crate::cache::maintenance::DEFAULT_MAX_VALIDATED_ENVS,
+            ),
+            validated_env_cache_max_bytes: env_optional_gib(
+                "APDR_VALIDATED_ENV_CACHE_MAX_GB",
+                Some(crate::cache::maintenance::DEFAULT_MAX_VALIDATED_ENV_BYTES),
+            ),
+            package_repository_cache_enabled: env_flag(
+                "APDR_ENABLE_PACKAGE_REPOSITORY_CACHE",
+                false,
+            ),
             parallel_versions: true,
             scan_config_files: true,
             allow_llm: false,
@@ -192,6 +209,38 @@ impl ResolveConfig {
             validate: true,
             execute_snippet: true,
         }
+    }
+}
+
+fn env_flag(name: &str, default: bool) -> bool {
+    match env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default,
+        },
+        Err(_) => default,
+    }
+}
+
+fn env_usize(name: &str, default: usize) -> usize {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(default)
+}
+
+fn env_optional_gib(name: &str, default_bytes: Option<u64>) -> Option<u64> {
+    match env::var(name) {
+        Ok(value) => {
+            let parsed = value.trim().parse::<u64>().ok()?;
+            if parsed == 0 {
+                None
+            } else {
+                Some(parsed.saturating_mul(1024 * 1024 * 1024))
+            }
+        }
+        Err(_) => default_bytes,
     }
 }
 

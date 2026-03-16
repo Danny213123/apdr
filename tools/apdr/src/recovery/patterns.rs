@@ -131,5 +131,14 @@ pub fn built_in_patterns() -> Vec<FailurePattern> {
             success_rate: 1.0,
             times_applied: 1,
         },
+        FailurePattern {
+            pattern: "No space left on device".to_string(),
+            error_type: "DiskFull".to_string(),
+            conflict_class: "TPL-OS".to_string(),
+            fix: "Free disk space or move APDR/virtualenv caches to a volume with more space."
+                .to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
     ]
 }

@@ -55,8 +55,66 @@ fn cli_resolves_from_stdin_without_validation() {
     assert!(report.contains("validation_duration_ms: 0"));
     assert!(report.contains("install_duration_ms: 0"));
     assert!(report.contains("smoke_duration_ms: 0"));
-    assert!(output_dir.join(".apdr-debug").join("parse-summary.txt").exists());
-    assert!(output_dir.join(".apdr-debug").join("benchmark-context.log").exists());
+    assert!(output_dir
+        .join(".apdr-debug")
+        .join("parse-summary.txt")
+        .exists());
+    assert!(output_dir
+        .join(".apdr-debug")
+        .join("benchmark-context.log")
+        .exists());
 
     fs::remove_dir_all(output_dir).unwrap();
+}
+
+#[test]
+fn cli_prunes_cache_at_custom_path() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = unique_output_dir(&tool_root, "cache-prune-cli");
+    let envs_dir = cache_path.join("validated-envs");
+    fs::create_dir_all(envs_dir.join("build-old")).unwrap();
+    fs::create_dir_all(envs_dir.join("build-new")).unwrap();
+    fs::write(
+        envs_dir.join("build-old").join("payload.bin"),
+        vec![0u8; 40],
+    )
+    .unwrap();
+    fs::write(
+        envs_dir.join("build-new").join("payload.bin"),
+        vec![0u8; 50],
+    )
+    .unwrap();
+    fs::write(envs_dir.join("build-old").join(".apdr-last-used"), "100").unwrap();
+    fs::write(envs_dir.join("build-new").join(".apdr-last-used"), "200").unwrap();
+    fs::create_dir_all(cache_path.join("package-repository")).unwrap();
+    fs::write(
+        cache_path.join("package-repository").join("pkg.bin"),
+        vec![0u8; 31],
+    )
+    .unwrap();
+    fs::create_dir_all(cache_path.join("pip-cache")).unwrap();
+    fs::write(cache_path.join("pip-cache").join("pip.bin"), vec![0u8; 29]).unwrap();
+
+    let binary = env!("CARGO_BIN_EXE_apdr");
+    let output = Command::new(binary)
+        .arg("cache")
+        .arg("--cache-path")
+        .arg(&cache_path)
+        .arg("prune")
+        .arg("--max-validated-envs")
+        .arg("1")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("REMOVED_VALIDATED_ENVS=1"));
+    assert!(stdout.contains("REMOVED_PACKAGE_REPOSITORY=true"));
+    assert!(stdout.contains("REMOVED_LEGACY_PIP_CACHE=true"));
+    assert!(!cache_path.join("package-repository").exists());
+    assert!(!cache_path.join("pip-cache").exists());
+    assert!(!cache_path.join("validated-envs").join("build-old").exists());
+    assert!(cache_path.join("validated-envs").join("build-new").exists());
+
+    fs::remove_dir_all(cache_path).unwrap();
 }

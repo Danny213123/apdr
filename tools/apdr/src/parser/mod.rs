@@ -59,5 +59,6 @@ pub fn parse_snippet(
         python_version_max,
         confidence: 0.72,
         scanned_files,
+        stdlib_modules,
     })
 }

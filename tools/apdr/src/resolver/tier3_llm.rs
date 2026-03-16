@@ -26,16 +26,11 @@ pub fn assess_solvability(
         return None;
     }
 
-    let benchmark_context = context::read_context_tail(
-        config.benchmark_context_log.as_deref(),
-        24_000,
-    )
-    .unwrap_or_default();
-    let prompt = prompts::solvability_assessment_prompt(
-        snippet_source,
-        parse_result,
-        &benchmark_context,
-    );
+    let benchmark_context =
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 24_000)
+            .unwrap_or_default();
+    let prompt =
+        prompts::solvability_assessment_prompt(snippet_source, parse_result, &benchmark_context);
     let _ = persist_llm_trace(
         config,
         "solvability-assessment",
@@ -109,11 +104,9 @@ pub fn resolve(
         .iter()
         .flat_map(|import_name| rag::assemble_context(store, import_name))
         .collect::<Vec<_>>();
-    let benchmark_context = context::read_context_tail(
-        config.benchmark_context_log.as_deref(),
-        48_000,
-    )
-    .unwrap_or_default();
+    let benchmark_context =
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+            .unwrap_or_default();
     let prompt = prompts::package_resolution_prompt(
         &llm_candidates,
         python_version,
@@ -157,7 +150,7 @@ pub fn resolve(
     );
 
     let mut resolved = Vec::new();
-    let mut still_unresolved = preserved_unresolved;
+    let still_unresolved = preserved_unresolved;
     let mut notes = Vec::new();
 
     for import_name in &llm_candidates {
@@ -167,8 +160,12 @@ pub fn resolve(
         let version = if versions.is_empty() {
             None
         } else {
-            let version_prompt =
-                prompts::version_inference_prompt(&mapped, &versions, python_version, &benchmark_context);
+            let version_prompt = prompts::version_inference_prompt(
+                &mapped,
+                &versions,
+                python_version,
+                &benchmark_context,
+            );
             let _ = persist_llm_trace(
                 config,
                 &format!("version-selection-{mapped}"),
@@ -182,39 +179,36 @@ pub fn resolve(
                 "apdr-llm-prompt",
                 &version_prompt,
             );
-            let picked = client
-                .complete(&version_prompt)
-                .and_then(|reply| {
-                    let _ = context::append_context_log(
-                        config.benchmark_context_log.as_deref(),
-                        "apdr-llm-response",
-                        &reply,
-                    );
-                    let _ = persist_llm_trace(
-                        config,
-                        &format!("version-selection-{mapped}"),
-                        &version_prompt,
-                        Some(&reply),
-                        &benchmark_context,
-                        &versions,
-                    );
-                    parse_version_line(&reply, &versions)
-                });
+            let picked = client.complete(&version_prompt).and_then(|reply| {
+                let _ = context::append_context_log(
+                    config.benchmark_context_log.as_deref(),
+                    "apdr-llm-response",
+                    &reply,
+                );
+                let _ = persist_llm_trace(
+                    config,
+                    &format!("version-selection-{mapped}"),
+                    &version_prompt,
+                    Some(&reply),
+                    &benchmark_context,
+                    &versions,
+                );
+                parse_version_line(&reply, &versions)
+            });
             picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
         };
-        if pypi_client::package_exists(store, &mapped, python_version) {
-            let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm");
-            resolved.push(ResolvedDependency {
-                import_name: import_name.clone(),
-                package_name: mapped.clone(),
-                version,
-                strategy: "llm".to_string(),
-                confidence: 0.73,
-            });
-            notes.push(format!("LLM resolved {import_name} -> {mapped}."));
-        } else {
-            still_unresolved.push(import_name.clone());
-        }
+        // Trust the LLM mapping even if the package isn't in KGraph/cache.
+        // Packages outside KGraph (~8K) still exist on PyPI (~400K); pip will
+        // verify at install time during validation.
+        let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm");
+        resolved.push(ResolvedDependency {
+            import_name: import_name.clone(),
+            package_name: mapped.clone(),
+            version,
+            strategy: "llm".to_string(),
+            confidence: 0.73,
+        });
+        notes.push(format!("LLM resolved {import_name} -> {mapped}."));
     }
 
     StageResult {
@@ -280,14 +274,16 @@ pub fn resolve_with_context(
     // Add snippet context to help LLM understand usage
     context.push(format!(
         "Code snippet showing import usage:\n```python\n{}\n```",
-        snippet_source.lines().take(50).collect::<Vec<_>>().join("\n")
+        snippet_source
+            .lines()
+            .take(50)
+            .collect::<Vec<_>>()
+            .join("\n")
     ));
 
-    let benchmark_context = context::read_context_tail(
-        config.benchmark_context_log.as_deref(),
-        48_000,
-    )
-    .unwrap_or_default();
+    let benchmark_context =
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+            .unwrap_or_default();
 
     let prompt = prompts::package_resolution_prompt(
         &llm_candidates,
@@ -336,41 +332,41 @@ pub fn resolve_with_context(
     let mut notes = Vec::new();
 
     for import_name in &llm_candidates {
-        let mapped = parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
+        let mapped =
+            parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
         let version = if mapped != *import_name {
             let versions = pypi_client::compatible_versions(store, &mapped, python_version);
-            let picked = (!versions.is_empty()).then(|| {
-                let version_prompt = prompts::version_inference_prompt(
-                    &mapped,
-                    &versions,
-                    python_version,
-                    &benchmark_context,
-                );
-                let reply = client.complete(&version_prompt)?;
-                let _ = context::append_context_log(
-                    config.benchmark_context_log.as_deref(),
-                    &format!("apdr-llm-version-retry({})", mapped),
-                    &reply,
-                );
-                parse_version_line(&reply, &versions)
-            }).flatten();
+            let picked = (!versions.is_empty())
+                .then(|| {
+                    let version_prompt = prompts::version_inference_prompt(
+                        &mapped,
+                        &versions,
+                        python_version,
+                        &benchmark_context,
+                    );
+                    let reply = client.complete(&version_prompt)?;
+                    let _ = context::append_context_log(
+                        config.benchmark_context_log.as_deref(),
+                        &format!("apdr-llm-version-retry({})", mapped),
+                        &reply,
+                    );
+                    parse_version_line(&reply, &versions)
+                })
+                .flatten();
             picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
         } else {
             None
         };
-        if pypi_client::package_exists(store, &mapped, python_version) {
-            let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm-retry");
-            resolved.push(ResolvedDependency {
-                import_name: import_name.clone(),
-                package_name: mapped.clone(),
-                version,
-                strategy: "llm-retry".to_string(),
-                confidence: 0.73,
-            });
-            notes.push(format!("LLM retry resolved {import_name} -> {mapped}."));
-        } else {
-            still_unresolved.push(import_name.clone());
-        }
+        // Trust the LLM mapping even if the package isn't in KGraph/cache.
+        let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm-retry");
+        resolved.push(ResolvedDependency {
+            import_name: import_name.clone(),
+            package_name: mapped.clone(),
+            version,
+            strategy: "llm-retry".to_string(),
+            confidence: 0.73,
+        });
+        notes.push(format!("LLM retry resolved {import_name} -> {mapped}."));
     }
 
     still_unresolved.extend(preserved_unresolved);
@@ -402,11 +398,9 @@ pub fn single_package_hint(
         return None;
     }
     let context = rag::assemble_context(store, import_name);
-    let benchmark_context = context::read_context_tail(
-        config.benchmark_context_log.as_deref(),
-        48_000,
-    )
-    .unwrap_or_default();
+    let benchmark_context =
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+            .unwrap_or_default();
     let prompt = prompts::package_resolution_prompt(
         &[import_name.to_string()],
         python_version,
@@ -449,8 +443,12 @@ pub fn single_package_hint(
     let version = if versions.is_empty() {
         None
     } else {
-        let prompt =
-            prompts::version_inference_prompt(&mapped, &versions, python_version, &benchmark_context);
+        let prompt = prompts::version_inference_prompt(
+            &mapped,
+            &versions,
+            python_version,
+            &benchmark_context,
+        );
         let _ = persist_llm_trace(
             config,
             &format!("single-version-{mapped}"),
@@ -578,7 +576,11 @@ fn parse_solvability_assessment(response: &str) -> Option<SolvabilityAssessment>
             match left.trim() {
                 "decision" => decision = right.trim().to_lowercase(),
                 "confidence" => {
-                    confidence = right.trim().parse::<f64>().ok().map(|value| value.clamp(0.0, 1.0))
+                    confidence = right
+                        .trim()
+                        .parse::<f64>()
+                        .ok()
+                        .map(|value| value.clamp(0.0, 1.0))
                 }
                 "reason" => reason = right.trim().to_string(),
                 _ => {}

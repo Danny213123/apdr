@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.8 - 2026-03-15
+
+- Added APDR cache lifecycle controls, including disk-usage reporting in `cache stats`, a new `cache prune` command, compressed `validated-envs` archives, and retention limits for validated env and wheelhouse cache data.
+- Improved APDR validation resilience by enforcing a total validation budget, pre-installing known build-time prerequisites for brittle packages, reusing cached validated environments more reliably, and making the package-repository cache opt-in instead of default-on.
+- Expanded legacy dependency recovery with better Python 2 detection, new PIL/Pillow and Keras/TensorFlow family handling, refreshed seeded alias/version data, and regression coverage for mixed archive/directory cache entries plus legacy import cases.
+
 ## 0.2.7 - 2026-03-14
 
 - Reduced APDR solve overhead by running the LLM solvability assessment only when tier1/tier2 still leave unresolved imports, which avoids several seconds of Ollama latency on already-resolved cases.

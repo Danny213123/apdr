@@ -27,11 +27,7 @@ pub fn ensure_debug_layout(output_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn append_context_log(
-    path: Option<&Path>,
-    kind: &str,
-    message: &str,
-) -> io::Result<()> {
+pub fn append_context_log(path: Option<&Path>, kind: &str, message: &str) -> io::Result<()> {
     let Some(path) = path else {
         return Ok(());
     };

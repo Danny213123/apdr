@@ -24,6 +24,48 @@ pub struct PreSolveResult {
 struct SolveState {
     constraints: BTreeMap<String, String>,
     selected: BTreeMap<String, String>,
+    /// Cached domains: maps package → (constraint_when_computed, compatible_versions).
+    /// A cache entry is valid iff its constraint matches the current constraint.
+    /// Entries become stale when constraints change and are lazily recomputed.
+    domain_cache: BTreeMap<String, (String, Vec<String>)>,
+    /// Undo stack for backtracking without cloning.
+    undo_stack: Vec<UndoOp>,
+}
+
+#[derive(Clone, Debug)]
+enum UndoOp {
+    InsertSelected(String),
+    SetConstraint(String, Option<String>),
+}
+
+impl SolveState {
+    fn checkpoint(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    fn restore(&mut self, checkpoint: usize) {
+        while self.undo_stack.len() > checkpoint {
+            match self.undo_stack.pop().unwrap() {
+                UndoOp::InsertSelected(package) => {
+                    self.selected.remove(&package);
+                }
+                UndoOp::SetConstraint(package, old_value) => match old_value {
+                    Some(value) => {
+                        self.constraints.insert(package, value);
+                    }
+                    None => {
+                        self.constraints.remove(&package);
+                    }
+                },
+            }
+        }
+    }
+
+    fn record_select(&mut self, package: String, version: String) {
+        self.undo_stack
+            .push(UndoOp::InsertSelected(package.clone()));
+        self.selected.insert(package, version);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -52,16 +94,15 @@ pub fn solve_dependency_graph(
     };
 
     if resolved.is_empty() && parse_result.config_deps.is_empty() {
-        result.notes.push("Skipped SMT pre-solve because there were no resolved packages or config dependencies.".to_string());
+        result.notes.push(
+            "Skipped SMT pre-solve because there were no resolved packages or config dependencies."
+                .to_string(),
+        );
         return result;
     }
 
-    let python_candidates = solver_candidate_versions(
-        parse_result,
-        resolved,
-        selected_python,
-        config,
-    );
+    let python_candidates =
+        solver_candidate_versions(parse_result, resolved, selected_python, config);
     result.notes.push(format!(
         "SMT pre-solve candidate Python versions: {}.",
         python_candidates.join(", ")
@@ -70,7 +111,9 @@ pub fn solve_dependency_graph(
     let (state, direct_packages) = initial_state(resolved, &parse_result.config_deps);
     result.direct_packages = direct_packages.clone();
     if state.constraints.is_empty() {
-        result.notes.push("Skipped SMT pre-solve because no package constraints were available.".to_string());
+        result.notes.push(
+            "Skipped SMT pre-solve because no package constraints were available.".to_string(),
+        );
         return result;
     }
 
@@ -144,7 +187,8 @@ pub fn solve_dependency_graph(
                 }
 
                 let mut budget = 12_000usize;
-                match solve_for_python(&mut store_clone, &state_clone, &python_version, &mut budget) {
+                match solve_for_python(&mut store_clone, &state_clone, &python_version, &mut budget)
+                {
                     Ok(outcome) => {
                         let mut success_guard = success_ref.lock().unwrap();
                         if success_guard.is_none() {
@@ -152,10 +196,16 @@ pub fn solve_dependency_graph(
                         }
                     }
                     Err(SolveError::Hard(reason)) => {
-                        hard_ref.lock().unwrap().push(format!("{python_version}: {reason}"));
+                        hard_ref
+                            .lock()
+                            .unwrap()
+                            .push(format!("{python_version}: {reason}"));
                     }
                     Err(SolveError::Incomplete(reason)) => {
-                        incomplete_ref.lock().unwrap().push(format!("{python_version}: {reason}"));
+                        incomplete_ref
+                            .lock()
+                            .unwrap()
+                            .push(format!("{python_version}: {reason}"));
                     }
                 }
             });
@@ -185,8 +235,14 @@ pub fn solve_dependency_graph(
         return result;
     }
 
-    let hard_failures = Arc::try_unwrap(hard_failures).unwrap().into_inner().unwrap();
-    let incomplete_failures = Arc::try_unwrap(incomplete_failures).unwrap().into_inner().unwrap();
+    let hard_failures = Arc::try_unwrap(hard_failures)
+        .unwrap()
+        .into_inner()
+        .unwrap();
+    let incomplete_failures = Arc::try_unwrap(incomplete_failures)
+        .unwrap()
+        .into_inner()
+        .unwrap();
 
     if !hard_failures.is_empty() && incomplete_failures.is_empty() {
         result.hard_unsat = true;
@@ -219,7 +275,14 @@ fn solver_candidate_versions(
             config.python_version_range,
             config.execute_snippet,
         )
-        .unwrap_or_else(|| docker::parallel::candidate_versions(selected_python, config.python_version_range))
+        .unwrap_or_else(|| {
+            docker::parallel::candidate_versions(
+                selected_python,
+                config.python_version_range,
+                Some(&parse_result.python_version_min),
+                parse_result.python_version_max.as_deref(),
+            )
+        })
     } else {
         vec![selected_python.to_string()]
     };
@@ -276,7 +339,8 @@ fn solve_for_python(
     python_version: &str,
     budget: &mut usize,
 ) -> Result<SolveOutcome, SolveError> {
-    let selected = solve_recursive(store, state.clone(), python_version, budget)?;
+    let mut working = state.clone();
+    let selected = solve_recursive(store, &mut working, python_version, budget)?;
     Ok(SolveOutcome {
         python_version: python_version.to_string(),
         selected,
@@ -285,7 +349,7 @@ fn solve_for_python(
 
 fn solve_recursive(
     store: &mut CacheStore,
-    state: SolveState,
+    state: &mut SolveState,
     python_version: &str,
     budget: &mut usize,
 ) -> Result<BTreeMap<String, String>, SolveError> {
@@ -297,32 +361,50 @@ fn solve_recursive(
     *budget -= 1;
 
     // Unit propagation: eagerly assign packages with exactly 1 candidate.
-    // This avoids branching on forced choices and cascades constraints early.
-    let state = propagate_forced(store, state, python_version, budget)?;
+    propagate_forced(store, state, python_version, budget)?;
 
-    let Some(package) = next_unsolved_package(store, &state, python_version)? else {
-        return Ok(state.selected);
+    let Some(package) = next_unsolved_package(store, state, python_version)? else {
+        return Ok(state.selected.clone());
     };
 
+    // Extract candidates from domain cache (populated by next_unsolved_package).
     let constraint = state.constraints.get(&package).cloned().unwrap_or_default();
-    let candidates = compatible_versions_for_constraint(store, &package, &constraint, python_version)?;
+    let candidates = state
+        .domain_cache
+        .remove(&package)
+        .filter(|(cst, _)| *cst == constraint)
+        .map(|(_, v)| v)
+        .unwrap_or_else(|| {
+            compatible_versions_for_constraint(store, &package, &constraint, python_version)
+                .unwrap_or_default()
+        });
     if candidates.is_empty() {
         return Err(SolveError::Hard(format!(
             "package `{package}` has no versions satisfying `{}`",
-            if constraint.is_empty() { "*" } else { constraint.as_str() }
+            if constraint.is_empty() {
+                "*"
+            } else {
+                constraint.as_str()
+            }
         )));
     }
 
+    let branch_cp = state.checkpoint();
     let mut last_failure: Option<SolveError> = None;
     for version in candidates.into_iter().rev() {
-        let mut next_state = state.clone();
-        next_state.selected.insert(package.clone(), version.clone());
-        match apply_dependency_specs(store, &mut next_state, &package, &version, python_version) {
-            Ok(()) => match solve_recursive(store, next_state, python_version, budget) {
+        state.record_select(package.clone(), version.clone());
+        match apply_dependency_specs(store, state, &package, &version, python_version) {
+            Ok(()) => match solve_recursive(store, state, python_version, budget) {
                 Ok(solution) => return Ok(solution),
-                Err(reason) => last_failure = Some(reason),
+                Err(reason) => {
+                    last_failure = Some(reason);
+                    state.restore(branch_cp);
+                }
             },
-            Err(reason) => last_failure = Some(reason),
+            Err(reason) => {
+                last_failure = Some(reason);
+                state.restore(branch_cp);
+            }
         }
     }
 
@@ -341,10 +423,10 @@ fn solve_recursive(
 /// until no more forced assignments remain.
 fn propagate_forced(
     store: &mut CacheStore,
-    mut state: SolveState,
+    state: &mut SolveState,
     python_version: &str,
     budget: &mut usize,
-) -> Result<SolveState, SolveError> {
+) -> Result<(), SolveError> {
     loop {
         let mut progress = false;
         let packages: Vec<String> = state
@@ -358,10 +440,11 @@ fn propagate_forced(
             if state.selected.contains_key(&package) {
                 continue;
             }
-            let constraint = state.constraints.get(&package).cloned().unwrap_or_default();
-            let candidates =
-                compatible_versions_for_constraint(store, &package, &constraint, python_version)?;
-            if candidates.is_empty() {
+            let (count, forced_version) =
+                domain_info(store, state, &package, python_version)?;
+            if count == 0 {
+                let constraint =
+                    state.constraints.get(&package).cloned().unwrap_or_default();
                 return Err(SolveError::Hard(format!(
                     "package `{package}` has no versions satisfying `{}`",
                     if constraint.is_empty() {
@@ -371,10 +454,9 @@ fn propagate_forced(
                     }
                 )));
             }
-            if candidates.len() == 1 {
-                let version = candidates.into_iter().next().unwrap();
-                state.selected.insert(package.clone(), version.clone());
-                apply_dependency_specs(store, &mut state, &package, &version, python_version)?;
+            if let Some(version) = forced_version {
+                state.record_select(package.clone(), version.clone());
+                apply_dependency_specs(store, state, &package, &version, python_version)?;
                 progress = true;
                 if *budget == 0 {
                     return Err(SolveError::Incomplete(
@@ -389,30 +471,40 @@ fn propagate_forced(
             break;
         }
     }
-    Ok(state)
+    Ok(())
 }
 
 fn next_unsolved_package(
     store: &mut CacheStore,
-    state: &SolveState,
+    state: &mut SolveState,
     python_version: &str,
 ) -> Result<Option<String>, SolveError> {
     let mut best: Option<(String, usize)> = None;
-    for (package, constraint) in &state.constraints {
-        if state.selected.contains_key(package) {
-            continue;
-        }
-        let candidates = compatible_versions_for_constraint(store, package, constraint, python_version)?;
-        if candidates.is_empty() {
+
+    let packages: Vec<String> = state
+        .constraints
+        .keys()
+        .filter(|pkg| !state.selected.contains_key(*pkg))
+        .cloned()
+        .collect();
+
+    for package in packages {
+        let (count, _) = domain_info(store, state, &package, python_version)?;
+        if count == 0 {
+            let constraint =
+                state.constraints.get(&package).cloned().unwrap_or_default();
             return Err(SolveError::Hard(format!(
                 "package `{package}` has no versions satisfying `{}`",
-                if constraint.is_empty() { "*" } else { constraint.as_str() }
+                if constraint.is_empty() {
+                    "*"
+                } else {
+                    constraint.as_str()
+                }
             )));
         }
-        let count = candidates.len();
         match &best {
-            Some((_current, current_count)) if *current_count <= count => {}
-            _ => best = Some((package.clone(), count)),
+            Some((_, current_count)) if *current_count <= count => {}
+            _ => best = Some((package, count)),
         }
     }
     Ok(best.map(|(package, _)| package))
@@ -431,20 +523,27 @@ fn apply_dependency_specs(
             continue;
         }
         let dep_constraint = dependency_constraint(&spec);
-        merge_constraint(&mut state.constraints, &dep_package, &dep_constraint);
+        merge_constraint_tracked(state, &dep_package, &dep_constraint);
         if let Some(selected_version) = state.selected.get(&dep_package) {
-            let merged = state.constraints.get(&dep_package).cloned().unwrap_or_default();
-            if !merged.is_empty()
-                && !pypi_client::version_satisfies(selected_version, &merged)
-            {
+            let merged = state
+                .constraints
+                .get(&dep_package)
+                .cloned()
+                .unwrap_or_default();
+            if !merged.is_empty() && !pypi_client::version_satisfies(selected_version, &merged) {
                 return Err(SolveError::Hard(format!(
                     "selected `{dep_package}=={selected_version}` violates merged constraint `{merged}`"
                 )));
             }
             continue;
         }
-        let merged = state.constraints.get(&dep_package).cloned().unwrap_or_default();
-        if compatible_versions_for_constraint(store, &dep_package, &merged, python_version)?.is_empty() {
+        let (count, _) = domain_info(store, state, &dep_package, python_version)?;
+        if count == 0 {
+            let merged = state
+                .constraints
+                .get(&dep_package)
+                .cloned()
+                .unwrap_or_default();
             return Err(SolveError::Hard(format!(
                 "dependency `{dep_package}` introduced by `{package}=={version}` has no versions satisfying `{}`",
                 if merged.is_empty() { "*" } else { merged.as_str() }
@@ -452,6 +551,62 @@ fn apply_dependency_specs(
         }
     }
     Ok(())
+}
+
+/// Returns (domain_length, version_if_exactly_one) using domain cache.
+/// Computes and caches the domain on miss; returns from cache on hit.
+fn domain_info(
+    store: &mut CacheStore,
+    state: &mut SolveState,
+    package: &str,
+    python_version: &str,
+) -> Result<(usize, Option<String>), SolveError> {
+    let constraint = state
+        .constraints
+        .get(package)
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some((cached_cst, cached_versions)) = state.domain_cache.get(package) {
+        if *cached_cst == constraint {
+            let len = cached_versions.len();
+            let forced = if len == 1 {
+                Some(cached_versions[0].clone())
+            } else {
+                None
+            };
+            return Ok((len, forced));
+        }
+    }
+
+    let versions =
+        compatible_versions_for_constraint(store, package, &constraint, python_version)?;
+    let len = versions.len();
+    let forced = if len == 1 {
+        Some(versions[0].clone())
+    } else {
+        None
+    };
+    state
+        .domain_cache
+        .insert(package.to_string(), (constraint, versions));
+    Ok((len, forced))
+}
+
+/// Like merge_constraint but records an undo op so backtracking can restore the old value.
+fn merge_constraint_tracked(state: &mut SolveState, package: &str, incoming: &str) {
+    let normalized = pypi_client::requirement_name(package);
+    if normalized.is_empty() {
+        return;
+    }
+    let old_value = state.constraints.get(&normalized).cloned();
+    merge_constraint(&mut state.constraints, package, incoming);
+    let new_value = state.constraints.get(&normalized).cloned();
+    if old_value != new_value {
+        state
+            .undo_stack
+            .push(UndoOp::SetConstraint(normalized, old_value));
+    }
 }
 
 fn compatible_versions_for_constraint(
@@ -468,15 +623,13 @@ fn compatible_versions_for_constraint(
     }
     Ok(all_versions
         .into_iter()
-        .filter(|version| constraint.is_empty() || pypi_client::version_satisfies(version, constraint))
+        .filter(|version| {
+            constraint.is_empty() || pypi_client::version_satisfies(version, constraint)
+        })
         .collect())
 }
 
-fn merge_constraint(
-    constraints: &mut BTreeMap<String, String>,
-    package: &str,
-    incoming: &str,
-) {
+fn merge_constraint(constraints: &mut BTreeMap<String, String>, package: &str, incoming: &str) {
     let normalized_package = pypi_client::requirement_name(package);
     if normalized_package.is_empty() {
         return;
@@ -499,7 +652,11 @@ fn merge_constraint(
         .filter(|item| !item.is_empty())
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    for fragment in cleaned.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for fragment in cleaned
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         if !existing_parts.iter().any(|item| item == fragment) {
             existing_parts.push(fragment.to_string());
         }
@@ -552,7 +709,10 @@ fn render_lockfile(
     transitive.sort();
     let transitive_packages = transitive
         .iter()
-        .filter_map(|item| item.split_once("==").map(|(package, _)| package.to_string()))
+        .filter_map(|item| {
+            item.split_once("==")
+                .map(|(package, _)| package.to_string())
+        })
         .collect::<Vec<_>>();
     lines.extend(transitive);
     let lockfile = if lines.is_empty() {
@@ -573,4 +733,3 @@ fn dedupe_strings(values: Vec<String>) -> Vec<String> {
     }
     deduped
 }
-

@@ -28,6 +28,7 @@ codeop
 collections
 colorsys
 commands
+console
 compileall
 ConfigParser
 contextlib
@@ -35,9 +36,11 @@ Cookie
 cookielib
 copy
 copy_reg
+cPickle
 cProfile
 crypt
 csv
+cStringIO
 ctypes
 curses
 datetime
@@ -69,6 +72,7 @@ hashlib
 heapq
 hmac
 htmllib
+HTMLParser
 httplib
 idlelib
 imaplib

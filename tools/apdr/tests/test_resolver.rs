@@ -16,6 +16,22 @@ fn resolver_maps_seeded_imports_to_packages() {
 }
 
 #[test]
+fn resolver_pins_legacy_pillow_for_python2_pil_snippets() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/python2_pil_stringio_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-legacy-pillow-output");
+    config.validate = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.python_version, "2.7");
+    assert!(result.requirements_txt.contains("Pillow==6.2.2"));
+    assert!(!result.requirements_txt.to_lowercase().contains("stringio"));
+    assert!(!result.unresolved.iter().any(|item| item == "StringIO"));
+}
+
+#[test]
 fn tier1_ignores_poisoned_fuzzy_cache_entries() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cache_path = tool_root.join("target/test-fuzzy-cache");
@@ -32,6 +48,7 @@ fn tier1_ignores_poisoned_fuzzy_cache_entries() {
         python_version_max: Some("2.7".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
@@ -57,10 +74,19 @@ fn tier2_does_not_fuzzy_match_short_imports_to_unrelated_packages() {
         python_version_max: Some("3.9".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
-    let stage = apdr::resolver::tier2_heuristic::resolve(&["sip".to_string()], &parse_result, &mut store, "3.9");
-    assert!(stage.resolved.iter().all(|item| item.package_name != "scipy"));
+    let stage = apdr::resolver::tier2_heuristic::resolve(
+        &["sip".to_string()],
+        &parse_result,
+        &mut store,
+        "3.9",
+    );
+    assert!(stage
+        .resolved
+        .iter()
+        .all(|item| item.package_name != "scipy"));
 
     std::fs::remove_dir_all(cache_path).unwrap();
 }
@@ -79,6 +105,7 @@ fn tier1_resolves_specific_namespace_aliases_from_import_paths() {
         python_version_max: Some("3.9".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -103,6 +130,7 @@ fn tier1_resolves_reference_alias_seed_entries() {
         python_version_max: Some("3.9".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -118,25 +146,30 @@ fn tier1_discrepancy_versions_fall_back_to_latest_python_compatible_release() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cache_path = tool_root.join("target/test-discrepancy-version-cache");
     let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    // PyYAML is in name_discrepancies.tsv pinned at 6.0.2.  Populate the
+    // pypi_index with older versions only so the pinned version is absent,
+    // forcing the fallback-to-latest logic.  Key must be normalized (lowercase,
+    // hyphens) because pypi_index lookups go through normalize().
     store.pypi_index.insert(
-        "redis".to_string(),
-        vec!["2.10.6".to_string(), "3.5.3".to_string()],
+        "pyyaml".to_string(),
+        vec!["5.4.1".to_string(), "6.0".to_string()],
     );
 
     let parse_result = apdr::ParseResult {
-        imports: vec!["redis".to_string()],
-        import_paths: vec!["redis".to_string()],
+        imports: vec!["yaml".to_string()],
+        import_paths: vec!["yaml".to_string()],
         config_deps: Vec::new(),
         python_version_min: "2.7".to_string(),
         python_version_max: Some("2.7".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
     assert_eq!(stage.resolved.len(), 1);
-    assert_eq!(stage.resolved[0].package_name, "redis");
-    assert_eq!(stage.resolved[0].version.as_deref(), Some("3.5.3"));
+    assert_eq!(stage.resolved[0].package_name, "PyYAML");
+    assert_eq!(stage.resolved[0].version.as_deref(), Some("6.0"));
 
     std::fs::remove_dir_all(cache_path).unwrap();
 }
@@ -155,6 +188,7 @@ fn tier1_resolves_libxmp_to_python_xmp_toolkit() {
         python_version_max: Some("3.9".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -178,6 +212,7 @@ fn tier1_skips_generic_local_helper_imports() {
         python_version_max: Some("2.7".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
@@ -230,11 +265,9 @@ fn resolver_uses_family_bundle_for_py2_style_pymc3_benchmarks() {
     assert!(result.requirements_txt.contains("setuptools==69.5.1"));
     assert!(result.requirements_txt.contains("xarray==2022.9.0"));
     assert!(result.requirements_txt.contains("xarray-einstats==0.6.0"));
-    assert!(result
-        .resolution_report
-        .notes
-        .iter()
-        .any(|note| note.contains("Family knowledge targeted the legacy PyMC3 stack at Python 3.10")));
+    assert!(result.resolution_report.notes.iter().any(
+        |note| note.contains("Family knowledge targeted the legacy PyMC3 stack at Python 3.10")
+    ));
 }
 
 #[test]
@@ -247,6 +280,7 @@ fn legacy_pymc3_validation_prefers_supported_runtime_order() {
         python_version_max: Some("2.7".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
     let resolved = vec![
         apdr::ResolvedDependency {
@@ -287,6 +321,7 @@ fn legacy_pymc3_family_recovery_keeps_curated_bundle_pins() {
         python_version_max: Some("2.7".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
     let mut resolved = vec![
         apdr::ResolvedDependency {
@@ -388,21 +423,22 @@ fn resolver_uses_family_bundle_for_legacy_tensorflow_stack() {
 
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
-    assert!(result.requirements_txt.contains("tensorflow==1.15.5"));
+    assert!(result.requirements_txt.contains("tensorflow==1.15.0"));
     assert!(result.requirements_txt.contains("keras==2.3.1"));
     assert!(result.requirements_txt.contains("numpy==1.16.6"));
     assert!(result.requirements_txt.contains("gym==0.17.3"));
-    assert!(result
-        .resolution_report
-        .notes
-        .iter()
-        .any(|note| note.contains("Family knowledge targeted the legacy TensorFlow/Keras stack at Python 3.7")));
+    assert!(result.resolution_report.notes.iter().any(|note| note
+        .contains("Family knowledge targeted the legacy TensorFlow/Keras stack at Python 3.7")));
 }
 
 #[test]
 fn legacy_tensorflow_validation_prefers_py37_before_py27() {
     let parse_result = apdr::ParseResult {
-        imports: vec!["tensorflow".to_string(), "keras".to_string(), "gym".to_string()],
+        imports: vec![
+            "tensorflow".to_string(),
+            "keras".to_string(),
+            "gym".to_string(),
+        ],
         import_paths: vec![
             "tensorflow".to_string(),
             "keras.layers".to_string(),
@@ -413,12 +449,13 @@ fn legacy_tensorflow_validation_prefers_py37_before_py27() {
         python_version_max: Some("3.9".to_string()),
         confidence: 0.8,
         scanned_files: Vec::new(),
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
     let resolved = vec![
         apdr::ResolvedDependency {
             import_name: "tensorflow".to_string(),
             package_name: "tensorflow".to_string(),
-            version: Some("1.15.5".to_string()),
+            version: Some("1.15.0".to_string()),
             strategy: "family:legacy-tensorflow".to_string(),
             confidence: 0.96,
         },
@@ -493,6 +530,7 @@ fn pre_solver_pins_compatible_versions_before_validation() {
         python_version_max: Some("3.11".to_string()),
         confidence: 0.9,
         scanned_files: vec!["requirements.txt".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
     let resolved = vec![apdr::ResolvedDependency {
         import_name: "click".to_string(),
@@ -515,9 +553,15 @@ fn pre_solver_pins_compatible_versions_before_validation() {
     assert!(result.attempted);
     assert!(result.satisfiable);
     assert_eq!(result.selected_python_version, "3.11");
-    assert_eq!(result.assigned_versions.get("click").map(String::as_str), Some("6.6"));
     assert_eq!(
-        result.assigned_versions.get("pip-tools").map(String::as_str),
+        result.assigned_versions.get("click").map(String::as_str),
+        Some("6.6")
+    );
+    assert_eq!(
+        result
+            .assigned_versions
+            .get("pip-tools")
+            .map(String::as_str),
         Some("4.4.0")
     );
     assert!(result.lockfile_requirements.contains("click==6.6"));
@@ -547,6 +591,7 @@ fn pre_solver_reports_unsat_without_validation_attempts() {
         python_version_max: Some("3.11".to_string()),
         confidence: 0.9,
         scanned_files: vec!["requirements.txt".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
     };
     let resolved = vec![apdr::ResolvedDependency {
         import_name: "click".to_string(),

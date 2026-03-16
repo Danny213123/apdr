@@ -485,7 +485,12 @@ impl CacheStore {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>();
-            self.pypi_index.insert(normalize(parts[0]), versions);
+            let entry = self.pypi_index.entry(normalize(parts[0])).or_default();
+            for version in versions {
+                if !entry.iter().any(|item| item == &version) {
+                    entry.push(version);
+                }
+            }
         }
         Ok(())
     }
@@ -654,10 +659,7 @@ impl CacheStore {
 }
 
 pub fn normalize(value: &str) -> String {
-    value
-        .trim()
-        .replace(['_', '.'], "-")
-        .to_lowercase()
+    value.trim().replace(['_', '.'], "-").to_lowercase()
 }
 
 fn version_dependency_key(package_name: &str, version: &str) -> String {

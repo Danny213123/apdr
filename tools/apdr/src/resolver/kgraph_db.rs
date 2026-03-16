@@ -5,25 +5,80 @@ use std::sync::{Mutex, OnceLock};
 
 use rusqlite::Connection;
 
-/// Cached connection to the KGraph SQLite database.
-/// Opened once on first access and reused for the lifetime of the process.
-static KGRAPH_CONNECTION: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
+/// Connection pool for the KGraph SQLite database.
+/// Allows multiple concurrent readers without mutex contention.
+struct ConnectionPool {
+    connections: Mutex<Vec<Connection>>,
+    db_path: PathBuf,
+    max_size: usize,
+    available: bool,
+}
 
-/// Path that was used to open the cached connection.
-static KGRAPH_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
+/// RAII guard that returns the connection to the pool on drop.
+struct PooledConnection<'a> {
+    conn: Option<Connection>,
+    pool: &'a ConnectionPool,
+}
 
-fn get_connection(db_path: &Path) -> &'static Mutex<Option<Connection>> {
-    KGRAPH_CONNECTION.get_or_init(|| {
-        let conn = if db_path.exists() {
-            Connection::open(db_path).ok()
-        } else {
-            None
-        };
-        if conn.is_some() {
-            let _ = KGRAPH_DB_PATH.set(db_path.to_path_buf());
+impl std::ops::Deref for PooledConnection<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        self.conn.as_ref().unwrap()
+    }
+}
+
+impl Drop for PooledConnection<'_> {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            if let Ok(mut conns) = self.pool.connections.lock() {
+                if conns.len() < self.pool.max_size {
+                    conns.push(conn);
+                }
+            }
         }
-        Mutex::new(conn)
-    })
+    }
+}
+
+impl ConnectionPool {
+    fn new(db_path: &Path, max_size: usize) -> Self {
+        ConnectionPool {
+            available: db_path.exists(),
+            connections: Mutex::new(Vec::with_capacity(max_size)),
+            db_path: db_path.to_path_buf(),
+            max_size,
+        }
+    }
+
+    fn get(&self) -> Option<PooledConnection<'_>> {
+        if !self.available {
+            return None;
+        }
+        // Try to reuse an existing connection from the pool.
+        if let Ok(mut conns) = self.connections.lock() {
+            if let Some(conn) = conns.pop() {
+                return Some(PooledConnection {
+                    conn: Some(conn),
+                    pool: self,
+                });
+            }
+        }
+        // Open a new read-only connection.
+        let conn = Connection::open_with_flags(
+            &self.db_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()?;
+        Some(PooledConnection {
+            conn: Some(conn),
+            pool: self,
+        })
+    }
+}
+
+static KGRAPH_POOL: OnceLock<ConnectionPool> = OnceLock::new();
+
+fn get_pool(db_path: &Path) -> &'static ConnectionPool {
+    KGRAPH_POOL.get_or_init(|| ConnectionPool::new(db_path, 4))
 }
 
 fn normalize(name: &str) -> String {
@@ -36,11 +91,7 @@ fn normalize(name: &str) -> String {
 /// Fetch all versions for a package from the KGraph SQLite DB.
 /// Returns an empty Vec if the DB is unavailable or the package is not found.
 pub fn kgraph_versions(db_path: &Path, package: &str) -> Vec<String> {
-    let guard = match get_connection(db_path).lock() {
-        Ok(g) => g,
-        Err(_) => return Vec::new(),
-    };
-    let Some(conn) = guard.as_ref() else {
+    let Some(conn) = get_pool(db_path).get() else {
         return Vec::new();
     };
     let normalized = normalize(package);
@@ -61,20 +112,15 @@ pub fn kgraph_versions(db_path: &Path, package: &str) -> Vec<String> {
 
 /// Fetch dependency specs for a specific package version from the KGraph SQLite DB.
 pub fn kgraph_dependency_specs(db_path: &Path, package: &str, version: &str) -> Vec<String> {
-    let guard = match get_connection(db_path).lock() {
-        Ok(g) => g,
-        Err(_) => return Vec::new(),
-    };
-    let Some(conn) = guard.as_ref() else {
+    let Some(conn) = get_pool(db_path).get() else {
         return Vec::new();
     };
     let normalized = normalize(package);
-    let mut stmt = match conn.prepare_cached(
-        "SELECT spec FROM deps WHERE package = ?1 AND version = ?2",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
+    let mut stmt =
+        match conn.prepare_cached("SELECT spec FROM deps WHERE package = ?1 AND version = ?2") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
     let rows = stmt.query_map(rusqlite::params![&normalized, version], |row| {
         row.get::<_, String>(0)
     });
@@ -94,11 +140,7 @@ pub fn kgraph_bulk_prefetch(
     packages: &[String],
 ) -> BTreeMap<String, (Vec<String>, BTreeMap<String, Vec<String>>)> {
     let mut results = BTreeMap::new();
-    let guard = match get_connection(db_path).lock() {
-        Ok(g) => g,
-        Err(_) => return results,
-    };
-    let Some(conn) = guard.as_ref() else {
+    let Some(conn) = get_pool(db_path).get() else {
         return results;
     };
 
@@ -107,12 +149,11 @@ pub fn kgraph_bulk_prefetch(
         Ok(s) => s,
         Err(_) => return results,
     };
-    let mut dep_stmt = match conn
-        .prepare_cached("SELECT spec FROM deps WHERE package = ?1 AND version = ?2")
-    {
-        Ok(s) => s,
-        Err(_) => return results,
-    };
+    let mut dep_stmt =
+        match conn.prepare_cached("SELECT spec FROM deps WHERE package = ?1 AND version = ?2") {
+            Ok(s) => s,
+            Err(_) => return results,
+        };
 
     for package in packages {
         let normalized = normalize(package);
@@ -128,10 +169,9 @@ pub fn kgraph_bulk_prefetch(
 
         let mut deps_by_version = BTreeMap::new();
         for version in &versions {
-            let dep_rows =
-                dep_stmt.query_map(rusqlite::params![&normalized, version], |row| {
-                    row.get::<_, String>(0)
-                });
+            let dep_rows = dep_stmt.query_map(rusqlite::params![&normalized, version], |row| {
+                row.get::<_, String>(0)
+            });
             let Ok(dep_rows) = dep_rows else { continue };
             let specs: Vec<String> = dep_rows
                 .filter_map(|r| r.ok())
@@ -153,11 +193,7 @@ pub fn db_available(db_path: &Path) -> bool {
     if !db_path.exists() {
         return false;
     }
-    let guard = match get_connection(db_path).lock() {
-        Ok(g) => g,
-        Err(_) => return false,
-    };
-    guard.is_some()
+    get_pool(db_path).get().is_some()
 }
 
 // ---------------------------------------------------------------------------
@@ -237,11 +273,7 @@ mod tests {
 
     #[test]
     fn version_sort_key_handles_prerelease() {
-        let mut versions = vec![
-            "1.0a1".to_string(),
-            "1.0".to_string(),
-            "1.0b2".to_string(),
-        ];
+        let mut versions = vec!["1.0a1".to_string(), "1.0".to_string(), "1.0b2".to_string()];
         versions.sort_by(|a, b| compare_version_keys(a, b));
         // 'a' < 'b' < numeric-only, so a1 < b2 < bare 1.0
         // Actually: 1.0a1 = [1,'.','0','a',1], 1.0 = [1,'.','0], 1.0b2 = [1,'.','0','b',2]

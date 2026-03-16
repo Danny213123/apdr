@@ -102,9 +102,13 @@ impl KnowledgeCache {
         let new_id = self.next_available_id();
 
         // Now insert
-        let versions = self.labels.entry(package_name.to_string()).or_insert_with(HashMap::new);
+        let versions = self
+            .labels
+            .entry(package_name.to_string())
+            .or_insert_with(HashMap::new);
         versions.insert(version.to_string(), new_id);
-        self.labels_by_id.insert(new_id, format!("{}-{}", package_name, version));
+        self.labels_by_id
+            .insert(new_id, format!("{}-{}", package_name, version));
     }
 
     /// Add dependency information for a package version (learning mode)
@@ -128,9 +132,9 @@ impl KnowledgeCache {
 
                     // For now, just track that this dependency exists
                     // We'll get its specific version when we resolve it
-                    self.labels.get(&dep_name).and_then(|versions| {
-                        versions.values().next().copied()
-                    })
+                    self.labels
+                        .get(&dep_name)
+                        .and_then(|versions| versions.values().next().copied())
                 })
                 .collect();
 
@@ -141,9 +145,9 @@ impl KnowledgeCache {
 
     /// Save the knowledge cache back to disk (persists learned knowledge)
     pub fn save_to_directory(&self, data_dir: &Path) -> io::Result<()> {
-        use std::fs::create_dir_all;
         use flate2::write::GzEncoder;
         use flate2::Compression;
+        use std::fs::create_dir_all;
 
         create_dir_all(data_dir)?;
 

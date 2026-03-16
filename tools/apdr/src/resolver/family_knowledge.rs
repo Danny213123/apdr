@@ -41,7 +41,11 @@ impl PackageFamily {
         self.members
             .iter()
             .find(|member| member.preferred)
-            .or_else(|| self.members.iter().find(|member| member.status == MemberStatus::Active))
+            .or_else(|| {
+                self.members
+                    .iter()
+                    .find(|member| member.status == MemberStatus::Active)
+            })
     }
 }
 
@@ -112,7 +116,11 @@ pub static FAMILIES: &[PackageFamily] = &[
         notes: "Pillow is the maintained fork of PIL.",
         members: &[
             member!("PIL", &["PIL", "Image"], Unmaintained),
-            member!("Pillow", &["PIL", "Image", "ImageDraw", "ImageFont"], preferred),
+            member!(
+                "Pillow",
+                &["PIL", "Image", "ImageDraw", "ImageFont"],
+                preferred
+            ),
         ],
     },
     PackageFamily {
@@ -397,9 +405,7 @@ pub static FAMILIES: &[PackageFamily] = &[
         modules: &["pptx"],
         conflict_kind: ConflictKind::Namespace,
         notes: "python-pptx is the maintained PowerPoint library.",
-        members: &[
-            member!("python-pptx", &["pptx"], preferred),
-        ],
+        members: &[member!("python-pptx", &["pptx"], preferred)],
     },
     PackageFamily {
         name: "pdf-reader",
@@ -440,10 +446,22 @@ pub static FAMILIES: &[PackageFamily] = &[
         members: &[
             member!("pyobjc", &["objc", "PyObjCTools"], preferred),
             member!("pyobjc-framework-Cocoa", &["AppKit", "Foundation"], Active),
-            member!("pyobjc-framework-Quartz", &["Quartz", "CoreGraphics"], Active),
-            member!("pyobjc-framework-CoreFoundation", &["CoreFoundation"], Active),
+            member!(
+                "pyobjc-framework-Quartz",
+                &["Quartz", "CoreGraphics"],
+                Active
+            ),
+            member!(
+                "pyobjc-framework-CoreFoundation",
+                &["CoreFoundation"],
+                Active
+            ),
             member!("pyobjc-framework-CoreServices", &["LaunchServices"], Active),
-            member!("pyobjc-framework-SystemConfiguration", &["SystemConfiguration"], Active),
+            member!(
+                "pyobjc-framework-SystemConfiguration",
+                &["SystemConfiguration"],
+                Active
+            ),
         ],
     },
     PackageFamily {
@@ -451,9 +469,11 @@ pub static FAMILIES: &[PackageFamily] = &[
         modules: &["win32api", "win32con", "win32com", "win32gui", "pywintypes"],
         conflict_kind: ConflictKind::Namespace,
         notes: "pywin32 provides all win32 modules.",
-        members: &[
-            member!("pywin32", &["win32api", "win32con", "win32com", "win32gui", "pywintypes"], preferred),
-        ],
+        members: &[member!(
+            "pywin32",
+            &["win32api", "win32con", "win32com", "win32gui", "pywintypes"],
+            preferred
+        )],
     },
     PackageFamily {
         name: "levenshtein",
@@ -614,9 +634,7 @@ pub static FAMILIES: &[PackageFamily] = &[
         modules: &["cups"],
         conflict_kind: ConflictKind::Namespace,
         notes: "pycups is the maintained CUPS binding.",
-        members: &[
-            member!("pycups", &["cups"], preferred),
-        ],
+        members: &[member!("pycups", &["cups"], preferred)],
     },
     PackageFamily {
         name: "slack-migration",
@@ -635,9 +653,7 @@ pub static FAMILIES: &[PackageFamily] = &[
         modules: &["Xlib"],
         conflict_kind: ConflictKind::Namespace,
         notes: "python-xlib is the maintained X11 binding.",
-        members: &[
-            member!("python-xlib", &["Xlib"], preferred),
-        ],
+        members: &[member!("python-xlib", &["Xlib"], preferred)],
     },
     PackageFamily {
         name: "usb",
@@ -654,18 +670,18 @@ pub static FAMILIES: &[PackageFamily] = &[
         modules: &["board", "busio", "digitalio", "analogio", "neopixel"],
         conflict_kind: ConflictKind::Namespace,
         notes: "adafruit-blinka provides CircuitPython APIs on desktop.",
-        members: &[
-            member!("adafruit-blinka", &["board", "busio", "digitalio", "analogio"], preferred),
-        ],
+        members: &[member!(
+            "adafruit-blinka",
+            &["board", "busio", "digitalio", "analogio"],
+            preferred
+        )],
     },
     PackageFamily {
         name: "rapidjson",
         modules: &["rapidjson"],
         conflict_kind: ConflictKind::Namespace,
         notes: "python-rapidjson is the maintained rapidjson binding.",
-        members: &[
-            member!("python-rapidjson", &["rapidjson"], preferred),
-        ],
+        members: &[member!("python-rapidjson", &["rapidjson"], preferred)],
     },
 ];
 
@@ -695,7 +711,10 @@ impl FamilyRegistry {
                     .push(index);
             }
         }
-        Self { by_package, by_module }
+        Self {
+            by_package,
+            by_module,
+        }
     }
 
     pub fn family_for_package(&self, package: &str) -> Option<&'static PackageFamily> {
@@ -737,6 +756,12 @@ pub fn apply_family_knowledge(
         execute_snippet,
     ) {
         notes.push(note);
+    } else if let Some(note) = ensure_keras_backend(resolved, selected_python) {
+        // Only add backend companion if the legacy TF bundle was NOT applied.
+        notes.push(note);
+    }
+    if let Some(note) = apply_legacy_pillow_pin(parse_result, resolved, selected_python) {
+        notes.push(note);
     }
     notes
 }
@@ -753,9 +778,11 @@ pub fn recover_family_knowledge(
     if uses_legacy_pymc3_stack(parse_result, resolved)
         && (lowercase.contains("pymc3 3.11.5 depends on scipy<1.8.0")
             || lowercase.contains("pymc3 3.11.5 depends on numpy<1.22.2")
-            || lowercase.contains("could not find a version that satisfies the requirement pandas==")
+            || lowercase
+                .contains("could not find a version that satisfies the requirement pandas==")
             || lowercase.contains("no matching distribution found for pandas==")
-            || lowercase.contains("could not find a version that satisfies the requirement numpy==")
+            || lowercase
+                .contains("could not find a version that satisfies the requirement numpy==")
             || lowercase.contains("no matching distribution found for numpy==")
             || lowercase.contains("modulenotfounderror: no module named 'pkg_resources'")
             || lowercase.contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
@@ -783,9 +810,11 @@ pub fn recover_family_knowledge(
 
     if uses_legacy_tensorflow_stack(parse_result, resolved)
         && (lowercase.contains("requires a different python version")
-            || lowercase.contains("could not find a version that satisfies the requirement tensorflow==")
+            || lowercase
+                .contains("could not find a version that satisfies the requirement tensorflow==")
             || lowercase.contains("no matching distribution found for tensorflow==")
-            || lowercase.contains("could not find a version that satisfies the requirement keras==")
+            || lowercase
+                .contains("could not find a version that satisfies the requirement keras==")
             || lowercase.contains("no matching distribution found for keras==")
             || lowercase.contains("resolutionimpossible"))
     {
@@ -852,7 +881,8 @@ pub fn validation_candidate_versions(
     execute_snippet: bool,
 ) -> Option<Vec<String>> {
     if uses_legacy_pymc3_stack(parse_result, resolved) {
-        let candidates = docker::parallel::candidate_versions(selected_python, python_range);
+        let candidates =
+            docker::parallel::candidate_versions(selected_python, python_range, None, None);
         let preferred = if execute_snippet {
             vec!["2.7", "3.10", "3.9"]
         } else {
@@ -863,7 +893,11 @@ pub fn validation_candidate_versions(
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
             .map(str::to_string)
             .collect::<Vec<_>>();
-        return Some(if ordered.is_empty() { candidates } else { ordered });
+        return Some(if ordered.is_empty() {
+            candidates
+        } else {
+            ordered
+        });
     }
 
     if uses_legacy_tensorflow_stack(parse_result, resolved) {
@@ -878,7 +912,11 @@ pub fn validation_candidate_versions(
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
             .map(str::to_string)
             .collect::<Vec<_>>();
-        return Some(if ordered.is_empty() { candidates } else { ordered });
+        return Some(if ordered.is_empty() {
+            candidates
+        } else {
+            ordered
+        });
     }
 
     None
@@ -1001,6 +1039,16 @@ fn apply_legacy_tensorflow_bundle(
     let mut changes = Vec::new();
 
     for (import_name, package_name, version) in legacy_tensorflow_bundle(&bundle_python) {
+        // Only pin bundle packages that already appear in the resolved list
+        // (i.e. the snippet actually imports them). Don't add unrelated packages
+        // like gym or keras when the snippet only uses tensorflow.
+        let already_resolved = resolved.iter().any(|dep| {
+            dep.import_name.eq_ignore_ascii_case(import_name)
+                || normalize(&dep.package_name) == normalize(package_name)
+        });
+        if !already_resolved {
+            continue;
+        }
         if pin_dependency(
             resolved,
             import_name,
@@ -1023,6 +1071,124 @@ fn apply_legacy_tensorflow_bundle(
     ))
 }
 
+/// When standalone `keras` is resolved without any deep-learning backend
+/// (tensorflow, jax, torch), add `tensorflow` as a companion dependency.
+/// Modern keras 3.x requires a backend framework to function; without one,
+/// `import keras` fails at runtime.
+fn ensure_keras_backend(
+    resolved: &mut Vec<ResolvedDependency>,
+    python_version: &str,
+) -> Option<String> {
+    // On Python 2, old keras 1.x/2.x used Theano as the default backend.
+    // Adding tensorflow would cause install failures (no Python 2 support).
+    if python_version.starts_with("2.") {
+        return None;
+    }
+
+    let has_keras = resolved
+        .iter()
+        .any(|d| normalize(&d.package_name) == "keras");
+    if !has_keras {
+        return None;
+    }
+
+    let has_backend = resolved.iter().any(|d| {
+        let pkg = normalize(&d.package_name);
+        pkg == "tensorflow"
+            || pkg == "torch"
+            || pkg == "jax"
+            || pkg.starts_with("tensorflow-")
+    });
+    if has_backend {
+        return None;
+    }
+
+    resolved.push(ResolvedDependency {
+        import_name: "tensorflow".to_string(),
+        package_name: "tensorflow".to_string(),
+        version: None,
+        strategy: "family:keras-backend".to_string(),
+        confidence: 0.92,
+    });
+
+    Some(
+        "Family knowledge added tensorflow as the default backend for standalone keras."
+            .to_string(),
+    )
+}
+
+fn apply_legacy_pillow_pin(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+) -> Option<String> {
+    if !selected_python.starts_with("2.") {
+        return None;
+    }
+
+    let pil_markers = [
+        "pil",
+        "image",
+        "imagedraw",
+        "imagefont",
+        "imagefilter",
+        "imagechops",
+        "imageops",
+        "imageenhance",
+        "imagegrab",
+    ];
+    let references_pillow = parse_result
+        .imports
+        .iter()
+        .map(|item| normalize(item))
+        .any(|item| pil_markers.contains(&item.as_str()))
+        || resolved
+            .iter()
+            .any(|dependency| normalize(&dependency.package_name) == "pillow");
+    if !references_pillow {
+        return None;
+    }
+
+    let mut changed = false;
+    for dependency in resolved.iter_mut() {
+        if normalize(&dependency.package_name) == "pillow" {
+            let target_version = Some("6.2.2".to_string());
+            let row_changed = dependency.package_name != "Pillow"
+                || dependency.version != target_version
+                || dependency.strategy != "family:legacy-pillow";
+            dependency.package_name = "Pillow".to_string();
+            dependency.version = Some("6.2.2".to_string());
+            dependency.strategy = "family:legacy-pillow".to_string();
+            dependency.confidence = 0.95;
+            changed |= row_changed;
+        }
+    }
+
+    if !resolved
+        .iter()
+        .any(|dependency| normalize(&dependency.package_name) == "pillow")
+    {
+        pin_dependency(
+            resolved,
+            "PIL",
+            "Pillow",
+            Some("6.2.2"),
+            "family:legacy-pillow",
+            0.95,
+        );
+        changed = true;
+    }
+
+    if changed {
+        Some(
+            "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+                .to_string(),
+        )
+    } else {
+        None
+    }
+}
+
 fn preferred_legacy_pymc3_python(
     selected_python: &str,
     python_range: usize,
@@ -1036,7 +1202,8 @@ fn preferred_legacy_pymc3_python(
         };
     }
 
-    let candidates = docker::parallel::candidate_versions(selected_python, python_range);
+    let candidates =
+        docker::parallel::candidate_versions(selected_python, python_range, None, None);
     if candidates.iter().any(|value| value == "3.10") {
         "3.10".to_string()
     } else if candidates.iter().any(|value| value == "3.9") {
@@ -1075,11 +1242,9 @@ fn preferred_legacy_tensorflow_python(
     }
 }
 
-fn legacy_tensorflow_candidate_versions(
-    selected_python: &str,
-    python_range: usize,
-) -> Vec<String> {
-    let mut candidates = docker::parallel::candidate_versions(selected_python, python_range);
+fn legacy_tensorflow_candidate_versions(selected_python: &str, python_range: usize) -> Vec<String> {
+    let mut candidates =
+        docker::parallel::candidate_versions(selected_python, python_range, None, None);
     for forced in ["2.7", "3.7", "3.8"] {
         if !candidates.iter().any(|item| item == forced) {
             candidates.push(forced.to_string());
@@ -1088,7 +1253,9 @@ fn legacy_tensorflow_candidate_versions(
     candidates
 }
 
-fn legacy_pymc3_bundle(bundle_python: &str) -> &'static [(&'static str, &'static str, &'static str)] {
+fn legacy_pymc3_bundle(
+    bundle_python: &str,
+) -> &'static [(&'static str, &'static str, &'static str)] {
     if bundle_python.starts_with("2.") {
         &[
             ("numpy", "numpy", "1.16.6"),
@@ -1121,14 +1288,14 @@ fn legacy_tensorflow_bundle(
             ("gym", "gym", "0.17.3"),
             ("keras", "keras", "2.3.1"),
             ("numpy", "numpy", "1.16.6"),
-            ("tensorflow", "tensorflow", "1.15.5"),
+            ("tensorflow", "tensorflow", "1.15.0"),
         ]
     } else {
         &[
             ("gym", "gym", "0.17.3"),
             ("keras", "keras", "2.3.1"),
             ("numpy", "numpy", "1.16.6"),
-            ("tensorflow", "tensorflow", "1.15.5"),
+            ("tensorflow", "tensorflow", "1.15.0"),
         ]
     }
 }
@@ -1152,7 +1319,10 @@ fn uses_legacy_pymc3_stack(parse_result: &ParseResult, resolved: &[ResolvedDepen
         || packages.contains("theano")
 }
 
-fn uses_legacy_tensorflow_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+fn uses_legacy_tensorflow_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let imports = parse_result
         .imports
         .iter()
@@ -1166,7 +1336,10 @@ fn uses_legacy_tensorflow_stack(parse_result: &ParseResult, resolved: &[Resolved
 
     let has_tensorflow = imports.contains("tensorflow")
         || imports.iter().any(|item| item.starts_with("tensorflow."))
-        || packages.contains("tensorflow");
+        || resolved.iter().any(|dep| {
+            normalize(&dep.package_name) == "tensorflow"
+                && dep.strategy != "family:keras-backend"
+        });
     let has_standalone_keras = imports.contains("keras")
         || imports.iter().any(|item| item.starts_with("keras."))
         || packages.contains("keras");
@@ -1193,7 +1366,8 @@ fn pin_dependency(
         let import_match = dependency.import_name.eq_ignore_ascii_case(import_name);
         let package_match = normalize(&dependency.package_name) == normalize(package_name);
         if import_match || package_match {
-            let changed = dependency.package_name != package_name || dependency.version != target_version;
+            let changed =
+                dependency.package_name != package_name || dependency.version != target_version;
             dependency.import_name = import_name.to_string();
             dependency.package_name = package_name.to_string();
             dependency.version = target_version.clone();

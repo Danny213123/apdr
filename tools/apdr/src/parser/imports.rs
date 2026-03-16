@@ -123,7 +123,9 @@ mod tests {
         assert!(scan.top_levels.contains(&"bs4".to_string()));
         assert!(scan.top_levels.contains(&"google".to_string()));
         assert!(scan.full_paths.contains(&"bs4.BeautifulSoup".to_string()));
-        assert!(scan.full_paths.contains(&"google.cloud.storage".to_string()));
+        assert!(scan
+            .full_paths
+            .contains(&"google.cloud.storage".to_string()));
         assert!(scan
             .full_paths
             .contains(&"google.cloud.storage.Client".to_string()));

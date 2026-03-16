@@ -14,6 +14,7 @@ pub fn classify_log(log: &str, store: &CacheStore) -> ClassifierResult {
             .partial_cmp(&left.success_rate)
             .unwrap_or(Ordering::Equal)
             .then(right.times_applied.cmp(&left.times_applied))
+            .then(right.pattern.len().cmp(&left.pattern.len()))
     });
     let lowercase = log.to_lowercase();
 

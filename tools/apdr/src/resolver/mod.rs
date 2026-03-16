@@ -37,13 +37,22 @@ pub fn resolve_path(
 
     let mut selected_python = selected_python_version(&parse_result, config);
     let mut report = ResolutionReport::default();
-    write_parse_artifacts(&config.output_dir, snippet_path, &parse_result, &selected_python)?;
+    write_parse_artifacts(
+        &config.output_dir,
+        snippet_path,
+        &parse_result,
+        &selected_python,
+    )?;
 
     // Run tier1 (cache) + tier2 (heuristic) first — these are fast (~ms)
     let mut stage1 = tier1_cache::resolve(&parse_result, &mut store, &selected_python);
     report.cache_hits += stage1.cache_hits;
-    let mut stage2 =
-        tier2_heuristic::resolve(&stage1.unresolved, &parse_result, &mut store, &selected_python);
+    let mut stage2 = tier2_heuristic::resolve(
+        &stage1.unresolved,
+        &parse_result,
+        &mut store,
+        &selected_python,
+    );
     report.heuristic_hits += stage2.heuristic_hits;
     let mut resolved = Vec::new();
     resolved.append(&mut stage1.resolved);
@@ -63,7 +72,12 @@ pub fn resolve_path(
         if should_skip_from_assessment(assessment.as_ref()) {
             let reason = assessment
                 .as_ref()
-                .map(|item| format!("LLM skipped snippet at confidence {:.2}: {}", item.confidence, item.reason))
+                .map(|item| {
+                    format!(
+                        "LLM skipped snippet at confidence {:.2}: {}",
+                        item.confidence, item.reason
+                    )
+                })
                 .unwrap_or_else(|| "LLM skipped snippet as unsolvable.".to_string());
             let mut validation = skipped_validation_summary(
                 "skipped-unsolvable",
@@ -98,8 +112,13 @@ pub fn resolve_path(
         }
 
         // Run tier3 (LLM) for remaining unresolved imports
-        let mut stage3 =
-            tier3_llm::resolve(&unresolved, &parse_result, &mut store, config, &selected_python);
+        let mut stage3 = tier3_llm::resolve(
+            &unresolved,
+            &parse_result,
+            &mut store,
+            config,
+            &selected_python,
+        );
         report.llm_calls += stage3.prompts_issued;
         report.notes.append(&mut stage3.notes);
         resolved.append(&mut stage3.resolved);
@@ -118,7 +137,9 @@ pub fn resolve_path(
     };
 
     dedupe_dependencies(&mut resolved);
-    for note in apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config) {
+    for note in
+        apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config)
+    {
         report.notes.push(note);
     }
     write_state_artifacts(
@@ -160,10 +181,10 @@ pub fn resolve_path(
                     config,
                     &mut report,
                 );
-                resolved = updated_resolved;
 
                 // Re-run pre-solve with updated dependencies if all imports were resolved
                 if updated_unresolved.is_empty() {
+                    resolved = updated_resolved;
                     pre_solve = Some(pre_solve::solve_dependency_graph(
                         &parse_result,
                         &resolved,
@@ -180,17 +201,39 @@ pub fn resolve_path(
                         }
                     }
                 } else {
+                    // LLM retry didn't resolve all imports — keep the original
+                    // resolution. Pre-solve couldn't verify due to missing KGraph
+                    // metadata but pip will verify at install time during validation.
                     pre_solve = None;
                 }
             }
         }
     }
 
+    // Use pre-solve lockfile pins for Python 3+ targets.  For Python 2
+    // targets skip pins: KGraph lacks python_requires metadata so pre-solve
+    // may pin modern versions (e.g. Scrapy 2.x) that don't support Python 2.
+    // Letting pip resolve versions natively respects python_requires.
     let mut requirements_txt = pre_solve
         .as_ref()
         .filter(|result| result.satisfiable && !result.lockfile_requirements.trim().is_empty())
+        .filter(|_| !selected_python.starts_with("2."))
         .map(|result| result.lockfile_requirements.clone())
         .unwrap_or_else(|| render_requirements(&resolved));
+
+    // For Python 2 targets, strip generic seed version pins (e.g.
+    // requests==2.32.3 from top_5000_mappings.tsv) since they target modern
+    // Python 3.  Preserve discrepancy pins (curated, may include Python 2-safe
+    // versions like python-memcached==1.59) and family pins (curated for
+    // specific Python versions like Pillow==6.2.2).
+    if selected_python.starts_with("2.") {
+        for dep in &mut resolved {
+            if dep.strategy == "cache:seed" {
+                dep.version = None;
+            }
+        }
+        requirements_txt = render_requirements(&resolved);
+    }
     context::write_text(
         &context::debug_root(&config.output_dir).join("requirements-before-validation.txt"),
         &requirements_txt,
@@ -290,10 +333,22 @@ pub fn resolve_path(
         &format_dependency_state(&resolved, &unresolved),
     )?;
     let mut validation = validation;
-    validation.debug_dir = Some(context::debug_root(&config.output_dir).display().to_string());
-    validation.attempts_dir = Some(context::attempts_root(&config.output_dir).display().to_string());
+    validation.debug_dir = Some(
+        context::debug_root(&config.output_dir)
+            .display()
+            .to_string(),
+    );
+    validation.attempts_dir = Some(
+        context::attempts_root(&config.output_dir)
+            .display()
+            .to_string(),
+    );
     validation.llm_trace_dir = Some(context::llm_root(&config.output_dir).display().to_string());
-    validation.iterations_dir = Some(context::iterations_root(&config.output_dir).display().to_string());
+    validation.iterations_dir = Some(
+        context::iterations_root(&config.output_dir)
+            .display()
+            .to_string(),
+    );
     validation.context_log_path = config
         .benchmark_context_log
         .as_ref()
@@ -353,7 +408,6 @@ fn skipped_validation_summary(
     }
 }
 
-
 fn validate_with_retries(
     snippet_path: &Path,
     parse_result: &crate::ParseResult,
@@ -386,7 +440,9 @@ fn validate_with_retries(
             "resolved-before.txt",
             &format_dependency_state(resolved, &[]),
         )?;
-        if let Ok(tail) = context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000) {
+        if let Ok(tail) =
+            context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+        {
             write_iteration_snapshot(
                 &config.output_dir,
                 attempt_index + 1,
@@ -411,7 +467,12 @@ fn validate_with_retries(
                 config.execute_snippet,
             )
             .unwrap_or_else(|| {
-                docker::parallel::candidate_versions(selected_python, config.python_version_range)
+                docker::parallel::candidate_versions(
+                    selected_python,
+                    config.python_version_range,
+                    Some(&parse_result.python_version_min),
+                    parse_result.python_version_max.as_deref(),
+                )
             })
         } else {
             vec![selected_python.to_string()]
@@ -441,7 +502,8 @@ fn validate_with_retries(
             .build_cache_key
             .clone()
             .or(validation.build_cache_key.clone());
-        if validation.validation_backend.is_empty() && !attempt_result.validation_backend.is_empty() {
+        if validation.validation_backend.is_empty() && !attempt_result.validation_backend.is_empty()
+        {
             validation.validation_backend = attempt_result.validation_backend.clone();
         }
         validation.env_create_duration_ms += attempt_result.env_create_duration_ms;
@@ -548,12 +610,7 @@ fn validate_with_retries(
             if let Some(last_attempt) = validation.attempts.last_mut() {
                 last_attempt.fix_applied = Some(note.clone());
             }
-            write_iteration_snapshot(
-                &config.output_dir,
-                attempt_index + 1,
-                "recovery.txt",
-                &note,
-            )?;
+            write_iteration_snapshot(&config.output_dir, attempt_index + 1, "recovery.txt", &note)?;
             break;
         }
 
@@ -652,6 +709,11 @@ fn apply_recovery_fix(
         }
         "ModuleNotFound" | "ImportError" | "AttributeError" => {
             let module_name = extract_missing_module(log)?;
+            // Skip recovery for modules in the stdlib list (e.g. Pythonista builtins
+            // like `console` that were intentionally excluded from resolution).
+            if parse_result.stdlib_modules.contains(&module_name.to_lowercase()) {
+                return None;
+            }
             if let Some(package_name) = python_backport_package(&module_name, python_version) {
                 if upsert_dependency(
                     resolved,
@@ -687,10 +749,17 @@ fn apply_recovery_fix(
                         "recovery:cache",
                     )
                 {
-                    let override_notes =
-                        apply_compatibility_overrides(parse_result, resolved, python_version, config);
+                    let override_notes = apply_compatibility_overrides(
+                        parse_result,
+                        resolved,
+                        python_version,
+                        config,
+                    );
                     return Some(if override_notes.is_empty() {
-                        format!("Remapped {} to {} from cache.", module_name, record.package_name)
+                        format!(
+                            "Remapped {} to {} from cache.",
+                            module_name, record.package_name
+                        )
                     } else {
                         format!(
                             "Remapped {} to {} from cache. {}",
@@ -702,38 +771,100 @@ fn apply_recovery_fix(
                 }
             }
             let versions = pypi_client::compatible_versions(store, &module_name, python_version);
-            if versions.is_empty() {
-                return None;
-            }
-            let version = version_sampler::equally_distanced_sample(&versions, &[]);
-            if upsert_dependency(
-                resolved,
-                &module_name,
-                &module_name,
-                version.clone(),
-                "recovery:heuristic",
-            ) {
-                let _ = store.save_import_mapping(
+            if !versions.is_empty() {
+                let version = version_sampler::equally_distanced_sample(&versions, &[]);
+                if upsert_dependency(
+                    resolved,
                     &module_name,
                     &module_name,
-                    version.as_deref(),
+                    version.clone(),
                     "recovery:heuristic",
-                );
-                let override_notes =
-                    apply_compatibility_overrides(parse_result, resolved, python_version, config);
-                return Some(if override_notes.is_empty() {
-                    format!(
-                        "Remapped {module_name} to its exact package after {}.",
-                        classified.error_type
-                    )
-                } else {
-                    format!(
-                        "Remapped {module_name} to its exact package after {}. {}",
-                        classified.error_type,
-                        override_notes.join(" ")
-                    )
-                });
+                ) {
+                    let _ = store.save_import_mapping(
+                        &module_name,
+                        &module_name,
+                        version.as_deref(),
+                        "recovery:heuristic",
+                    );
+                    let override_notes = apply_compatibility_overrides(
+                        parse_result,
+                        resolved,
+                        python_version,
+                        config,
+                    );
+                    return Some(if override_notes.is_empty() {
+                        format!(
+                            "Remapped {module_name} to its exact package after {}.",
+                            classified.error_type
+                        )
+                    } else {
+                        format!(
+                            "Remapped {module_name} to its exact package after {}. {}",
+                            classified.error_type,
+                            override_notes.join(" ")
+                        )
+                    });
+                }
             }
+            // If the module is a dotted path (e.g. Cython.Build, Bio.PDB),
+            // try the top-level component as a package name before falling
+            // back to the LLM.  Many build-time imports reference sub-modules
+            // of packages whose PyPI name matches the top-level (cython, numpy).
+            if module_name.contains('.') {
+                let top_level = module_name.split('.').next().unwrap_or(&module_name);
+                if let Some(record) = store.import_lookup(top_level).cloned() {
+                    if pypi_client::package_exists(store, &record.package_name, python_version)
+                        && upsert_dependency(
+                            resolved,
+                            &module_name,
+                            &record.package_name,
+                            pypi_client::compatible_default_version(
+                                store,
+                                &record.package_name,
+                                record.default_version.as_deref(),
+                                python_version,
+                            ),
+                            "recovery:cache",
+                        )
+                    {
+                        let _ = store.save_import_mapping(
+                            top_level,
+                            &record.package_name,
+                            record.default_version.as_deref(),
+                            "recovery:cache",
+                        );
+                        return Some(format!(
+                            "Remapped {module_name} (via top-level `{top_level}`) to {} from cache.",
+                            record.package_name
+                        ));
+                    }
+                }
+                let top_versions =
+                    pypi_client::compatible_versions(store, top_level, python_version);
+                if !top_versions.is_empty() {
+                    let version =
+                        version_sampler::equally_distanced_sample(&top_versions, &[]);
+                    if upsert_dependency(
+                        resolved,
+                        &module_name,
+                        top_level,
+                        version.clone(),
+                        "recovery:heuristic",
+                    ) {
+                        let _ = store.save_import_mapping(
+                            top_level,
+                            top_level,
+                            version.as_deref(),
+                            "recovery:heuristic",
+                        );
+                        return Some(format!(
+                            "Added top-level package `{top_level}` for missing sub-module `{module_name}`.",
+                        ));
+                    }
+                }
+            }
+            // Fall through to LLM recovery even when the package isn't in
+            // KGraph/cache — the LLM may suggest an alternative package name.
             if config.allow_llm {
                 let hint = tier3_llm::single_package_hint(
                     &module_name,
@@ -756,8 +887,12 @@ fn apply_recovery_fix(
                             version.as_deref(),
                             "recovery:llm",
                         );
-                        let override_notes =
-                            apply_compatibility_overrides(parse_result, resolved, python_version, config);
+                        let override_notes = apply_compatibility_overrides(
+                            parse_result,
+                            resolved,
+                            python_version,
+                            config,
+                        );
                         return Some(if override_notes.is_empty() {
                             format!("LLM remapped {module_name} to {package_name}.")
                         } else {
@@ -774,7 +909,68 @@ fn apply_recovery_fix(
         "SyntaxError" => {
             Some("Validation exhausted adjacent Python versions after SyntaxError.".to_string())
         }
-        _ => None,
+        _ => {
+            // Generic fallback: try to extract a missing dependency from the
+            // build/runtime log even when the error type is Unknown or
+            // unhandled.  This covers setup.py errors like
+            // "Numerical Python (NumPy) is not installed" and similar.
+            if let Some(dep_name) = extract_build_dependency(log) {
+                let dep_lower = dep_name.to_lowercase();
+                if parse_result
+                    .stdlib_modules
+                    .contains(&dep_lower)
+                {
+                    return None;
+                }
+                // Try cache lookup first.
+                if let Some(record) = store.import_lookup(&dep_lower).cloned() {
+                    if pypi_client::package_exists(store, &record.package_name, python_version)
+                        && upsert_dependency(
+                            resolved,
+                            &dep_name,
+                            &record.package_name,
+                            pypi_client::compatible_default_version(
+                                store,
+                                &record.package_name,
+                                record.default_version.as_deref(),
+                                python_version,
+                            ),
+                            "recovery:build-dep",
+                        )
+                    {
+                        return Some(format!(
+                            "Extracted build dependency `{}` from error log; mapped to `{}`.",
+                            dep_name, record.package_name
+                        ));
+                    }
+                }
+                // Try as a direct package name.
+                let versions =
+                    pypi_client::compatible_versions(store, &dep_lower, python_version);
+                if !versions.is_empty() {
+                    let version =
+                        version_sampler::equally_distanced_sample(&versions, &[]);
+                    if upsert_dependency(
+                        resolved,
+                        &dep_name,
+                        &dep_lower,
+                        version.clone(),
+                        "recovery:build-dep",
+                    ) {
+                        let _ = store.save_import_mapping(
+                            &dep_lower,
+                            &dep_lower,
+                            version.as_deref(),
+                            "recovery:build-dep",
+                        );
+                        return Some(format!(
+                            "Extracted build dependency `{dep_name}` from error log; added `{dep_lower}`.",
+                        ));
+                    }
+                }
+            }
+            None
+        }
     }
 }
 
@@ -961,6 +1157,64 @@ fn extract_missing_module(log: &str) -> Option<String> {
     None
 }
 
+/// Extract a missing dependency name from a build/runtime error log.
+///
+/// This is broader than `extract_missing_module` — it also catches
+/// setup.py messages like "Numerical Python (NumPy) is not installed"
+/// and "You must install X" that don't use the standard Python
+/// `ImportError` / `ModuleNotFoundError` format.
+fn extract_build_dependency(log: &str) -> Option<String> {
+    // First, try the standard module-not-found patterns.
+    if let Some(module) = extract_missing_module(log) {
+        return Some(module);
+    }
+
+    let lower = log.to_lowercase();
+
+    // Pattern: "(NAME) is not installed" — e.g. "Numerical Python (NumPy) is not installed".
+    // Extract the parenthesized name closest to "is not installed".
+    if let Some(idx) = lower.find("is not installed") {
+        let before = &log[..idx];
+        if let Some(open) = before.rfind('(') {
+            if let Some(close) = before[open..].find(')') {
+                let name = before[open + 1..open + close].trim();
+                if !name.is_empty() && name.len() < 40 {
+                    return Some(name.to_string());
+                }
+            }
+        }
+        // Fallback: word immediately before "is not installed".
+        let word = before
+            .split_whitespace()
+            .next_back()
+            .unwrap_or("")
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+        if !word.is_empty()
+            && word.len() < 40
+            && word.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+        {
+            return Some(word.to_string());
+        }
+    }
+
+    // Pattern: "please install X before" or "install X before".
+    for marker in ["please install ", "need to install "] {
+        if let Some(idx) = lower.find(marker) {
+            let rest = &log[idx + marker.len()..];
+            let name = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+            if !name.is_empty() && name.len() < 40 {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 fn learned_pattern_key(classified: &crate::ClassifierResult, log: &str) -> String {
     if classified.matched_pattern != "no-known-pattern" {
         return classified.matched_pattern.clone();
@@ -1047,10 +1301,7 @@ fn write_parse_artifacts(
     )
 }
 
-fn write_solver_artifacts(
-    output_dir: &Path,
-    result: &pre_solve::PreSolveResult,
-) -> io::Result<()> {
+fn write_solver_artifacts(output_dir: &Path, result: &pre_solve::PreSolveResult) -> io::Result<()> {
     let assignments = if result.assigned_versions.is_empty() {
         "- none".to_string()
     } else {
@@ -1105,10 +1356,7 @@ fn write_iteration_snapshot(
     context::write_text(&directory.join(name), contents)
 }
 
-fn format_dependency_state(
-    resolved: &[ResolvedDependency],
-    unresolved: &[String],
-) -> String {
+fn format_dependency_state(resolved: &[ResolvedDependency], unresolved: &[String]) -> String {
     let resolved_rows = if resolved.is_empty() {
         "- none".to_string()
     } else {
@@ -1154,6 +1402,29 @@ fn environment_specific_note(
     log: &str,
     parse_result: &crate::ParseResult,
 ) -> Option<String> {
+    let lower = log.to_lowercase();
+
+    // System-level dependencies that cannot be installed via pip.
+    // These apply regardless of the classified error type.
+    if lower.contains("you must install java")
+        || lower.contains("unable to locate a java runtime")
+        || lower.contains("no java runtime present")
+    {
+        return Some(
+            "Detected system dependency (Java Runtime). APDR cannot validate this snippet without a JDK/JRE installation.".to_string(),
+        );
+    }
+    if lower.contains("cuda driver version is insufficient")
+        || lower.contains("cuda_error_no_device")
+        || lower.contains("no cuda gpus are available")
+        || lower.contains("cudnn library not found")
+    {
+        return Some(
+            "Detected hardware dependency (CUDA/cuDNN). APDR cannot validate this snippet without an NVIDIA GPU with CUDA drivers.".to_string(),
+        );
+    }
+
+    // The remaining checks require a missing module name.
     if classified.error_type != "ModuleNotFound" {
         return None;
     }
@@ -1196,8 +1467,16 @@ fn environment_specific_note(
         );
     }
     let py2_stdlib = [
-        "urllib2", "urlparse", "_winreg", "configparser", "cpickle",
-        "cstringio", "queue", "htmlparser", "httplib", "cookielib",
+        "urllib2",
+        "urlparse",
+        "_winreg",
+        "configparser",
+        "cpickle",
+        "cstringio",
+        "queue",
+        "htmlparser",
+        "httplib",
+        "cookielib",
         "robotparser",
     ];
     if py2_stdlib.contains(&missing.as_str()) {
@@ -1221,6 +1500,7 @@ fn infer_validation_status(validation: &ValidationSummary) -> String {
             "BuildBackendUnavailable" => return "build-backend-unavailable".to_string(),
             "PythonInterpreterUnavailable" => return "python-interpreter-unavailable".to_string(),
             "NetworkUnavailable" => return "network-unavailable".to_string(),
+            "DiskFull" => return "disk-full".to_string(),
             "DockerPermissionDenied" => return "docker-permission-denied".to_string(),
             "DockerDaemonUnavailable" => return "docker-daemon-unavailable".to_string(),
             _ => {}
@@ -1309,6 +1589,12 @@ fn infer_validation_reason(
                         .to_string(),
                 );
             }
+            "DiskFull" => {
+                return Some(
+                    "APDR ran out of local disk space while creating or seeding the validation environment."
+                        .to_string(),
+                );
+            }
             _ => {}
         }
     }
@@ -1359,7 +1645,9 @@ fn infer_validation_reason(
                 "Detected hardware/runtime dependency (`RPi.GPIO`). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
             );
         }
-        return Some(format!("Runtime import failed: missing module `{module_name}`."));
+        return Some(format!(
+            "Runtime import failed: missing module `{module_name}`."
+        ));
     }
     if lowercase.contains("cannot import name ") {
         if let Some(fragment) = log
@@ -1396,7 +1684,9 @@ fn infer_validation_reason(
         );
     }
     if attempt.status == "build-timeout" {
-        return Some("Local package-environment build timed out during APDR validation.".to_string());
+        return Some(
+            "Local package-environment build timed out during APDR validation.".to_string(),
+        );
     }
     if attempt.status == "runtime-timeout" {
         return Some("Local APDR smoke test timed out during validation.".to_string());
@@ -1467,8 +1757,12 @@ fn detect_skip_reason(
         markers.insert(dependency.package_name.to_lowercase());
     }
 
-    if markers.iter().any(|item| item == "pyqt4" || item.starts_with("pyqt4."))
-        || markers.iter().any(|item| item == "maya" || item.starts_with("maya."))
+    if markers
+        .iter()
+        .any(|item| item == "pyqt4" || item.starts_with("pyqt4."))
+        || markers
+            .iter()
+            .any(|item| item == "maya" || item.starts_with("maya."))
     {
         return Some((
             "skipped-host-runtime",
@@ -1488,7 +1782,10 @@ fn detect_skip_reason(
         "win32com",
         "odbaccess",
     ] {
-        if markers.iter().any(|item| item == marker || item.starts_with(&format!("{marker}."))) {
+        if markers
+            .iter()
+            .any(|item| item == marker || item.starts_with(&format!("{marker}.")))
+        {
             return Some((
                 "skipped-host-runtime",
                 format!(
@@ -1516,7 +1813,9 @@ fn detect_skip_reason(
         "pyobjc-framework-security",
         "pyobjc-framework-coreservices",
     ];
-    let has_apple_bridge = markers.iter().any(|item| item == "objc" || item.starts_with("objc."));
+    let has_apple_bridge = markers
+        .iter()
+        .any(|item| item == "objc" || item.starts_with("objc."));
     let has_apple_framework = apple_framework_markers.iter().any(|marker| {
         markers
             .iter()
@@ -1530,7 +1829,10 @@ fn detect_skip_reason(
         ));
     }
 
-    if markers.iter().any(|item| item == "rpi" || item == "rpi.gpio") {
+    if markers
+        .iter()
+        .any(|item| item == "rpi" || item == "rpi.gpio")
+    {
         return Some((
             "skipped-host-runtime",
             "Detected hardware/runtime dependency (RPi.GPIO). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
@@ -1635,9 +1937,102 @@ fn retry_with_llm_for_missing_packages(
     report.llm_calls += llm_result.prompts_issued;
     report.notes.append(&mut llm_result.notes.clone());
 
-    // Merge LLM resolutions with kept dependencies
+    // Build a map from import_name → original package_name for the retried deps.
+    // If the LLM failed to suggest a different package (just echoed the import name),
+    // restore the original seed mapping instead.
+    let original_mapping: BTreeMap<String, ResolvedDependency> = resolved
+        .iter()
+        .filter(|dep| packages_set.contains(&pypi_client::requirement_name(&dep.package_name)))
+        .map(|dep| (dep.import_name.clone(), dep.clone()))
+        .collect();
+
     let mut final_resolved = kept_resolved;
-    final_resolved.extend(llm_result.resolved);
+    for dep in llm_result.resolved {
+        let norm_import = pypi_client::requirement_name(&dep.import_name);
+        let norm_package = pypi_client::requirement_name(&dep.package_name);
+        if norm_import == norm_package {
+            // LLM just echoed the import name back — probably failed to parse.
+            // Restore the original seed mapping if it had a different package.
+            if let Some(original) = original_mapping.get(&dep.import_name) {
+                let orig_norm = pypi_client::requirement_name(&original.package_name);
+                if orig_norm != norm_import {
+                    report.notes.push(format!(
+                        "LLM retry returned raw import name `{}`; restoring original mapping to `{}`.",
+                        dep.import_name, original.package_name
+                    ));
+                    final_resolved.push(original.clone());
+                    continue;
+                }
+            }
+        }
+        final_resolved.push(dep);
+    }
 
     (final_resolved, llm_result.unresolved)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_missing_module_from_standard_errors() {
+        assert_eq!(
+            extract_missing_module("ModuleNotFoundError: No module named 'Cython.Build'"),
+            Some("Cython.Build".to_string()),
+        );
+        assert_eq!(
+            extract_missing_module("ImportError: No module named Cython.Build"),
+            Some("Cython.Build".to_string()),
+        );
+        assert_eq!(
+            extract_missing_module("No module named 'foo'"),
+            Some("foo".to_string()),
+        );
+        assert_eq!(extract_missing_module("everything is fine"), None);
+    }
+
+    #[test]
+    fn extract_build_dependency_parenthesized_name() {
+        // Pattern: "Numerical Python (NumPy) is not installed"
+        let log = "running build\n\nNumerical Python (NumPy) is not installed.\n\nThis package is required.";
+        assert_eq!(
+            extract_build_dependency(log),
+            Some("NumPy".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_build_dependency_bare_name() {
+        // Pattern: "foo is not installed"
+        let log = "running build\nCython is not installed\nPlease install it.";
+        assert_eq!(
+            extract_build_dependency(log),
+            Some("Cython".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_build_dependency_please_install() {
+        let log = "Error: please install numpy before building this package.";
+        assert_eq!(
+            extract_build_dependency(log),
+            Some("numpy".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_build_dependency_falls_back_to_module_error() {
+        // Should delegate to extract_missing_module first.
+        let log = "ImportError: No module named 'Cython.Build'";
+        assert_eq!(
+            extract_build_dependency(log),
+            Some("Cython.Build".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_build_dependency_returns_none_for_clean_log() {
+        assert_eq!(extract_build_dependency("Successfully installed numpy-1.26.4"), None);
+    }
 }

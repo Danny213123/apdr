@@ -10,7 +10,11 @@ pub struct StageResult {
     pub cache_hits: usize,
 }
 
-pub fn resolve(parse_result: &ParseResult, store: &mut CacheStore, python_version: &str) -> StageResult {
+pub fn resolve(
+    parse_result: &ParseResult,
+    store: &mut CacheStore,
+    python_version: &str,
+) -> StageResult {
     let mut resolved = Vec::new();
     let mut unresolved = Vec::new();
     let mut seen = BTreeSet::new();
@@ -122,7 +126,10 @@ fn lookup_import_record(
             let Some(record) = store.import_lookup(&prefix).cloned() else {
                 continue;
             };
-            return Some((record.clone(), format!("cache:path-prefix:{}", record.source)));
+            return Some((
+                record.clone(),
+                format!("cache:path-prefix:{}", record.source),
+            ));
         }
     }
 

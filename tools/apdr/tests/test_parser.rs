@@ -8,7 +8,9 @@ fn parser_extracts_non_stdlib_imports() {
 
     assert!(parsed.imports.contains(&"requests".to_string()));
     assert!(parsed.imports.contains(&"bs4".to_string()));
-    assert!(parsed.import_paths.contains(&"bs4.BeautifulSoup".to_string()));
+    assert!(parsed
+        .import_paths
+        .contains(&"bs4.BeautifulSoup".to_string()));
     assert!(!parsed.imports.contains(&"json".to_string()));
 }
 
@@ -22,6 +24,19 @@ fn parser_detects_python27_and_uses_python27_stdlib() {
     assert_eq!(parsed.python_version_max.as_deref(), Some("2.7"));
     assert!(parsed.imports.contains(&"scrapy".to_string()));
     assert!(!parsed.imports.contains(&"traceback".to_string()));
+}
+
+#[test]
+fn parser_treats_stringio_and_urllib_usage_as_python27_stdlib() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/python2_pil_stringio_snippet.py");
+    let parsed = apdr::parser::parse_snippet(&snippet, &tool_root.join("data"), true).unwrap();
+
+    assert_eq!(parsed.python_version_min, "2.7");
+    assert_eq!(parsed.python_version_max.as_deref(), Some("2.7"));
+    assert!(parsed.imports.contains(&"PIL".to_string()));
+    assert!(!parsed.imports.contains(&"StringIO".to_string()));
+    assert!(!parsed.imports.contains(&"urllib".to_string()));
 }
 
 #[test]

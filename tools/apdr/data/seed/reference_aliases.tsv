@@ -67,6 +67,7 @@ starlette	starlette		seed
 uvicorn	uvicorn		seed
 hypercorn	hypercorn		seed
 gunicorn	gunicorn		seed
+hug	hug		seed
 httpx	httpx		seed
 aiohttp	aiohttp		seed
 websocket	websocket-client		seed
@@ -261,6 +262,7 @@ dns	dnspython		seed
 socks	PySocks		seed
 scapy	scapy		seed
 nmap	python-nmap		seed
+nomad	python-nomad		seed
 netifaces	netifaces		seed
 netaddr	netaddr		seed
 docx	python-docx		seed
@@ -591,7 +593,7 @@ ipdb	ipdb		seed
 IPython	ipython		seed
 ipywidgets	ipywidgets		seed
 jieba	jieba		seed
-jnius	jnius		seed
+jnius	pyjnius		seed
 joblib	joblib		seed
 johnny	johnny		seed
 jsonlib	jsonlib		seed
@@ -621,7 +623,7 @@ markdown2	markdown2		seed
 mayavi	mayavi		seed
 MeCab	mecab		seed
 mega	mega		seed
-memcache	memcache		seed
+memcache	python-memcached		seed
 mezzanine	Mezzanine		seed
 mido	mido		seed
 mininet	mininet		seed

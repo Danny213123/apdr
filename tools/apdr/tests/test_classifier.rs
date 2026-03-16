@@ -66,3 +66,34 @@ fn classifier_recognizes_build_backend_unavailable() {
     assert_eq!(result.error_type, "BuildBackendUnavailable");
     assert_eq!(result.conflict_class, "TPL-OS");
 }
+
+#[test]
+fn classifier_prefers_specific_network_pattern_over_generic_version_not_found() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let cache_path = tool_root
+        .join("target")
+        .join(format!("classifier-net-cache-{stamp}"));
+    let store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    let log = "WARNING: Failed to establish a new connection\nERROR: No matching distribution found for opencv-python==4.10.0.84";
+    let result = apdr::recovery::classifier::classify_log(log, &store);
+
+    assert_eq!(result.error_type, "NetworkUnavailable");
+    assert_eq!(result.conflict_class, "TPL-OS");
+    let _ = std::fs::remove_dir_all(cache_path);
+}
+
+#[test]
+fn classifier_recognizes_disk_full() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let store =
+        apdr::cache::store::CacheStore::load(&tool_root, tool_root.join(".apdr-cache")).unwrap();
+    let log = "OSError: [Errno 28] No space left on device";
+    let result = apdr::recovery::classifier::classify_log(log, &store);
+
+    assert_eq!(result.error_type, "DiskFull");
+    assert_eq!(result.conflict_class, "TPL-OS");
+}

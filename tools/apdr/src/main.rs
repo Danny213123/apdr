@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use apdr::cache::maintenance::{self, CachePruneOptions};
 use apdr::cache::store::CacheStore;
 use apdr::context;
 use apdr::recovery::classifier;
@@ -74,7 +75,9 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
             }
             "--docker-timeout" | "--validation-timeout" => {
                 index += 1;
-                let value = args.get(index).ok_or("--validation-timeout expects a value")?;
+                let value = args
+                    .get(index)
+                    .ok_or("--validation-timeout expects a value")?;
                 let seconds = value.parse::<u64>().map_err(|_| {
                     "--validation-timeout must be an integer number of seconds".to_string()
                 })?;
@@ -135,7 +138,8 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
     }
 
     if config.benchmark_context_log.is_none() {
-        config.benchmark_context_log = Some(context::debug_root(&config.output_dir).join("benchmark-context.log"));
+        config.benchmark_context_log =
+            Some(context::debug_root(&config.output_dir).join("benchmark-context.log"));
     }
     context::ensure_debug_layout(&config.output_dir).map_err(|error| error.to_string())?;
 
@@ -191,7 +195,12 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         } else {
             result.validation.status.clone()
         };
-        if let Some(reason) = result.validation.reason.as_ref().filter(|value| !value.trim().is_empty()) {
+        if let Some(reason) = result
+            .validation
+            .reason
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
             return Err(format!("{status}: {reason}"));
         }
         return Err(status);
@@ -216,10 +225,14 @@ fn classify_log_command(tool_root: &Path, args: &[String]) -> Result<(), String>
 }
 
 fn cache_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
-    let subcommand = args.first().map(|value| value.as_str()).unwrap_or("stats");
+    let (cache_path, filtered_args) = parse_cache_args(tool_root, args)?;
+    let subcommand = filtered_args
+        .first()
+        .map(|value| value.as_str())
+        .unwrap_or("stats");
     match subcommand {
         "stats" => {
-            let store = CacheStore::load(tool_root, tool_root.join(".apdr-cache"))
+            let store = CacheStore::load(tool_root, cache_path.clone())
                 .map_err(|error| error.to_string())?;
             let stats = store.stats();
             println!("IMPORT_MAPPINGS={}", stats.import_mappings);
@@ -232,14 +245,51 @@ fn cache_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                 "DEPENDENCY_GRAPH_ENTRIES={}",
                 stats.dependency_graph_entries
             );
+            let usage = maintenance::disk_usage(&cache_path).map_err(|error| error.to_string())?;
+            println!("DISK_TOTAL_BYTES={}", usage.total_bytes);
+            println!(
+                "DISK_TOTAL_HUMAN={}",
+                maintenance::human_bytes(usage.total_bytes)
+            );
+            println!("VALIDATED_ENV_CACHE_BYTES={}", usage.validated_envs_bytes);
+            println!(
+                "VALIDATED_ENV_CACHE_HUMAN={}",
+                maintenance::human_bytes(usage.validated_envs_bytes)
+            );
+            println!(
+                "VALIDATED_ENV_CACHE_ENTRIES={}",
+                usage.validated_env_entries
+            );
+            println!("WHEELHOUSE_BYTES={}", usage.wheelhouse_bytes);
+            println!(
+                "WHEELHOUSE_HUMAN={}",
+                maintenance::human_bytes(usage.wheelhouse_bytes)
+            );
+            println!("LEGACY_PIP_CACHE_BYTES={}", usage.legacy_pip_cache_bytes);
+            println!(
+                "LEGACY_PIP_CACHE_HUMAN={}",
+                maintenance::human_bytes(usage.legacy_pip_cache_bytes)
+            );
+            println!(
+                "PACKAGE_REPOSITORY_BYTES={}",
+                usage.package_repository_bytes
+            );
+            println!(
+                "PACKAGE_REPOSITORY_HUMAN={}",
+                maintenance::human_bytes(usage.package_repository_bytes)
+            );
+            println!("LOCKFILES_BYTES={}", usage.lockfiles_bytes);
+            println!("KGRAPH_SQLITE_BYTES={}", usage.sqlite_bytes);
+            println!("OTHER_CACHE_BYTES={}", usage.other_bytes);
             Ok(())
         }
-        "warm" => cache_warm_command(tool_root, &args[1..]),
-        _ => Err("cache supports `stats` and `warm`".to_string()),
+        "warm" => cache_warm_command(tool_root, &cache_path, &filtered_args[1..]),
+        "prune" => cache_prune_command(tool_root, &cache_path, &filtered_args[1..]),
+        _ => Err("cache supports `stats`, `warm`, and `prune`".to_string()),
     }
 }
 
-fn cache_warm_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
+fn cache_warm_command(tool_root: &Path, cache_path: &Path, args: &[String]) -> Result<(), String> {
     let mut top_packages = 0usize;
     let mut high_centrality = 0usize;
     let mut index = 0usize;
@@ -264,8 +314,8 @@ fn cache_warm_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         index += 1;
     }
 
-    let mut store = CacheStore::load(tool_root, tool_root.join(".apdr-cache"))
-        .map_err(|error| error.to_string())?;
+    let mut store =
+        CacheStore::load(tool_root, cache_path.to_path_buf()).map_err(|error| error.to_string())?;
     let mut warmed = 0usize;
     let mut warmed_packages = BTreeSet::new();
 
@@ -301,20 +351,136 @@ fn cache_warm_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn cache_prune_command(tool_root: &Path, cache_path: &Path, args: &[String]) -> Result<(), String> {
+    let defaults = ResolveConfig::for_tool_root(tool_root);
+    let mut options = CachePruneOptions {
+        max_validated_envs: defaults.validated_env_cache_max_entries,
+        max_validated_env_bytes: defaults.validated_env_cache_max_bytes,
+        max_wheelhouse_bytes: Some(maintenance::DEFAULT_MAX_WHEELHOUSE_BYTES),
+        remove_package_repository: !defaults.package_repository_cache_enabled,
+        remove_legacy_pip_cache: true,
+    };
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--max-validated-envs" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--max-validated-envs expects a value")?;
+                options.max_validated_envs = value
+                    .parse::<usize>()
+                    .map_err(|_| "--max-validated-envs must be an integer".to_string())?;
+            }
+            "--max-validated-env-gb" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--max-validated-env-gb expects a value")?;
+                let parsed = value
+                    .parse::<u64>()
+                    .map_err(|_| "--max-validated-env-gb must be an integer".to_string())?;
+                options.max_validated_env_bytes = if parsed == 0 {
+                    None
+                } else {
+                    Some(parsed.saturating_mul(1024 * 1024 * 1024))
+                };
+            }
+            "--max-wheelhouse-gb" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--max-wheelhouse-gb expects a value")?;
+                let parsed = value
+                    .parse::<u64>()
+                    .map_err(|_| "--max-wheelhouse-gb must be an integer".to_string())?;
+                options.max_wheelhouse_bytes = if parsed == 0 {
+                    None
+                } else {
+                    Some(parsed.saturating_mul(1024 * 1024 * 1024))
+                };
+            }
+            "--keep-package-repository" => {
+                options.remove_package_repository = false;
+            }
+            "--keep-legacy-pip-cache" => {
+                options.remove_legacy_pip_cache = false;
+            }
+            flag => return Err(format!("unknown cache prune flag: {flag}")),
+        }
+        index += 1;
+    }
+
+    let before = maintenance::disk_usage(cache_path).map_err(|error| error.to_string())?;
+    let summary =
+        maintenance::prune_cache(cache_path, &options).map_err(|error| error.to_string())?;
+    let after = maintenance::disk_usage(cache_path).map_err(|error| error.to_string())?;
+    println!("REMOVED_BYTES={}", summary.removed_bytes);
+    println!(
+        "REMOVED_HUMAN={}",
+        maintenance::human_bytes(summary.removed_bytes)
+    );
+    println!("REMOVED_VALIDATED_ENVS={}", summary.removed_validated_envs);
+    println!(
+        "REMOVED_WHEELHOUSE_BYTES={}",
+        summary.removed_wheelhouse_bytes
+    );
+    println!(
+        "REMOVED_PACKAGE_REPOSITORY={}",
+        summary.removed_package_repository
+    );
+    println!(
+        "REMOVED_LEGACY_PIP_CACHE={}",
+        summary.removed_legacy_pip_cache
+    );
+    println!("DISK_BYTES_BEFORE={}", before.total_bytes);
+    println!("DISK_BYTES_AFTER={}", after.total_bytes);
+    println!(
+        "DISK_AFTER_HUMAN={}",
+        maintenance::human_bytes(after.total_bytes)
+    );
+    println!(
+        "VALIDATED_ENV_CACHE_ENTRIES_AFTER={}",
+        after.validated_env_entries
+    );
+    Ok(())
+}
+
+fn parse_cache_args(tool_root: &Path, args: &[String]) -> Result<(PathBuf, Vec<String>), String> {
+    let mut cache_path = tool_root.join(".apdr-cache");
+    let mut filtered = Vec::new();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--cache-path" => {
+                index += 1;
+                let value = args.get(index).ok_or("--cache-path expects a value")?;
+                cache_path = PathBuf::from(value);
+            }
+            value => filtered.push(value.to_string()),
+        }
+        index += 1;
+    }
+    Ok((cache_path, filtered))
+}
+
 fn print_help() {
     println!("APDR");
     println!();
     println!("Usage:");
     println!("  apdr resolve <snippet.py>|--stdin [--output DIR] [--python 3.11] [--range 1] [--max-retries 10]");
     println!("              [--cache-path DIR] [--allow-llm --llm-provider ollama --llm-model gemma3:4b]");
-    println!("              [--llm-base-url http://localhost:11434] [--benchmark-context-log trace.log]");
+    println!(
+        "              [--llm-base-url http://localhost:11434] [--benchmark-context-log trace.log]"
+    );
     println!("              [--docker-timeout 300] [--no-validate]");
     println!("              [--no-execute-snippet]");
     println!("              [--no-parallel-versions] [--no-config-scan]");
     println!("  apdr classify-log <build.log>");
-    println!("  apdr cache stats");
-    println!("  apdr cache warm --top-packages 5000");
-    println!("  apdr cache warm --high-centrality 50");
+    println!("  apdr cache [--cache-path DIR] stats");
+    println!("  apdr cache [--cache-path DIR] warm --top-packages 5000");
+    println!("  apdr cache [--cache-path DIR] warm --high-centrality 50");
+    println!("  apdr cache [--cache-path DIR] prune [--max-validated-envs 30] [--max-validated-env-gb 3] [--max-wheelhouse-gb 2]");
 }
 
 fn write_stdin_snippet(output_dir: &Path) -> Result<PathBuf, std::io::Error> {

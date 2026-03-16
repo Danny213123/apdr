@@ -57,6 +57,7 @@ Useful extras:
 ```bash
 cargo run -- classify-log path/to/build.log
 cargo run -- cache stats
+cargo run -- cache prune
 cargo run -- cache warm --top-packages 5000
 cargo run -- cache warm --high-centrality 50
 ```
@@ -98,6 +99,12 @@ The report includes cache hits, heuristic hits, LLM calls, retries, unresolved i
 - build artifact tags
 - learned failure patterns with success-rate tracking
 - cached PyPI version indexes
+- a bounded `validated-envs/` cache for recent successful local environments
+- a pip `wheelhouse/` cache for repeated installs
+
+`cargo run -- cache stats` now reports disk usage for the heavy cache directories. `cargo run -- cache prune` removes legacy `pip-cache/`, removes the opt-out `package-repository/` cache when it is disabled, and trims `validated-envs/` down to the configured retention limits.
+
+By default APDR keeps up to 24 validated envs and up to 8 GiB of validated-env cache data. You can override those limits with `APDR_VALIDATED_ENV_CACHE_MAX_ENTRIES` and `APDR_VALIDATED_ENV_CACHE_MAX_GB`. Set `APDR_ENABLE_PACKAGE_REPOSITORY_CACHE=1` only if you explicitly want the much larger package-repository cache back.
 
 ## Notes
 

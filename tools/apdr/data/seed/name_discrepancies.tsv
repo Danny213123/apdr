@@ -1,6 +1,7 @@
 # import_name	package_name	default_version	source
 bs4	beautifulsoup4	4.12.3	discrepancy
 cv2	opencv-python	4.10.0.84	discrepancy
+editor	python-editor		discrepancy
 yaml	PyYAML	6.0.2	discrepancy
 pil	Pillow	11.0.0	discrepancy
 PIL	Pillow	11.0.0	discrepancy
@@ -67,8 +68,6 @@ corsheaders	django-cors-headers	4.6.0	discrepancy
 airflow	apache-airflow	2.10.4	discrepancy
 faker	Faker	33.1.0	discrepancy
 factory	factory-boy	3.3.1	discrepancy
-googleapiclient	google-api-python-client	2.157.0	discrepancy
-apiclient	google-api-python-client	2.157.0	discrepancy
 google_auth_oauthlib	google-auth-oauthlib	1.2.1	discrepancy
 osgeo	GDAL	3.10.1	discrepancy
 gdal	GDAL	3.10.1	discrepancy
@@ -101,8 +100,8 @@ pydantic	pydantic	2.10.3	discrepancy
 marshmallow	marshmallow	3.23.1	discrepancy
 omegaconf	omegaconf	2.3.0	discrepancy
 asyncpg	asyncpg	0.30.0	discrepancy
+memcache	python-memcached	1.59	discrepancy
 motor	motor	3.6.0	discrepancy
-redis	redis	5.2.1	discrepancy
 cassandra	cassandra-driver	3.29.2	discrepancy
 elasticsearch	elasticsearch	8.17.0	discrepancy
 opensearchpy	opensearch-py	2.8.0	discrepancy
@@ -129,9 +128,6 @@ polars	polars	1.16.0	discrepancy
 dask	dask	2024.12.1	discrepancy
 cartopy	Cartopy	0.24.1	discrepancy
 folium	folium	0.18.0	discrepancy
-geopandas	geopandas	1.0.1	discrepancy
-shapely	shapely	2.0.6	discrepancy
-fiona	Fiona	1.10.1	discrepancy
 rasterio	rasterio	1.4.3	discrepancy
 xarray	xarray	2024.11.0	discrepancy
 numba	numba	0.60.0	discrepancy
@@ -188,7 +184,6 @@ mpd	python-mpd2	3.1.1	discrepancy
 apt_pkg	python-apt	2.9.0	discrepancy
 gflags	python-gflags	3.1.2	discrepancy
 cjson	python-cjson	1.2.2	discrepancy
-xmpp	xmpppy	0.7.1	discrepancy
 AppKit	pyobjc-framework-Cocoa	10.3.1	discrepancy
 Foundation	pyobjc-framework-Cocoa	10.3.1	discrepancy
 Quartz	pyobjc-framework-Quartz	10.3.1	discrepancy

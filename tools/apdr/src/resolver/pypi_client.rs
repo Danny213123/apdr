@@ -104,12 +104,8 @@ pub fn fetch_versions(
     }
 
     // 5. Fallback to PyPI API
-    let Some(output) = run_host_python(&[
-        "-c",
-        PYPI_VERSION_SCRIPT,
-        package_name,
-        python_version,
-    ]) else {
+    let Some(output) = run_host_python(&["-c", PYPI_VERSION_SCRIPT, package_name, python_version])
+    else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -179,11 +175,7 @@ pub fn compatible_default_version(
     versions.last().cloned()
 }
 
-pub fn dependency_specs(
-    store: &mut CacheStore,
-    package_name: &str,
-    version: &str,
-) -> Vec<String> {
+pub fn dependency_specs(store: &mut CacheStore, package_name: &str, version: &str) -> Vec<String> {
     // 1. Try local cache first
     if let Some(specs) = store.version_dependency_specs(package_name, version) {
         return specs.clone();
@@ -354,7 +346,11 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
     };
     let kgraph_path_text = kgraph_path.display().to_string();
     let db_path_text = db_path.display().to_string();
-    let package_list = missing.iter().map(|p| normalize(p)).collect::<Vec<_>>().join(",");
+    let package_list = missing
+        .iter()
+        .map(|p| normalize(p))
+        .collect::<Vec<_>>()
+        .join(",");
     let Some(output) = run_host_python(&[
         "-c",
         SMTPIP_BULK_SCRIPT,
@@ -560,7 +556,11 @@ fn try_smartpip_tcp_versions(store: &CacheStore, package_name: &str) -> Option<V
 
 /// Try to query smartPip TCP server for dependency specs.
 /// Returns None if TCP connection fails, allowing fallback to subprocess.
-fn try_smartpip_tcp_deps(store: &CacheStore, package_name: &str, version: &str) -> Option<Vec<String>> {
+fn try_smartpip_tcp_deps(
+    store: &CacheStore,
+    package_name: &str,
+    version: &str,
+) -> Option<Vec<String>> {
     let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
 
     if conn_guard.is_none() {
@@ -688,7 +688,11 @@ fn ensure_smartpip_tcp_server(store: &CacheStore) {
 }
 
 fn smartpip_server_available() -> bool {
-    TcpStream::connect_timeout(&"127.0.0.1:8888".parse().unwrap(), Duration::from_millis(250)).is_ok()
+    TcpStream::connect_timeout(
+        &"127.0.0.1:8888".parse().unwrap(),
+        Duration::from_millis(250),
+    )
+    .is_ok()
 }
 
 fn wait_for_smartpip_server() -> bool {
@@ -702,7 +706,10 @@ fn wait_for_smartpip_server() -> bool {
 }
 
 fn connect_smartpip_stream() -> std::io::Result<TcpStream> {
-    let stream = TcpStream::connect_timeout(&"127.0.0.1:8888".parse().unwrap(), Duration::from_millis(500))?;
+    let stream = TcpStream::connect_timeout(
+        &"127.0.0.1:8888".parse().unwrap(),
+        Duration::from_millis(500),
+    )?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
     Ok(stream)
@@ -823,74 +830,115 @@ fn increment_numeric(value: &str) -> String {
         .unwrap_or_else(|_| format!("{value}1"))
 }
 
+/// Maximum number of parsed segments in a version string.
+/// Real-world Python versions rarely exceed 6 segments (e.g. "1.0.0.dev201502270022" = 5 parts).
+const MAX_VERSION_PARTS: usize = 10;
+
+/// Stack-allocated version segment — no heap allocation.
+#[derive(Clone, Copy)]
+enum VersionPart {
+    Number(u64),
+    /// Lowercased text segment stored inline. Max 8 bytes covers all known
+    /// PEP 440 suffixes (a, b, rc, dev, post, alpha, beta, pre, rev, final).
+    Text([u8; 8], u8),
+}
+
+/// Parse a version string into a fixed-size array of parts.
+/// Semantics match the previous Vec-based `tokenize_version` exactly:
+///   - Digits accumulate into Number parts
+///   - Letters accumulate into Text parts (lowercased)
+///   - All other characters (`.`, `-`, `_`) are separators
+fn tokenize_version(value: &str) -> ([VersionPart; MAX_VERSION_PARTS], usize) {
+    let mut parts = [VersionPart::Number(0); MAX_VERSION_PARTS];
+    let mut len = 0usize;
+    let mut text_buf = [0u8; 8];
+    let mut text_len: u8 = 0;
+    let mut num_acc: u64 = 0;
+    let mut in_number = false;
+    let mut buf_active = false;
+
+    for ch in value.bytes() {
+        if ch.is_ascii_digit() {
+            if !in_number && buf_active {
+                if len < MAX_VERSION_PARTS {
+                    parts[len] = VersionPart::Text(text_buf, text_len);
+                    len += 1;
+                }
+                text_buf = [0u8; 8];
+                text_len = 0;
+            }
+            in_number = true;
+            buf_active = true;
+            num_acc = num_acc.wrapping_mul(10).wrapping_add((ch - b'0') as u64);
+        } else if ch.is_ascii_alphabetic() {
+            if in_number && buf_active {
+                if len < MAX_VERSION_PARTS {
+                    parts[len] = VersionPart::Number(num_acc);
+                    len += 1;
+                }
+                num_acc = 0;
+            }
+            in_number = false;
+            buf_active = true;
+            if text_len < 8 {
+                text_buf[text_len as usize] = ch.to_ascii_lowercase();
+                text_len += 1;
+            }
+        } else {
+            if buf_active {
+                if in_number {
+                    if len < MAX_VERSION_PARTS {
+                        parts[len] = VersionPart::Number(num_acc);
+                        len += 1;
+                    }
+                    num_acc = 0;
+                } else if len < MAX_VERSION_PARTS {
+                    parts[len] = VersionPart::Text(text_buf, text_len);
+                    len += 1;
+                    text_buf = [0u8; 8];
+                    text_len = 0;
+                }
+                buf_active = false;
+            }
+            in_number = false;
+        }
+    }
+
+    if buf_active {
+        if in_number {
+            if len < MAX_VERSION_PARTS {
+                parts[len] = VersionPart::Number(num_acc);
+                len += 1;
+            }
+        } else if len < MAX_VERSION_PARTS {
+            parts[len] = VersionPart::Text(text_buf, text_len);
+            len += 1;
+        }
+    }
+
+    (parts, len)
+}
+
 fn compare_versions(left: &str, right: &str) -> Ordering {
-    let left_parts = tokenize_version(left);
-    let right_parts = tokenize_version(right);
-    let max_len = std::cmp::max(left_parts.len(), right_parts.len());
-    for index in 0..max_len {
-        let left_part = left_parts.get(index).cloned().unwrap_or(VersionPart::Number(0));
-        let right_part = right_parts.get(index).cloned().unwrap_or(VersionPart::Number(0));
+    let (lp, ll) = tokenize_version(left);
+    let (rp, rl) = tokenize_version(right);
+    let max_len = std::cmp::max(ll, rl);
+    for i in 0..max_len {
+        let left_part = if i < ll { lp[i] } else { VersionPart::Number(0) };
+        let right_part = if i < rl { rp[i] } else { VersionPart::Number(0) };
         let ordering = match (left_part, right_part) {
             (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(&b),
-            (VersionPart::Text(a), VersionPart::Text(b)) => a.cmp(&b),
-            (VersionPart::Number(_), VersionPart::Text(_)) => Ordering::Greater,
-            (VersionPart::Text(_), VersionPart::Number(_)) => Ordering::Less,
+            (VersionPart::Text(a, al), VersionPart::Text(b, bl)) => {
+                a[..al as usize].cmp(&b[..bl as usize])
+            }
+            (VersionPart::Number(_), VersionPart::Text(..)) => Ordering::Greater,
+            (VersionPart::Text(..), VersionPart::Number(_)) => Ordering::Less,
         };
         if ordering != Ordering::Equal {
             return ordering;
         }
     }
     Ordering::Equal
-}
-
-#[derive(Clone)]
-enum VersionPart {
-    Number(u64),
-    Text(String),
-}
-
-fn tokenize_version(value: &str) -> Vec<VersionPart> {
-    let mut parts = Vec::new();
-    let mut buffer = String::new();
-    let mut numeric = false;
-    for ch in value.chars() {
-        if ch.is_ascii_digit() {
-            if !numeric && !buffer.is_empty() {
-                parts.push(VersionPart::Text(buffer.to_lowercase()));
-                buffer.clear();
-            }
-            numeric = true;
-            buffer.push(ch);
-        } else if ch.is_ascii_alphabetic() {
-            if numeric && !buffer.is_empty() {
-                let number = buffer.parse::<u64>().unwrap_or(0);
-                parts.push(VersionPart::Number(number));
-                buffer.clear();
-            }
-            numeric = false;
-            buffer.push(ch);
-        } else {
-            if !buffer.is_empty() {
-                if numeric {
-                    let number = buffer.parse::<u64>().unwrap_or(0);
-                    parts.push(VersionPart::Number(number));
-                } else {
-                    parts.push(VersionPart::Text(buffer.to_lowercase()));
-                }
-                buffer.clear();
-            }
-            numeric = false;
-        }
-    }
-    if !buffer.is_empty() {
-        if numeric {
-            let number = buffer.parse::<u64>().unwrap_or(0);
-            parts.push(VersionPart::Number(number));
-        } else {
-            parts.push(VersionPart::Text(buffer.to_lowercase()));
-        }
-    }
-    parts
 }
 
 const PYPI_VERSION_SCRIPT: &str = r#"
@@ -1150,7 +1198,10 @@ mod tests {
     #[test]
     fn requirement_name_normalizes_extras_and_constraints() {
         assert_eq!(requirement_name("requests[socks]>=2.22"), "requests");
-        assert_eq!(requirement_name("google.cloud.storage"), "google-cloud-storage");
+        assert_eq!(
+            requirement_name("google.cloud.storage"),
+            "google-cloud-storage"
+        );
     }
 
     #[test]
@@ -1163,14 +1214,15 @@ mod tests {
     #[test]
     fn best_matching_version_prefers_highest_compatible() {
         let tool_root = PathBuf::from(".");
-        let cache_path = std::env::temp_dir().join(format!(
-            "apdr-pypi-client-test-{}",
-            std::process::id()
-        ));
+        let cache_path =
+            std::env::temp_dir().join(format!("apdr-pypi-client-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&cache_path);
         let mut store =
             CacheStore::load(tool_root.as_path(), cache_path.clone()).expect("cache should load");
-        let _ = store.save_pypi_versions("demo-package", &["1.0.0".into(), "1.5.0".into(), "2.0.0".into()]);
+        let _ = store.save_pypi_versions(
+            "demo-package",
+            &["1.0.0".into(), "1.5.0".into(), "2.0.0".into()],
+        );
         assert_eq!(
             best_matching_version(&mut store, "demo-package", ">=1.0,<2.0", "3.11").as_deref(),
             Some("1.5.0")

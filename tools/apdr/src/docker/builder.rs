@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::cache::build_cache;
+use crate::cache::maintenance;
 use crate::cache::store::CacheStore;
 use crate::context;
 use crate::docker::smoke_test;
@@ -20,7 +21,6 @@ struct CommandResult {
     exit_code: Option<i32>,
     duration_ms: u128,
 }
-
 
 pub fn validate_requirements(
     snippet_path: &Path,
@@ -37,8 +37,27 @@ pub fn validate_requirements(
     fs::create_dir_all(&wheelhouse_dir)?;
     let validated_envs_dir = config.cache_path.join("validated-envs");
     fs::create_dir_all(&validated_envs_dir)?;
+    let _ = maintenance::prune_validated_env_cache(
+        &validated_envs_dir,
+        config.validated_env_cache_max_entries,
+        config.validated_env_cache_max_bytes,
+    );
+
+    let validation_started = Instant::now();
+    let total_budget = config.validation_timeout;
 
     for (local_index, python_version) in candidate_versions.iter().enumerate() {
+        // Check total validation budget before starting another attempt
+        let elapsed = validation_started.elapsed();
+        if elapsed >= total_budget {
+            eprintln!(
+                "[validation] total budget exhausted ({:.1}s >= {:.1}s), skipping remaining {} version(s)",
+                elapsed.as_secs_f64(),
+                total_budget.as_secs_f64(),
+                candidate_versions.len() - local_index
+            );
+            break;
+        }
         let attempt_index = attempt_offset + local_index + 1;
         let build_key = build_cache::key_for(requirements_txt, python_version);
         summary.lockfile_key = Some(build_key.clone());
@@ -103,12 +122,8 @@ pub fn validate_requirements(
 
         let env_python = env_python_path(&env_dir);
         let env_create_command = if python_version.starts_with("2.") {
-            let host = host_python_for_metadata()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "python3".to_string());
             format!(
-                "{} -m virtualenv -p {} {}",
-                host,
+                "{} -m virtualenv {}",
                 interpreter.display(),
                 env_dir.display()
             )
@@ -128,11 +143,16 @@ pub fn validate_requirements(
             work_dir.join("smoke_test.py").display()
         );
         fs::write(work_dir.join("env-create.command.txt"), &env_create_command)?;
-        fs::write(work_dir.join("env-install.command.txt"), &env_install_command)?;
+        fs::write(
+            work_dir.join("env-install.command.txt"),
+            &env_install_command,
+        )?;
         fs::write(work_dir.join("env-run.command.txt"), &run_command)?;
         fs::write(&run_log_path, "")?;
         fs::write(&combined_log_path, "")?;
-        if let Ok(tail) = context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000) {
+        if let Ok(tail) =
+            context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+        {
             fs::write(&context_snapshot_path, tail)?;
         } else {
             fs::write(&context_snapshot_path, "")?;
@@ -155,28 +175,50 @@ pub fn validate_requirements(
         };
         summary.validation_backend = "env".to_string();
 
-        // Check validated-env cache
+        // Check validated-env cache: prefer compressed archive, fall back to legacy dir
+        let cached_archive = validated_env_archive_path(&validated_envs_dir, &build_key);
         let cached_env_dir = validated_env_cache_path(&validated_envs_dir, &build_key);
-        let cache_hit = cached_env_dir.exists()
-            && (cached_env_dir.join("bin").exists() || cached_env_dir.join("Scripts").exists());
+        let (cache_hit, cache_is_archive) = if cached_archive.exists() {
+            (true, true)
+        } else if cached_env_dir.exists()
+            && (cached_env_dir.join("bin").exists()
+                || cached_env_dir.join("Scripts").exists())
+        {
+            (true, false)
+        } else {
+            (false, false)
+        };
         attempt.used_cached_env = cache_hit;
         attempt.validated_env_cache_hit = cache_hit;
 
         let (build_logs, build_exit_code, build_duration_ms) = if cache_hit {
-            match copy_dir_all(&cached_env_dir, &env_dir) {
+            let restore_result = if cache_is_archive {
+                maintenance::extract_archive_to_env(&cached_archive, &env_dir)
+            } else {
+                copy_dir_all(&cached_env_dir, &env_dir)
+            };
+            match restore_result {
                 Ok(()) => {
-                    let log = format!(
-                        "reused cached validated env from {}",
-                        cached_env_dir.display()
-                    );
+                    if cache_is_archive {
+                        let _ = maintenance::touch_archive_marker(&cached_archive);
+                    } else {
+                        let _ = maintenance::touch_validated_env_cache_entry(&cached_env_dir);
+                    }
+                    let source = if cache_is_archive {
+                        cached_archive.display().to_string()
+                    } else {
+                        cached_env_dir.display().to_string()
+                    };
+                    let log = format!("reused cached validated env from {}", source);
                     fs::write(&build_log_path, &log)?;
                     (log, None, 0_u128)
                 }
                 Err(err) => {
-                    // Cache copy failed; fall through to fresh env creation
+                    // Cache restore failed; fall through to fresh env creation
                     let _ = fs::remove_dir_all(&env_dir);
                     attempt.used_cached_env = false;
                     attempt.validated_env_cache_hit = false;
+                    let attempt_timeout = total_budget.saturating_sub(validation_started.elapsed());
                     let result = create_and_install_env(
                         &interpreter,
                         python_version,
@@ -190,6 +232,7 @@ pub fn validate_requirements(
                         &build_command,
                         &run_command,
                         &build_key,
+                        attempt_timeout,
                         config,
                         &mut attempt,
                         &mut summary,
@@ -198,12 +241,13 @@ pub fn validate_requirements(
                         summary.attempts.push(attempt);
                         continue;
                     }
-                    let mut log = format!("(cache copy failed: {})\n", err);
+                    let mut log = format!("(cache restore failed: {})\n", err);
                     log.push_str(&result.0);
                     (log, result.1, result.2)
                 }
             }
         } else {
+            let attempt_timeout = total_budget.saturating_sub(validation_started.elapsed());
             let result = create_and_install_env(
                 &interpreter,
                 python_version,
@@ -217,6 +261,7 @@ pub fn validate_requirements(
                 &build_command,
                 &run_command,
                 &build_key,
+                attempt_timeout,
                 config,
                 &mut attempt,
                 &mut summary,
@@ -229,7 +274,8 @@ pub fn validate_requirements(
         };
 
         let mut smoke_command = smoke_test_command(&env_python, &work_dir);
-        let run_output = run_command_with_timeout(&mut smoke_command, config.validation_timeout)?;
+        let smoke_timeout = total_budget.saturating_sub(validation_started.elapsed());
+        let run_output = run_command_with_timeout(&mut smoke_command, smoke_timeout)?;
         summary.smoke_duration_ms += run_output.duration_ms;
         let combined = if build_logs.is_empty() {
             run_output.combined_output.clone()
@@ -268,9 +314,18 @@ pub fn validate_requirements(
             attempt.status = "passed".to_string();
             attempt.log_excerpt = truncate_log(&combined);
             let site_packages = env_site_packages_dir(&env_dir, python_version);
-            let _ = catalog_package_repository(store, python_version, &site_packages);
+            if config.package_repository_cache_enabled {
+                let _ = catalog_package_repository(store, python_version, &site_packages);
+            }
             // Save validated env to cache for future reuse
-            let _ = save_validated_env(&validated_envs_dir, &build_key, &env_dir);
+            if config.validated_env_cache_max_entries > 0 {
+                let _ = save_validated_env(&validated_envs_dir, &build_key, &env_dir);
+                let _ = maintenance::prune_validated_env_cache(
+                    &validated_envs_dir,
+                    config.validated_env_cache_max_entries,
+                    config.validated_env_cache_max_bytes,
+                );
+            }
             fs::write(
                 &metadata_path,
                 attempt_metadata(
@@ -329,12 +384,13 @@ fn create_and_install_env(
     build_command: &str,
     run_command: &str,
     build_key: &str,
+    timeout: Duration,
     config: &ResolveConfig,
     attempt: &mut ValidationAttempt,
     summary: &mut ValidationSummary,
 ) -> io::Result<(String, Option<i32>, u128)> {
     // Create isolated env
-    let create_output = create_env(interpreter, env_dir, python_version, config.validation_timeout)?;
+    let create_output = create_env(interpreter, env_dir, python_version, timeout)?;
     summary.env_create_duration_ms += create_output.duration_ms;
     attempt.env_create_duration_ms = create_output.duration_ms;
     if !create_output.success {
@@ -363,12 +419,40 @@ fn create_and_install_env(
         return Ok((log, create_output.exit_code, create_output.duration_ms));
     }
 
-    // Install requirements into env
+    // Pre-install build-time prerequisites for packages with broken setup.py
+    // that import their own dependencies during egg_info (e.g., clipboard → pyperclip).
+    let requirements_content = fs::read_to_string(install_requirements_path)?;
+    let prereqs = build_time_prerequisites(&requirements_content, python_version);
+    let mut prereq_ms = 0u128;
+    if !prereqs.is_empty() {
+        let prereq_timeout =
+            timeout.saturating_sub(Duration::from_millis(create_output.duration_ms as u64));
+        let mut command = Command::new(env_python);
+        command
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("--cache-dir")
+            .arg(wheelhouse_dir);
+        for p in &prereqs {
+            command.arg(*p);
+        }
+        command.env("PYTHONNOUSERSITE", "1");
+        if let Ok(result) = run_command_with_timeout(&mut command, prereq_timeout) {
+            prereq_ms = result.duration_ms;
+        }
+    }
+
+    // Install requirements into env (use remaining budget after env creation)
+    let install_timeout = timeout.saturating_sub(Duration::from_millis(
+        (create_output.duration_ms + prereq_ms) as u64,
+    ));
     let install_output = run_env_install_requirements(
         env_python,
         wheelhouse_dir,
         install_requirements_path,
-        config.validation_timeout,
+        install_timeout,
     )?;
     summary.install_duration_ms += install_output.duration_ms;
     let build_output = format!(
@@ -495,20 +579,35 @@ fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Res
         if child.try_wait()?.is_some() {
             let output = child.wait_with_output()?;
             let success = output.status.success();
-            return Ok(command_result(success, output, false, started.elapsed().as_millis()));
+            return Ok(command_result(
+                success,
+                output,
+                false,
+                started.elapsed().as_millis(),
+            ));
         }
 
         if started.elapsed() >= timeout {
             let _ = child.kill();
             let output = child.wait_with_output()?;
-            return Ok(command_result(false, output, true, started.elapsed().as_millis()));
+            return Ok(command_result(
+                false,
+                output,
+                true,
+                started.elapsed().as_millis(),
+            ));
         }
 
         thread::sleep(Duration::from_millis(150));
     }
 }
 
-fn command_result(success: bool, output: Output, timed_out: bool, duration_ms: u128) -> CommandResult {
+fn command_result(
+    success: bool,
+    output: Output,
+    timed_out: bool,
+    duration_ms: u128,
+) -> CommandResult {
     CommandResult {
         success,
         combined_output: combined_output(&output.stdout, &output.stderr),
@@ -685,7 +784,9 @@ fn attempt_python_auto_install(python_version: &str) -> String {
                     ],
                 );
                 if success && find_python_interpreter(python_version).is_some() {
-                    return format!("Installed Python {python_version} with winget ({package_id}).");
+                    return format!(
+                        "Installed Python {python_version} with winget ({package_id})."
+                    );
                 }
                 last_output = output;
             }
@@ -696,7 +797,9 @@ fn attempt_python_auto_install(python_version: &str) -> String {
                 managers.push("scoop".to_string());
                 let (success, output) = run_install_command("scoop", &["install", package_name]);
                 if success && find_python_interpreter(python_version).is_some() {
-                    return format!("Installed Python {python_version} with scoop ({package_name}).");
+                    return format!(
+                        "Installed Python {python_version} with scoop ({package_name})."
+                    );
                 }
                 last_output = output;
             }
@@ -816,9 +919,7 @@ fn command_on_path(command: &str) -> bool {
 }
 
 fn run_install_command(command: &str, args: &[&str]) -> (bool, String) {
-    let output = Command::new(command)
-        .args(args)
-        .output();
+    let output = Command::new(command).args(args).output();
     let Ok(output) = output else {
         return (false, format!("failed to start {command}"));
     };
@@ -849,7 +950,9 @@ fn install_with_miniforge(python_version: &str) -> Result<String, String> {
     let env_root = root.join("envs").join(format!("python-{python_version}"));
     let env_python = env_root.join("bin").join("python");
     if env_python.exists() && path_matches_python_version(&env_python, python_version) {
-        return Ok(format!("Installed Python {python_version} with Miniforge ({python_version})."));
+        return Ok(format!(
+            "Installed Python {python_version} with Miniforge ({python_version})."
+        ));
     }
 
     let mut last_output = String::new();
@@ -875,8 +978,13 @@ fn install_with_miniforge(python_version: &str) -> Result<String, String> {
         let Ok(output) = command.output() else {
             return Err("Failed to start Miniforge conda.".to_string());
         };
-        if output.status.success() && env_python.exists() && path_matches_python_version(&env_python, python_version) {
-            return Ok(format!("Installed Python {python_version} with Miniforge ({spec})."));
+        if output.status.success()
+            && env_python.exists()
+            && path_matches_python_version(&env_python, python_version)
+        {
+            return Ok(format!(
+                "Installed Python {python_version} with Miniforge ({spec})."
+            ));
         }
         last_output = combined_output(&output.stdout, &output.stderr);
     }
@@ -890,7 +998,10 @@ fn install_with_miniforge(python_version: &str) -> Result<String, String> {
 
 fn ensure_unix_miniforge() -> Result<PathBuf, String> {
     if cfg!(windows) {
-        return Err("Automatic Miniforge bootstrap is currently only implemented for macOS and Linux.".to_string());
+        return Err(
+            "Automatic Miniforge bootstrap is currently only implemented for macOS and Linux."
+                .to_string(),
+        );
     }
     let Some(root) = unix_miniforge_root() else {
         return Err("Could not determine an APDR Miniforge root directory.".to_string());
@@ -916,11 +1027,8 @@ fn ensure_unix_miniforge() -> Result<PathBuf, String> {
     if fs::create_dir_all(&download_dir).is_err() {
         return Err("Failed to create the APDR Miniforge download directory.".to_string());
     }
-    let installer_path = download_dir.join(
-        url.rsplit('/')
-            .next()
-            .unwrap_or("Miniforge3-installer.sh"),
-    );
+    let installer_path =
+        download_dir.join(url.rsplit('/').next().unwrap_or("Miniforge3-installer.sh"));
     if !installer_path.exists() {
         download_with_host_python(url, &installer_path)?;
     }
@@ -947,7 +1055,9 @@ fn ensure_unix_miniforge() -> Result<PathBuf, String> {
 
 fn download_with_host_python(url: &str, destination: &Path) -> Result<(), String> {
     let Some(python) = host_python_for_metadata() else {
-        return Err("APDR could not find a host Python interpreter to download Miniforge.".to_string());
+        return Err(
+            "APDR could not find a host Python interpreter to download Miniforge.".to_string(),
+        );
     };
     if let Some(parent) = destination.parent() {
         let _ = fs::create_dir_all(parent);
@@ -1051,7 +1161,11 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
         for variable in ["ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(base) = std::env::var_os(variable) {
                 let base = PathBuf::from(base);
-                paths.push(base.join("Python").join(format!("Python{compact}")).join("python.exe"));
+                paths.push(
+                    base.join("Python")
+                        .join(format!("Python{compact}"))
+                        .join("python.exe"),
+                );
                 paths.push(base.join(format!("Python{compact}")).join("python.exe"));
             }
         }
@@ -1071,7 +1185,11 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
             paths.push(child.join(format!("python{python_version}.exe")));
             paths.push(child.join("current").join("python.exe"));
             paths.push(child.join("current").join(format!("python{major}.exe")));
-            paths.push(child.join("current").join(format!("python{python_version}.exe")));
+            paths.push(
+                child
+                    .join("current")
+                    .join(format!("python{python_version}.exe")),
+            );
         }
     }
     paths
@@ -1120,7 +1238,9 @@ fn matching_version_dirs(root: &Path, version: &str) -> Vec<PathBuf> {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .map(|name| name == version || prefixes.iter().any(|prefix| name.starts_with(prefix)))
+                .map(|name| {
+                    name == version || prefixes.iter().any(|prefix| name.starts_with(prefix))
+                })
                 .unwrap_or(false)
         })
         .collect()
@@ -1200,12 +1320,53 @@ fn copy_dir_all(source: &Path, destination: &Path) -> io::Result<()> {
 }
 
 fn smoke_test_command(env_python: &Path, work_dir: &Path) -> Command {
-    let mut command = Command::new(env_python);
+    // Make env_python absolute without resolving symlinks. canonicalize()
+    // would resolve the venv symlink to the system Python, breaking venv
+    // site-packages detection and causing ModuleNotFoundError at import time.
+    let python = if env_python.is_absolute() {
+        env_python.to_path_buf()
+    } else {
+        work_dir.join(env_python)
+    };
+    let mut command = Command::new(&python);
+    // smoke_test.py is in work_dir; use just the filename since current_dir is work_dir
     command
-        .arg(work_dir.join("smoke_test.py"))
+        .arg("smoke_test.py")
         .current_dir(work_dir)
         .env("PYTHONNOUSERSITE", "1");
     command
+}
+
+/// One-time install of virtualenv under Python 2.7 so we can create isolated
+/// environments without relying on the host Python 3's virtualenv (which may
+/// have dropped Python 2 support in versions 21+).
+fn ensure_py2_virtualenv(interpreter: &Path) {
+    use std::sync::OnceLock;
+    static DONE: OnceLock<bool> = OnceLock::new();
+    DONE.get_or_init(|| {
+        // Check if virtualenv is already available
+        let check = Command::new(interpreter)
+            .arg("-m")
+            .arg("virtualenv")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if check.map(|s| s.success()).unwrap_or(false) {
+            return true;
+        }
+        eprintln!("[validation] installing virtualenv under Python 2.7…");
+        let _ = Command::new(interpreter)
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("virtualenv")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        true
+    });
 }
 
 fn create_env(
@@ -1214,23 +1375,55 @@ fn create_env(
     python_version: &str,
     timeout: Duration,
 ) -> io::Result<CommandResult> {
-    let mut command = if python_version.starts_with("2.") {
-        // Python 2.7: use virtualenv from host Python 3
-        let host = host_python_for_metadata().unwrap_or_else(|| PathBuf::from("python3"));
-        let mut cmd = Command::new(host);
-        cmd.arg("-m")
-            .arg("virtualenv")
-            .arg("-p")
-            .arg(interpreter)
-            .arg(env_dir);
-        cmd
-    } else {
-        // Python 3.x: use stdlib venv
+    if python_version.starts_with("2.") {
+        // Python 2.7: use Python 2.7's own virtualenv.  Modern virtualenv
+        // (21+) under Python 3 dropped support for creating Python 2 envs,
+        // so we run virtualenv from the Python 2.7 interpreter itself.
+        // Auto-install virtualenv under Python 2.7 if missing.
+        ensure_py2_virtualenv(interpreter);
         let mut cmd = Command::new(interpreter);
-        cmd.arg("-m").arg("venv").arg(env_dir);
-        cmd
+        cmd.arg("-m").arg("virtualenv").arg(env_dir);
+        return run_command_with_timeout(&mut cmd, timeout);
+    }
+
+    // Python 3.x: prefer stdlib venv, but retry with virtualenv when
+    // ensurepip is broken in the local interpreter install.
+    let mut venv_command = Command::new(interpreter);
+    venv_command.arg("-m").arg("venv").arg(env_dir);
+    let venv_output = run_command_with_timeout(&mut venv_command, timeout)?;
+    if venv_output.success || venv_output.timed_out {
+        return Ok(venv_output);
+    }
+
+    let remaining = timeout.saturating_sub(Duration::from_millis(venv_output.duration_ms as u64));
+    if remaining.is_zero() {
+        return Ok(venv_output);
+    }
+
+    let Some(host) = host_python_for_metadata() else {
+        return Ok(venv_output);
     };
-    run_command_with_timeout(&mut command, timeout)
+    let _ = fs::remove_dir_all(env_dir);
+    let mut fallback = Command::new(host);
+    fallback
+        .arg("-m")
+        .arg("virtualenv")
+        .arg("-p")
+        .arg(interpreter)
+        .arg(env_dir);
+    let fallback_output = run_command_with_timeout(&mut fallback, remaining)?;
+    let combined = format!(
+        "--- python -m venv ---\n{}\n--- python -m virtualenv fallback ---\n{}",
+        venv_output.combined_output, fallback_output.combined_output
+    );
+
+    Ok(CommandResult {
+        success: fallback_output.success,
+        combined_output: combined,
+        timed_out: venv_output.timed_out || fallback_output.timed_out,
+        exit_code: fallback_output.exit_code.or(venv_output.exit_code),
+        duration_ms: venv_output.duration_ms + fallback_output.duration_ms,
+    })
 }
 
 fn run_env_install_requirements(
@@ -1277,12 +1470,60 @@ fn validated_env_cache_path(validated_envs_dir: &Path, build_key: &str) -> PathB
     validated_envs_dir.join(build_key.replace(':', "-"))
 }
 
-fn save_validated_env(validated_envs_dir: &Path, build_key: &str, env_dir: &Path) -> io::Result<()> {
-    let dest = validated_env_cache_path(validated_envs_dir, build_key);
-    if dest.exists() {
-        return Ok(());
+fn validated_env_archive_path(validated_envs_dir: &Path, build_key: &str) -> PathBuf {
+    validated_envs_dir.join(format!("{}.tar.zst", build_key.replace(':', "-")))
+}
+
+fn save_validated_env(
+    validated_envs_dir: &Path,
+    build_key: &str,
+    env_dir: &Path,
+) -> io::Result<()> {
+    let archive_path = validated_env_archive_path(validated_envs_dir, build_key);
+    let legacy_dir = validated_env_cache_path(validated_envs_dir, build_key);
+    // Already cached (archive or legacy dir)
+    if archive_path.exists() {
+        return maintenance::touch_archive_marker(&archive_path);
     }
-    copy_dir_all(env_dir, &dest)
+    if legacy_dir.exists() {
+        return maintenance::touch_validated_env_cache_entry(&legacy_dir);
+    }
+    // Write to temp path, then atomic rename
+    let tmp_path = archive_path.with_extension("tar.zst.tmp");
+    maintenance::compress_env_to_archive(env_dir, &tmp_path)?;
+    fs::rename(&tmp_path, &archive_path)?;
+    maintenance::touch_archive_marker(&archive_path)
+}
+
+/// Packages whose setup.py imports their own dependencies at build time.
+/// These must be pre-installed before `pip install -r requirements.txt` so
+/// that the egg_info / setup.py phase can succeed.
+fn build_time_prerequisites<'a>(requirements: &str, python_version: &str) -> Vec<&'a str> {
+    let is_py2 = python_version.starts_with("2.");
+    let mut prereqs = Vec::new();
+    for line in requirements.lines() {
+        let pkg = line
+            .split(&['=', '>', '<', '!', '[', ' '][..])
+            .next()
+            .unwrap_or("")
+            .trim();
+        if pkg.eq_ignore_ascii_case("clipboard") {
+            // clipboard's setup.py imports pyperclip at build time.
+            // pyperclip >=1.9 requires setuptools>=61, unavailable on Python 2.7.
+            if is_py2 {
+                prereqs.push("pyperclip>=1.5,<1.9");
+            } else {
+                prereqs.push("pyperclip");
+            }
+        }
+        if pkg.eq_ignore_ascii_case("editor") && is_py2 {
+            // editor's setup.py does `from pathlib import Path` which needs
+            // the pathlib backport on Python 2.7.
+            prereqs.push("pathlib");
+        }
+    }
+    prereqs.dedup();
+    prereqs
 }
 
 const PACKAGE_REPOSITORY_CATALOG_SCRIPT: &str = r#"
