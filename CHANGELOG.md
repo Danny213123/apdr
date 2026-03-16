@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9 - 2026-03-15
+
+- Fixed APDR's Windows 11 environment tooling by teaching interpreter discovery to resolve Windows launcher-managed installs through `py -<version>`, so launcher-managed Python runtimes can be selected for validation and environment creation instead of being reported missing.
+
 ## 0.2.8 - 2026-03-15
 
 - Added APDR cache lifecycle controls, including disk-usage reporting in `cache stats`, a new `cache prune` command, compressed `validated-envs` archives, and retention limits for validated env and wheelhouse cache data.

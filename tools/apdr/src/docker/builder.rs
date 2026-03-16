@@ -640,6 +640,11 @@ fn find_python_interpreter(python_version: &str) -> Option<PathBuf> {
             return Some(candidate);
         }
     }
+    if let Some(candidate) = windows_launcher_python_path(python_version) {
+        if path_matches_python_version(&candidate, python_version) {
+            return Some(candidate);
+        }
+    }
     None
 }
 
@@ -652,6 +657,44 @@ fn path_matches_python_version(candidate: &Path, python_version: &str) -> bool {
         return false;
     };
     output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == python_version
+}
+
+fn windows_launcher_python_path(python_version: &str) -> Option<PathBuf> {
+    if !cfg!(windows) || !command_on_path("py") {
+        return None;
+    }
+    let version_arg = windows_launcher_version_arg(python_version)?;
+    let output = Command::new("py")
+        .arg(version_arg)
+        .arg("-c")
+        .arg("import os, sys; sys.stdout.write(os.path.abspath(sys.executable))")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    normalized_command_output_path(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn windows_launcher_version_arg(python_version: &str) -> Option<String> {
+    let trimmed = python_version.trim();
+    if trimmed.is_empty()
+        || !trimmed
+            .chars()
+            .all(|char| char.is_ascii_digit() || char == '.')
+    {
+        return None;
+    }
+    Some(format!("-{trimmed}"))
+}
+
+fn normalized_command_output_path(output: &str) -> Option<PathBuf> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
 }
 
 fn ensure_python_interpreter(python_version: &str) -> Result<PathBuf, String> {
@@ -1616,4 +1659,42 @@ fn attempt_metadata(
             .unwrap_or_else(|| "--".to_string()),
         attempt.artifact_dir.as_deref().unwrap_or("--"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_launcher_version_arg_formats_requested_minor() {
+        assert_eq!(
+            windows_launcher_version_arg("3.11").as_deref(),
+            Some("-3.11")
+        );
+        assert_eq!(
+            windows_launcher_version_arg("2.7").as_deref(),
+            Some("-2.7")
+        );
+    }
+
+    #[test]
+    fn windows_launcher_version_arg_rejects_invalid_values() {
+        assert!(windows_launcher_version_arg("").is_none());
+        assert!(windows_launcher_version_arg("  ").is_none());
+        assert!(windows_launcher_version_arg("3.11 rc1").is_none());
+        assert!(windows_launcher_version_arg("python3.11").is_none());
+    }
+
+    #[test]
+    fn normalized_command_output_path_trims_newlines() {
+        assert_eq!(
+            normalized_command_output_path("C:\\Python311\\python.exe\r\n"),
+            Some(PathBuf::from("C:\\Python311\\python.exe"))
+        );
+    }
+
+    #[test]
+    fn normalized_command_output_path_rejects_empty_output() {
+        assert_eq!(normalized_command_output_path(" \r\n\t "), None);
+    }
 }
