@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::{CacheStats, FailurePattern};
+use crate::{CacheStats, FailurePattern, UnsolvableModuleRecord};
 
 #[derive(Clone, Debug)]
 pub struct PackageRecord {
@@ -26,6 +26,7 @@ pub struct CacheStore {
     pub pypi_index: BTreeMap<String, Vec<String>>,
     pub dependency_graph: BTreeMap<String, Vec<String>>,
     pub version_dependency_specs: BTreeMap<String, Vec<String>>,
+    pub unsolvable_modules: BTreeMap<String, UnsolvableModuleRecord>,
 }
 
 impl CacheStore {
@@ -51,6 +52,8 @@ impl CacheStore {
         store.load_lockfiles()?;
         store.load_build_artifacts()?;
         store.load_package_artifacts()?;
+        store.load_unsolvable_modules()?;
+        store.load_dynamic_unsolvable_modules()?;
         Ok(store)
     }
 
@@ -652,6 +655,102 @@ impl CacheStore {
         rows.sort();
         fs::write(
             self.cache_path.join("dynamic_failure_patterns.tsv"),
+            rows.join("\n") + if rows.is_empty() { "" } else { "\n" },
+        )?;
+        Ok(())
+    }
+
+    fn load_unsolvable_modules(&mut self) -> io::Result<()> {
+        self.load_unsolvable_module_file(
+            &self.tool_root.join("data/seed/unsolvable_modules.tsv"),
+        )
+    }
+
+    fn load_dynamic_unsolvable_modules(&mut self) -> io::Result<()> {
+        self.load_unsolvable_module_file(
+            &self.cache_path.join("dynamic_unsolvable_modules.tsv"),
+        )
+    }
+
+    fn load_unsolvable_module_file(&mut self, path: &Path) -> io::Result<()> {
+        if !path.exists() {
+            return Ok(());
+        }
+        let contents = fs::read_to_string(path)?;
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = trimmed.split('\t').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let module_name = normalize(parts[0]);
+            let category = parts[1].trim().to_string();
+            let reason = parts[2].trim().to_string();
+            let confidence = parts
+                .get(3)
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(1.0);
+            let times_seen = parts
+                .get(4)
+                .and_then(|v| v.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+            self.unsolvable_modules.insert(
+                module_name.clone(),
+                UnsolvableModuleRecord {
+                    module_name,
+                    category,
+                    reason,
+                    confidence,
+                    times_seen,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    pub fn save_unsolvable_module(
+        &mut self,
+        module_name: &str,
+        category: &str,
+        reason: &str,
+        confidence: f64,
+    ) -> io::Result<()> {
+        let key = normalize(module_name);
+        let times_seen = self
+            .unsolvable_modules
+            .get(&key)
+            .map(|e| e.times_seen + 1)
+            .unwrap_or(1);
+        self.unsolvable_modules.insert(
+            key.clone(),
+            UnsolvableModuleRecord {
+                module_name: key,
+                category: category.to_string(),
+                reason: reason.to_string(),
+                confidence: confidence.clamp(0.0, 1.0),
+                times_seen,
+            },
+        );
+        self.persist_unsolvable_modules()
+    }
+
+    fn persist_unsolvable_modules(&self) -> io::Result<()> {
+        let mut rows: Vec<String> = self
+            .unsolvable_modules
+            .values()
+            .map(|e| {
+                format!(
+                    "{}\t{}\t{}\t{:.2}\t{}",
+                    e.module_name, e.category, e.reason, e.confidence, e.times_seen
+                )
+            })
+            .collect();
+        rows.sort();
+        fs::write(
+            self.cache_path.join("dynamic_unsolvable_modules.tsv"),
             rows.join("\n") + if rows.is_empty() { "" } else { "\n" },
         )?;
         Ok(())

@@ -280,6 +280,7 @@ fn validate_requirements_env(
                         &mut summary,
                     )?;
                     if !attempt.status.is_empty() {
+                        let _ = fs::remove_dir_all(&env_dir);
                         summary.attempts.push(attempt);
                         continue;
                     }
@@ -309,6 +310,7 @@ fn validate_requirements_env(
                 &mut summary,
             )?;
             if !attempt.status.is_empty() {
+                let _ = fs::remove_dir_all(&env_dir);
                 summary.attempts.push(attempt);
                 continue;
             }
@@ -348,6 +350,7 @@ fn validate_requirements_env(
                     Some(run_output.duration_ms),
                 ),
             )?;
+            let _ = fs::remove_dir_all(&env_dir);
             summary.attempts.push(attempt);
             continue;
         }
@@ -386,6 +389,8 @@ fn validate_requirements_env(
             summary.build_image_id = None;
             summary.succeeded = true;
             summary.attempts.push(attempt);
+            // Clean up the venv to reclaim disk space (already saved to validated-env cache above)
+            let _ = fs::remove_dir_all(&env_dir);
             return Ok(summary);
         }
 
@@ -405,6 +410,8 @@ fn validate_requirements_env(
             ),
         )?;
         summary.attempts.push(attempt);
+        // Clean up the venv to reclaim disk space (logs and metadata are preserved)
+        let _ = fs::remove_dir_all(&env_dir);
     }
 
     Ok(summary)

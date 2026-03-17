@@ -146,6 +146,8 @@ class BenchmarkCliApp:
             f"RAG={self.form_config.get('rag')} Verbose={self.form_config.get('verbose')}"
         )
         print(f"Snippet limit: {self.form_config.get('snippet_limit') or '--'}")
+        workers = self.form_config.get("workers", 0)
+        print(f"Workers: {workers or 'auto'}")
         print(f"Python override: {self.form_config.get('python_command') or '--'}")
         print(f"Model: {self.form_config.get('model') or model_config.get('model') or '--'}")
         print(f"Base URL: {self.form_config.get('base_url') or model_config.get('base_url') or '--'}")
@@ -239,6 +241,10 @@ class BenchmarkCliApp:
             self.form_config["snippet_limit"] = argument
             self.preview = self.service.preview(self.form_config)
             self._notify("Updated snippet limit.", "info")
+            return
+        if command == "workers":
+            if argument:
+                self._set_int_config("workers", argument, "Workers")
             return
         if command == "python":
             self.form_config["python_command"] = argument
@@ -435,6 +441,14 @@ class BenchmarkCliApp:
                 self.form_config["snippet_limit"] = value
                 self.preview = self.service.preview(self.form_config)
                 self._notify("Updated snippet limit.", "info")
+        elif key in {ord("w"), ord("W")}:
+            value = self._prompt(stdscr, curses, "Workers (0 = auto, 1 = sequential)", str(self.form_config.get("workers") or "0"))
+            if value is not None:
+                try:
+                    self.form_config["workers"] = int(value) if value.strip() else 0
+                except ValueError:
+                    self.form_config["workers"] = 0
+                self._notify("Updated workers.", "info")
         elif key in {ord("p"), ord("P")}:
             value = self._prompt(
                 stdscr,
@@ -976,6 +990,7 @@ class BenchmarkCliApp:
             ("Loop count", str(self.form_config.get("loop_count") or "--"), "l"),
             ("Search range", str(self.form_config.get("search_range") or "--"), "r"),
             ("Snippet limit", str(self.form_config.get("snippet_limit") or "all"), "n"),
+            ("Workers", str(self.form_config.get("workers") or "auto"), "w"),
             ("Python override", str(self.form_config.get("python_command") or "--"), "p"),
             ("RAG", "enabled" if self.form_config.get("rag") else "disabled", "a"),
             ("Verbose", "enabled" if self.form_config.get("verbose") else "disabled", "v"),

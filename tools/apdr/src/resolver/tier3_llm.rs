@@ -489,6 +489,116 @@ pub fn single_package_hint(
     }
 }
 
+/// LLM-powered recovery: given a failed build/runtime error log and the
+/// currently resolved packages, ask the LLM which package is wrong and what
+/// the correct PyPI name should be.
+///
+/// Returns `Some((wrong_package, correct_package, version))` on success.
+pub fn recovery_package_hint(
+    resolved: &[ResolvedDependency],
+    error_log: &str,
+    snippet_source: &str,
+    store: &mut CacheStore,
+    config: &ResolveConfig,
+    python_version: &str,
+    error_type: &str,
+) -> Option<(String, String, Option<String>)> {
+    let client = LlmClient::new(
+        &config.llm_provider,
+        &config.llm_model,
+        &config.llm_base_url,
+    );
+    if !client.is_available() {
+        return None;
+    }
+
+    let resolved_desc: Vec<String> = resolved
+        .iter()
+        .map(|d| {
+            if let Some(v) = &d.version {
+                format!("{}=={} (import: {})", d.package_name, v, d.import_name)
+            } else {
+                format!("{} (import: {})", d.package_name, d.import_name)
+            }
+        })
+        .collect();
+
+    let log_excerpt: String = error_log.lines().take(50).collect::<Vec<_>>().join("\n");
+    let benchmark_context =
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 24_000)
+            .unwrap_or_default();
+
+    let prompt = prompts::recovery_resolution_prompt(
+        &resolved_desc,
+        &log_excerpt,
+        snippet_source,
+        python_version,
+        error_type,
+    );
+    let no_supplemental: Vec<String> = Vec::new();
+    let _ = persist_llm_trace(
+        config,
+        "recovery-fix",
+        &prompt,
+        None,
+        &benchmark_context,
+        &no_supplemental,
+    );
+    let _ = context::append_context_log(
+        config.benchmark_context_log.as_deref(),
+        "apdr-llm-prompt",
+        &prompt,
+    );
+
+    let reply = client.complete(&prompt)?;
+    let _ = context::append_context_log(
+        config.benchmark_context_log.as_deref(),
+        "apdr-llm-response",
+        &reply,
+    );
+    let _ = persist_llm_trace(
+        config,
+        "recovery-fix",
+        &prompt,
+        Some(&reply),
+        &benchmark_context,
+        &no_supplemental,
+    );
+
+    // Parse: "wrong_package=correct_package" or "fix=NONE"
+    let (wrong_pkg, correct_pkg) = parse_recovery_response(&reply)?;
+
+    // Verify the suggested package exists on PyPI.
+    let versions = pypi_client::compatible_versions(store, &correct_pkg, python_version);
+    if versions.is_empty() {
+        return None;
+    }
+
+    let version = version_sampler::equally_distanced_sample(&versions, &[]);
+    Some((wrong_pkg, correct_pkg, version))
+}
+
+fn parse_recovery_response(reply: &str) -> Option<(String, String)> {
+    for line in reply.lines() {
+        let trimmed = line.trim();
+        if trimmed.eq_ignore_ascii_case("fix=NONE") {
+            return None;
+        }
+        if let Some((left, right)) = trimmed.split_once('=') {
+            let wrong = left.trim();
+            let correct = right.trim();
+            if !wrong.is_empty()
+                && !correct.is_empty()
+                && !wrong.eq_ignore_ascii_case("fix")
+                && wrong != correct
+            {
+                return Some((wrong.to_string(), correct.to_string()));
+            }
+        }
+    }
+    None
+}
+
 pub fn fallback_notes(
     unresolved_imports: &[String],
     parse_result: &ParseResult,
@@ -570,6 +680,7 @@ fn parse_solvability_assessment(response: &str) -> Option<SolvabilityAssessment>
     let mut decision = String::new();
     let mut confidence = None;
     let mut reason = String::new();
+    let mut unsolvable_modules: Vec<String> = Vec::new();
 
     for line in response.lines() {
         if let Some((left, right)) = line.split_once('=') {
@@ -583,6 +694,14 @@ fn parse_solvability_assessment(response: &str) -> Option<SolvabilityAssessment>
                         .map(|value| value.clamp(0.0, 1.0))
                 }
                 "reason" => reason = right.trim().to_string(),
+                "unsolvable_modules" => {
+                    unsolvable_modules = right
+                        .trim()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty() && s != "none")
+                        .collect();
+                }
                 _ => {}
             }
         }
@@ -609,6 +728,7 @@ fn parse_solvability_assessment(response: &str) -> Option<SolvabilityAssessment>
         confidence,
         reason,
         source: "llm-preflight".to_string(),
+        unsolvable_modules,
     })
 }
 

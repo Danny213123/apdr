@@ -1,0 +1,31 @@
+# Unsolvable modules: imports that cannot be resolved from PyPI in a generic Docker environment.
+# Format: module_name	category	reason	confidence	times_seen
+# This seed file provides a baseline. LLM-discovered entries accumulate in dynamic_unsolvable_modules.tsv.
+sublime	host-runtime	Sublime Text editor plugin API — not available on PyPI	1.00	0
+sublime-plugin	host-runtime	Sublime Text editor plugin API — not available on PyPI	1.00	0
+idautils	host-runtime	IDA Pro reverse engineering tool API — not available on PyPI	1.00	0
+idaapi	host-runtime	IDA Pro reverse engineering tool API — not available on PyPI	1.00	0
+idc	host-runtime	IDA Pro reverse engineering tool API — not available on PyPI	1.00	0
+gimpfu	host-runtime	GIMP Python-Fu plugin API — not available on PyPI	1.00	0
+hexchat	host-runtime	HexChat IRC client plugin API — not available on PyPI	1.00	0
+arcpy	host-runtime	ArcGIS desktop runtime — not available on PyPI	1.00	0
+bpy	host-runtime	Blender Python API — not available on PyPI	1.00	0
+c4d	host-runtime	Cinema 4D Python API — not available on PyPI	1.00	0
+hou	host-runtime	Houdini Python API — not available on PyPI	1.00	0
+nuke	host-runtime	Foundry Nuke compositing API — not available on PyPI	1.00	0
+odbaccess	host-runtime	Abaqus/ODB Python API — not available on PyPI	1.00	0
+rhinoscriptsyntax	host-runtime	Rhino 3D scripting API — not available on PyPI	1.00	0
+scriptcontext	host-runtime	Rhino 3D scripting API — not available on PyPI	1.00	0
+monkeyrunner	host-runtime	Android monkeyrunner tool — requires Jython/Android SDK	1.00	0
+-winreg	platform-specific	Windows-only registry API — not available on Linux/macOS	1.00	0
+win32security	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32api	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32con	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32gui	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+msvcrt	platform-specific	Windows-only C runtime API — not available on Linux/macOS	1.00	0
+msilib	platform-specific	Windows-only MSI API — not available on Linux/macOS	1.00	0
+picamera	platform-specific	Raspberry Pi camera module — requires Pi hardware	1.00	0
+spidev	platform-specific	Raspberry Pi SPI interface — requires Pi hardware	1.00	0
+smbus	platform-specific	I2C/SMBus interface — requires embedded hardware	1.00	0
+lx	host-runtime	Luxology MODO scripting API — not available on PyPI	1.00	0
+lxu	host-runtime	Luxology MODO scripting API — not available on PyPI	1.00	0

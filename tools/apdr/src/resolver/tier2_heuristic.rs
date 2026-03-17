@@ -75,7 +75,14 @@ pub fn resolve(
             .filter_map(|candidate| {
                 let distance = levenshtein(&normalized, candidate);
                 let is_short = normalized.chars().count() <= 4;
+                // Substring match requires the shorter name to be at least
+                // 50% the length of the longer — prevents common words like
+                // "settings" from matching "pydantic-settings".
+                let min_len = normalized.len().min(candidate.len());
+                let max_len = normalized.len().max(candidate.len());
+                let length_ratio_ok = max_len == 0 || min_len * 2 >= max_len;
                 let substring_match = !is_short
+                    && length_ratio_ok
                     && (candidate.contains(&normalized) || normalized.contains(candidate));
                 let allowed_distance = if is_short { 1 } else { 2 };
                 if distance <= allowed_distance || substring_match {
@@ -149,6 +156,23 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
     let normalized = normalize(import_name);
     if normalized == "input-data" {
         return true;
+    }
+    // Django/Flask project-local modules: when the framework is imported, treat
+    // `settings`, `urls`, `wsgi`, `asgi`, `apps` as local project modules.
+    if matches!(
+        normalized.as_str(),
+        "settings" | "urls" | "wsgi" | "asgi" | "apps" | "conf"
+    ) {
+        let has_framework = parse_result.imports.iter().any(|i| {
+            let n = normalize(i);
+            n == "django" || n.starts_with("django-") || n == "flask"
+        }) || parse_result.import_paths.iter().any(|p| {
+            let n = p.to_ascii_lowercase();
+            n.starts_with("django.") || n.starts_with("flask.")
+        });
+        if has_framework {
+            return true;
+        }
     }
     let generic_helper = matches!(
         normalized.as_str(),

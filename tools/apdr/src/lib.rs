@@ -75,6 +75,17 @@ pub struct SolvabilityAssessment {
     pub confidence: f64,
     pub reason: String,
     pub source: String,
+    /// Specific imports the LLM identified as unsolvable (for persistent learning).
+    pub unsolvable_modules: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UnsolvableModuleRecord {
+    pub module_name: String,
+    pub category: String,
+    pub reason: String,
+    pub confidence: f64,
+    pub times_seen: u32,
 }
 
 #[derive(Clone, Debug, Default)]

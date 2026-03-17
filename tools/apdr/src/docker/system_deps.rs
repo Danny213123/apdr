@@ -43,6 +43,26 @@ pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
             "libgdk-pixbuf2.0-dev",
             "libffi-dev",
         ],
+        "pygobject" => &[
+            "libgirepository1.0-dev",
+            "gir1.2-gtk-3.0",
+            "pkg-config",
+            "libcairo2-dev",
+        ],
+        "pygtk" => &["python-gtk2-dev", "libgtk2.0-dev"],
+        "dbus-python" => &["libdbus-1-dev", "libdbus-glib-1-dev", "pkg-config"],
+        "dlib" => &["cmake", "libopenblas-dev"],
+        "pylibmc" => &["libmemcached-dev"],
+        "mecab" | "mecab-python3" => &["mecab", "libmecab-dev", "mecab-ipadic-utf8"],
+        "evdev" => &["linux-headers-generic"],
+        "imposm" => &[
+            "libgeos-dev",
+            "libprotobuf-dev",
+            "protobuf-compiler",
+            "libtokyocabinet-dev",
+        ],
+        "mapnik" | "mapnik2" => &["libmapnik-dev", "mapnik-utils"],
+        "pyqt5" | "pyqtgraph" => &["qt5-default", "libqt5-dev"],
         "cython" => &[],
         _ => &[],
     }
@@ -127,6 +147,24 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     }
     if lower.contains("pkg-config") && lower.contains("not found") {
         deps.insert("pkg-config".to_string());
+    }
+    if lower.contains("dbus/dbus.h") || lower.contains("dbus-1.0") {
+        deps.insert("libdbus-1-dev".to_string());
+    }
+    if lower.contains("girepository.h") || lower.contains("girepository-1.0") {
+        deps.insert("libgirepository1.0-dev".to_string());
+    }
+    if lower.contains("glib.h") || lower.contains("glib-2.0") && lower.contains("not found") {
+        deps.insert("libglib2.0-dev".to_string());
+    }
+    if lower.contains("mecab.h") {
+        deps.insert("libmecab-dev".to_string());
+    }
+    if lower.contains("memcached.h") || lower.contains("libmemcached") {
+        deps.insert("libmemcached-dev".to_string());
+    }
+    if lower.contains("cmake") && (lower.contains("not found") || lower.contains("is required")) {
+        deps.insert("cmake".to_string());
     }
 
     deps.into_iter().collect()

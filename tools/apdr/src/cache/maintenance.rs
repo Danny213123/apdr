@@ -52,15 +52,19 @@ struct ValidatedEnvEntry {
 // ---------------------------------------------------------------------------
 
 /// Compress a directory into a tar.zst archive.
+/// Uses atomic write (temp file + rename) for safe concurrent access.
 pub fn compress_env_to_archive(env_dir: &Path, archive_path: &Path) -> io::Result<u64> {
-    let file = fs::File::create(archive_path)?;
+    let tmp_path = archive_path.with_extension("tar.zst.tmp");
+    let file = fs::File::create(&tmp_path)?;
     let encoder = zstd::Encoder::new(file, 6)?; // level 6: ~30% better ratio than 3, <1s extra
     let mut tar_builder = tar::Builder::new(encoder.auto_finish());
     tar_builder.follow_symlinks(false);
     tar_builder.append_dir_all(".", env_dir)?;
     tar_builder.finish()?;
     drop(tar_builder);
-    Ok(fs::metadata(archive_path)?.len())
+    let size = fs::metadata(&tmp_path)?.len();
+    fs::rename(&tmp_path, archive_path)?; // atomic on same filesystem
+    Ok(size)
 }
 
 /// Extract a tar.zst archive to a destination directory.

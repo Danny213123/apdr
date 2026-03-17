@@ -20,7 +20,8 @@ use crate::docker;
 use crate::parser;
 use crate::recovery::classifier;
 use crate::{
-    ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, ValidationSummary,
+    ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, SolvabilityAssessment,
+    UnsolvableModuleRecord, ValidationSummary,
 };
 
 pub fn resolve_path(
@@ -43,6 +44,59 @@ pub fn resolve_path(
         &parse_result,
         &selected_python,
     )?;
+
+    // Fast path: check if any import is known-unsolvable from prior LLM assessments.
+    // This avoids all resolution + validation work for cases already seen.
+    if let Some((hit_module, record)) = check_unsolvable_cache(&parse_result, &store) {
+        let reason = format!(
+            "Cached unsolvable module `{}` (confidence {:.2}, seen {} times): {}",
+            hit_module, record.confidence, record.times_seen, record.reason
+        );
+        report.notes.push(reason.clone());
+        let mut validation = skipped_validation_summary(
+            "skipped-unsolvable",
+            &reason,
+            &selected_python,
+            &config.output_dir,
+            config,
+            &render_requirements(&[]),
+        );
+        validation.solve_duration_ms = started.elapsed().as_millis();
+        report.unresolved = parse_result.imports.clone();
+        report.duration = started.elapsed();
+        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
+        write_state_artifacts(
+            &config.output_dir,
+            "resolved-final.txt",
+            &format_dependency_state(&[], &parse_result.imports),
+        )?;
+        // Increment the seen counter for the matched module
+        let _ = store.save_unsolvable_module(
+            &hit_module,
+            &record.category,
+            &record.reason,
+            record.confidence,
+        );
+        return Ok(ResolveResult {
+            snippet_path: snippet_path.to_path_buf(),
+            python_version: selected_python.clone(),
+            parse_result,
+            solvability: Some(SolvabilityAssessment {
+                decision: "skip".to_string(),
+                confidence: record.confidence,
+                reason: record.reason.clone(),
+                source: "cached-unsolvable".to_string(),
+                unsolvable_modules: vec![hit_module],
+            }),
+            resolved: Vec::new(),
+            unresolved: report.unresolved.clone(),
+            requirements_txt: String::new(),
+            lockfile: Some(String::new()),
+            build_image_id: None,
+            validation,
+            resolution_report: report,
+        });
+    }
 
     // Run tier1 (cache) + tier2 (heuristic) first — these are fast (~ms)
     let mut stage1 = tier1_cache::resolve(&parse_result, &mut store, &selected_python);
@@ -70,6 +124,31 @@ pub fn resolve_path(
             ));
         }
         if should_skip_from_assessment(assessment.as_ref()) {
+            // Learn: persist unsolvable modules for future cache hits
+            if let Some(ref a) = assessment {
+                if !a.unsolvable_modules.is_empty() {
+                    for module in &a.unsolvable_modules {
+                        let _ = store.save_unsolvable_module(
+                            module,
+                            "host-runtime",
+                            &a.reason,
+                            a.confidence,
+                        );
+                    }
+                } else {
+                    // LLM didn't list specific modules — store all imports
+                    // with halved confidence so a single false positive
+                    // doesn't permanently block a solvable import.
+                    for import in &parse_result.imports {
+                        let _ = store.save_unsolvable_module(
+                            import,
+                            "llm-inferred",
+                            &a.reason,
+                            a.confidence * 0.5,
+                        );
+                    }
+                }
+            }
             let reason = assessment
                 .as_ref()
                 .map(|item| {
@@ -223,9 +302,8 @@ pub fn resolve_path(
 
     // For Python 2 targets, strip generic seed version pins (e.g.
     // requests==2.32.3 from top_5000_mappings.tsv) since they target modern
-    // Python 3.  Preserve discrepancy pins (curated, may include Python 2-safe
-    // versions like python-memcached==1.59) and family pins (curated for
-    // specific Python versions like Pillow==6.2.2).
+    // Python 3.  Family pins (curated for specific Python versions) are
+    // preserved.
     if selected_python.starts_with("2.") {
         for dep in &mut resolved {
             if dep.strategy == "cache:seed" {
@@ -269,6 +347,7 @@ pub fn resolve_path(
         } else {
             validate_with_retries(
                 snippet_path,
+                &snippet_source,
                 &parse_result,
                 &selected_python,
                 &mut resolved,
@@ -414,6 +493,7 @@ fn skipped_validation_summary(
 
 fn validate_with_retries(
     snippet_path: &Path,
+    snippet_source: &str,
     parse_result: &crate::ParseResult,
     selected_python: &str,
     resolved: &mut Vec<ResolvedDependency>,
@@ -606,6 +686,70 @@ fn validate_with_retries(
             continue;
         }
 
+        // LLM-powered recovery as last resort when built-in recovery fails.
+        // Ask the LLM which resolved package is wrong and what the correct
+        // PyPI name should be.
+        if config.allow_llm {
+            if let Some((wrong_pkg, correct_pkg, version)) =
+                tier3_llm::recovery_package_hint(
+                    resolved,
+                    &last_log,
+                    snippet_source,
+                    store,
+                    config,
+                    selected_python,
+                    &classified.error_type,
+                )
+            {
+                let norm_wrong = wrong_pkg.to_ascii_lowercase().replace('_', "-");
+                if let Some(dep) = resolved.iter_mut().find(|d| {
+                    d.package_name.to_ascii_lowercase().replace('_', "-") == norm_wrong
+                }) {
+                    let old_pkg = dep.package_name.clone();
+                    let import_name = dep.import_name.clone();
+                    dep.package_name = correct_pkg.clone();
+                    dep.version = version.clone();
+                    dep.strategy = "recovery:llm-fix".to_string();
+                    dep.confidence = 0.65;
+                    let _ = store.save_import_mapping(
+                        &import_name,
+                        &correct_pkg,
+                        version.as_deref(),
+                        "recovery:llm-fix",
+                    );
+                    let note = format!(
+                        "LLM recovery: replaced `{old_pkg}` with `{correct_pkg}` after {} error.",
+                        classified.error_type
+                    );
+                    report.retries += 1;
+                    report.notes.push(note.clone());
+                    validation.iteration_history.push(note.clone());
+                    pending_pattern_learning = Some((
+                        learned_pattern_key(&classified, &last_log),
+                        classified.error_type.clone(),
+                        classified.conflict_class.clone(),
+                        note.clone(),
+                    ));
+                    if let Some(last_attempt) = validation.attempts.last_mut() {
+                        last_attempt.fix_applied = Some(note);
+                    }
+                    write_iteration_snapshot(
+                        &config.output_dir,
+                        attempt_index + 1,
+                        "recovery.txt",
+                        report.notes.last().map(String::as_str).unwrap_or(""),
+                    )?;
+                    write_iteration_snapshot(
+                        &config.output_dir,
+                        attempt_index + 1,
+                        "requirements-after-recovery.txt",
+                        &render_requirements(resolved),
+                    )?;
+                    continue;
+                }
+            }
+        }
+
         if let Some(note) = environment_specific_note(&classified, &last_log, parse_result) {
             report.notes.push(note.clone());
             validation.iteration_history.push(note.clone());
@@ -691,8 +835,16 @@ fn apply_recovery_fix(
                     classified.error_type
                 ));
             }
-            let known_versions =
+            let mut known_versions =
                 pypi_client::compatible_versions(store, &package_name, python_version);
+            // For Python 2.7, cap to the last known Py2-compatible version to avoid
+            // wasting recovery attempts on versions that require Python 3.
+            if python_version.starts_with("2.") {
+                if let Some(ceiling) = last_python2_version(&package_name) {
+                    let constraint = format!("<={ceiling}");
+                    known_versions.retain(|v| pypi_client::version_satisfies(v, &constraint));
+                }
+            }
             if known_versions.is_empty() {
                 return None;
             }
@@ -880,7 +1032,16 @@ fn apply_recovery_fix(
                     python_version,
                 );
                 if let Some((package_name, version)) = hint {
-                    if upsert_dependency(
+                    // Guard: skip if LLM echoed the module name back (or its
+                    // top-level component), which causes oscillation with the
+                    // cache-based recovery path.
+                    let norm_pkg = package_name.to_ascii_lowercase().replace('_', "-").replace('.', "-");
+                    let norm_mod = module_name.to_ascii_lowercase().replace('_', "-").replace('.', "-");
+                    let norm_top = module_name.split('.').next().unwrap_or(&module_name)
+                        .to_ascii_lowercase().replace('_', "-");
+                    if norm_pkg == norm_mod || norm_pkg == norm_top {
+                        // LLM returned the same name; skip to avoid oscillation.
+                    } else if upsert_dependency(
                         resolved,
                         &module_name,
                         &package_name,
@@ -913,6 +1074,47 @@ fn apply_recovery_fix(
             None
         }
         "SyntaxError" => {
+            // If a package (not the snippet) has a SyntaxError — e.g. Python 3
+            // type annotations imported on Python 2.7 — try downgrading that
+            // specific package instead of giving up.
+            if let Some(module_name) = extract_syntax_error_package(log) {
+                let norm_mod = module_name.to_ascii_lowercase().replace('_', "-");
+                if let Some(dep) = resolved.iter().find(|d| {
+                    d.import_name.to_ascii_lowercase().replace('_', "-") == norm_mod
+                }) {
+                    let package_name = dep.package_name.clone();
+                    let mut known_versions =
+                        pypi_client::compatible_versions(store, &package_name, python_version);
+                    if python_version.starts_with("2.") {
+                        if let Some(ceiling) = last_python2_version(&package_name) {
+                            let constraint = format!("<={ceiling}");
+                            known_versions
+                                .retain(|v| pypi_client::version_satisfies(v, &constraint));
+                        }
+                    }
+                    if !known_versions.is_empty() {
+                        let previous =
+                            attempted_versions.entry(package_name.clone()).or_default();
+                        if let Some(current) = dep.version.clone() {
+                            previous.push(current);
+                        }
+                        if let Some(next_version) =
+                            version_sampler::equally_distanced_sample(&known_versions, previous)
+                        {
+                            previous.push(next_version.clone());
+                            if update_package_version(
+                                resolved,
+                                &package_name,
+                                Some(next_version.clone()),
+                            ) {
+                                return Some(format!(
+                                    "Downgraded {package_name} to {next_version} after SyntaxError in package module `{module_name}`."
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             Some("Validation exhausted adjacent Python versions after SyntaxError.".to_string())
         }
         _ => {
@@ -1100,6 +1302,74 @@ fn apply_compatibility_overrides(
     )
 }
 
+/// Returns the last known Python 2.7-compatible version for popular packages.
+/// Used to cap version sampling during recovery for Python 2.7 snippets.
+fn last_python2_version(package_name: &str) -> Option<&'static str> {
+    let normalized = package_name
+        .to_ascii_lowercase()
+        .replace('_', "-")
+        .replace('.', "-");
+    match normalized.as_str() {
+        "numpy" => Some("1.16.6"),
+        "scipy" => Some("1.2.3"),
+        "pandas" => Some("0.25.3"),
+        "scikit-learn" | "sklearn" => Some("0.20.4"),
+        "matplotlib" => Some("2.2.5"),
+        "pillow" | "pil" => Some("6.2.2"),
+        "django" => Some("1.11.29"),
+        "flask" => Some("1.1.4"),
+        "requests" => Some("2.27.1"),
+        "setuptools" => Some("44.1.1"),
+        "pip" => Some("20.3.4"),
+        "wheel" => Some("0.37.1"),
+        "six" => Some("1.16.0"),
+        "cryptography" => Some("3.3.2"),
+        "ipython" => Some("5.10.0"),
+        "pytest" => Some("4.6.11"),
+        "coverage" => Some("5.5"),
+        "virtualenv" => Some("20.15.1"),
+        "typing-extensions" => Some("3.10.0.2"),
+        "importlib-metadata" => Some("2.1.3"),
+        "more-itertools" => Some("5.0.0"),
+        "attrs" => Some("21.4.0"),
+        "jinja2" => Some("2.11.3"),
+        "markupsafe" => Some("1.1.1"),
+        "werkzeug" => Some("1.0.1"),
+        "itsdangerous" => Some("1.1.0"),
+        "click" => Some("7.1.2"),
+        "twisted" => Some("20.3.0"),
+        "pyyaml" | "yaml" => Some("5.4.1"),
+        "lxml" => Some("4.6.5"),
+        "beautifulsoup4" | "bs4" => Some("4.9.3"),
+        "boto3" => Some("1.17.112"),
+        "botocore" => Some("1.20.112"),
+        "paramiko" => Some("2.11.0"),
+        "pyopenssl" => Some("21.0.0"),
+        "psycopg2" | "psycopg2-binary" => Some("2.8.6"),
+        "sqlalchemy" => Some("1.4.46"),
+        "celery" => Some("4.4.7"),
+        "kombu" => Some("4.6.11"),
+        "redis" => Some("3.5.3"),
+        "pymongo" => Some("3.12.3"),
+        "h5py" => Some("2.10.0"),
+        "cython" => Some("0.29.36"),
+        "numba" => Some("0.48.0"),
+        "theano" => Some("1.0.5"),
+        "keras" => Some("2.3.1"),
+        "tensorflow" => Some("1.15.0"),
+        "torch" | "pytorch" => Some("1.4.0"),
+        "scikit-image" | "skimage" => Some("0.14.2"),
+        "opencv-python" | "opencv-python-headless" => Some("4.2.0.32"),
+        "biopython" | "bio" => Some("1.76"),
+        "word2vec" => Some("0.11.1"),
+        "scrapy" => Some("1.8.3"),
+        "gevent" => Some("21.1.2"),
+        "greenlet" => Some("1.1.3"),
+        "python-memcached" => Some("1.59"),
+        _ => None,
+    }
+}
+
 fn extract_package_and_version(log: &str) -> Option<(String, Option<String>)> {
     for line in log.lines() {
         if let Some(index) = line.find("requirement ") {
@@ -1126,6 +1396,23 @@ fn extract_package_and_version(log: &str) -> Option<(String, Option<String>)> {
                 .trim();
             if let Some((package, version)) = candidate.split_once("==") {
                 return Some((package.trim().to_string(), Some(version.trim().to_string())));
+            }
+        }
+    }
+    // Second pass: "No matching distribution found for X" (no version pin).
+    // This covers VersionNotFound errors for packages that don't exist on PyPI at all.
+    for line in log.lines() {
+        if let Some(index) = line.find("No matching distribution found for ") {
+            let candidate = line[index + "No matching distribution found for ".len()..]
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !candidate.is_empty() {
+                if let Some((pkg, ver)) = candidate.split_once("==") {
+                    return Some((pkg.trim().to_string(), Some(ver.trim().to_string())));
+                }
+                return Some((candidate.to_string(), None));
             }
         }
     }
@@ -1156,6 +1443,43 @@ fn extract_missing_module(log: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract the top-level module name from a SyntaxError traceback when the
+/// error is inside an installed package (`site-packages/`), not the snippet.
+///
+/// Returns `Some("memcache")` for a traceback like:
+///   File ".../site-packages/memcache.py", line 374
+///       def quit_all(self) -> None:
+///   SyntaxError: invalid syntax
+fn extract_syntax_error_package(log: &str) -> Option<String> {
+    let lower = log.to_lowercase();
+    if !lower.contains("syntaxerror") {
+        return None;
+    }
+    // Find the last "site-packages/" file reference before the SyntaxError.
+    let mut candidate: Option<String> = None;
+    for line in log.lines() {
+        if line.contains("site-packages/") {
+            if let Some(idx) = line.find("site-packages/") {
+                let rest = &line[idx + "site-packages/".len()..];
+                // Truncate at closing quote (traceback lines are like:
+                //   File ".../site-packages/memcache.py", line 374)
+                let path = rest.split('"').next().unwrap_or(rest);
+                // Take the first path component: "memcache.py" or "foo/bar.py"
+                let first = path
+                    .split('/')
+                    .next()
+                    .unwrap_or("")
+                    .trim_end_matches(".py")
+                    .trim();
+                if !first.is_empty() {
+                    candidate = Some(first.to_string());
+                }
+            }
+        }
+    }
+    candidate
 }
 
 /// Extract a missing dependency name from a build/runtime error log.
@@ -1742,6 +2066,35 @@ fn extract_python_version_mismatch_reason(log: &str) -> Option<String> {
     None
 }
 
+/// Check the persistent unsolvable-modules cache for any import that was
+/// previously identified as unsolvable by the LLM.  Returns the first
+/// matching module name and its cached record.
+fn check_unsolvable_cache(
+    parse_result: &crate::ParseResult,
+    store: &CacheStore,
+) -> Option<(String, UnsolvableModuleRecord)> {
+    use crate::cache::store::normalize;
+    for import in &parse_result.imports {
+        let key = normalize(import);
+        if let Some(record) = store.unsolvable_modules.get(&key) {
+            if record.confidence >= 0.70 {
+                return Some((key, record.clone()));
+            }
+        }
+    }
+    for path in &parse_result.import_paths {
+        // Check the top-level of dotted paths (e.g. "Foundation" from "Foundation.NSDate")
+        let top = path.split('.').next().unwrap_or(path);
+        let key = normalize(top);
+        if let Some(record) = store.unsolvable_modules.get(&key) {
+            if record.confidence >= 0.70 {
+                return Some((key, record.clone()));
+            }
+        }
+    }
+    None
+}
+
 fn detect_skip_reason(
     parse_result: &crate::ParseResult,
     resolved: &[ResolvedDependency],
@@ -1775,16 +2128,96 @@ fn detect_skip_reason(
         ));
     }
 
+    // Sublime Text plugin API — no PyPI package provides these
+    if markers
+        .iter()
+        .any(|item| item == "sublime" || item == "sublime_plugin" || item.starts_with("sublime.") || item.starts_with("sublime_plugin."))
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected Sublime Text plugin API dependency (sublime/sublime_plugin). APDR cannot validate this snippet without the Sublime Text editor runtime.".to_string(),
+        ));
+    }
+
+    // Pythonista iOS runtime — bundled with the Pythonista app, not on PyPI
+    for pythonista_marker in ["scene", "editor", "console", "photos", "dialogs", "canvas", "sound"] {
+        if markers
+            .iter()
+            .any(|item| item == pythonista_marker || item.starts_with(&format!("{pythonista_marker}.")))
+        {
+            // Require at least one more Pythonista-specific marker to avoid
+            // false-positives on the generic names `editor` / `console`.
+            let pythonista_peers = ["scene", "editor", "console", "photos", "dialogs", "canvas", "sound", "objc_util", "cb"];
+            let peer_count = pythonista_peers.iter().filter(|p| markers.contains(**p)).count();
+            if peer_count >= 2 || markers.contains("objc_util") || markers.contains("cb") {
+                return Some((
+                    "skipped-host-runtime",
+                    "Detected Pythonista iOS runtime dependency. APDR cannot validate this snippet without the Pythonista iOS app.".to_string(),
+                ));
+            }
+        }
+    }
+
+    // IDA Pro reverse-engineering tool API
+    if markers
+        .iter()
+        .any(|item| item == "idautils" || item == "idaapi" || item == "idc" || item.starts_with("idautils.") || item.starts_with("idaapi."))
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected IDA Pro API dependency (idautils/idaapi/idc). APDR cannot validate this snippet without the IDA Pro runtime.".to_string(),
+        ));
+    }
+
+    // GIMP Script-Fu / Python-Fu
+    if markers
+        .iter()
+        .any(|item| item == "gimpfu" || item == "gimp" || item.starts_with("gimpfu.") || item.starts_with("gimp."))
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected GIMP plugin API dependency (gimpfu). APDR cannot validate this snippet without the GIMP runtime.".to_string(),
+        ));
+    }
+
+    // HexChat IRC client plugin API
+    if markers.contains("hexchat") {
+        return Some((
+            "skipped-host-runtime",
+            "Detected HexChat plugin API dependency. APDR cannot validate this snippet without the HexChat IRC client runtime.".to_string(),
+        ));
+    }
+
+    // Rhino 3D scripting API
+    if markers
+        .iter()
+        .any(|item| item == "rhino" || item == "rhinoscriptsyntax" || item == "rhino3dm" || item.starts_with("rhino.") || item == "scriptcontext")
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected Rhino 3D scripting API dependency. APDR cannot validate this snippet without the Rhino 3D runtime.".to_string(),
+        ));
+    }
+
+    // Jython / Java interop (com.android.*, javax.*, java.*)
+    if markers
+        .iter()
+        .any(|item| item.starts_with("com.android.") || item.starts_with("javax.") || item.starts_with("java.") || item == "monkeyrunner")
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected Jython/Java interop dependency. APDR cannot validate this snippet without a Jython/Java runtime.".to_string(),
+        ));
+    }
+
     for marker in [
         "arcpy",
         "bpy",
         "c4d",
-        "rhinoscriptsyntax",
         "hou",
         "unreal",
         "nuke",
         "clr",
-        "win32com",
         "odbaccess",
     ] {
         if markers
@@ -1834,13 +2267,60 @@ fn detect_skip_reason(
         ));
     }
 
+    // Windows-only APIs
     if markers
         .iter()
-        .any(|item| item == "rpi" || item == "rpi.gpio")
+        .any(|item| {
+            item == "_winreg"
+                || item == "winreg"
+                || item == "win32security"
+                || item == "win32api"
+                || item == "win32con"
+                || item == "win32file"
+                || item == "win32event"
+                || item == "win32service"
+                || item == "win32process"
+                || item == "win32gui"
+                || item == "wmi"
+                || item == "msvcrt"
+                || item == "msilib"
+                || item.starts_with("win32com.")
+        })
     {
         return Some((
             "skipped-host-runtime",
-            "Detected hardware/runtime dependency (RPi.GPIO). APDR cannot validate this snippet without Raspberry Pi GPIO access.".to_string(),
+            "Detected Windows-only API dependency. APDR cannot validate this snippet without a Windows runtime.".to_string(),
+        ));
+    }
+
+    // Raspberry Pi hardware APIs
+    if markers
+        .iter()
+        .any(|item| {
+            item == "rpi"
+                || item == "rpi.gpio"
+                || item == "picamera"
+                || item.starts_with("picamera.")
+                || item == "gpiozero"
+                || item.starts_with("gpiozero.")
+                || item == "spidev"
+                || item == "smbus"
+        })
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected Raspberry Pi hardware dependency. APDR cannot validate this snippet without Raspberry Pi GPIO/camera access.".to_string(),
+        ));
+    }
+
+    // Google App Engine bundled modules — google.appengine.* is the definitive
+    // GAE marker; webapp2+ndb is a secondary pattern.
+    if markers.iter().any(|item| item.starts_with("google.appengine"))
+        || (markers.contains("webapp2") && markers.contains("ndb"))
+    {
+        return Some((
+            "skipped-host-runtime",
+            "Detected Google App Engine dependency. APDR cannot validate this snippet without the GAE SDK runtime.".to_string(),
         ));
     }
 
@@ -1853,6 +2333,19 @@ fn detect_skip_reason(
             "skipped-local-helper",
             "Snippet depends on local helper modules (`input_data`/`util`) that are not bundled as installable packages in this case.".to_string(),
         ));
+    }
+
+    // Manim library internal modules (helpers, mobject, scene, topics, animation).
+    // When 3+ of these appear together, it's clearly a manim project layout.
+    {
+        let manim_modules = ["helpers", "mobject", "animation", "topics"];
+        let manim_count = manim_modules.iter().filter(|m| markers.contains(**m)).count();
+        if manim_count >= 3 {
+            return Some((
+                "skipped-local-helper",
+                "Snippet depends on internal manim library modules (helpers/mobject/animation/topics). These are project-local imports, not installable PyPI packages.".to_string(),
+            ));
+        }
     }
 
     None
@@ -1955,6 +2448,16 @@ fn retry_with_llm_for_missing_packages(
     for dep in llm_result.resolved {
         let norm_import = pypi_client::requirement_name(&dep.import_name);
         let norm_package = pypi_client::requirement_name(&dep.package_name);
+
+        // Note: if LLM returned the same package that had no KGraph metadata,
+        // pre-solve will fall back again, but pip can still install it directly.
+        if packages_set.contains(&norm_package) {
+            report.notes.push(format!(
+                "LLM retry for `{}` returned same no-metadata package `{}`; keeping for pip install.",
+                dep.import_name, dep.package_name
+            ));
+        }
+
         if norm_import == norm_package {
             // LLM just echoed the import name back — probably failed to parse.
             // Restore the original seed mapping if it had a different package.
@@ -2033,5 +2536,64 @@ mod tests {
             extract_build_dependency("Successfully installed numpy-1.26.4"),
             None
         );
+    }
+
+    #[test]
+    fn extract_package_and_version_pinned() {
+        let log = "ERROR: Could not find a version that satisfies the requirement Django==5.1.3";
+        assert_eq!(
+            extract_package_and_version(log),
+            Some(("Django".to_string(), Some("5.1.3".to_string()))),
+        );
+    }
+
+    #[test]
+    fn extract_package_and_version_no_matching_distribution() {
+        // Package doesn't exist on PyPI at all (no version pin).
+        let log = "ERROR: Could not find a version that satisfies the requirement taggit-autocomplete (from versions: none)\n\
+                   ERROR: No matching distribution found for taggit-autocomplete";
+        assert_eq!(
+            extract_package_and_version(log),
+            Some(("taggit-autocomplete".to_string(), None)),
+        );
+    }
+
+    #[test]
+    fn extract_package_and_version_no_matching_with_version() {
+        let log = "ERROR: No matching distribution found for foo-bar==1.2.3";
+        assert_eq!(
+            extract_package_and_version(log),
+            Some(("foo-bar".to_string(), Some("1.2.3".to_string()))),
+        );
+    }
+
+    #[test]
+    fn extract_syntax_error_package_from_site_packages() {
+        let log = "  File \".../site-packages/memcache.py\", line 374\n\
+                       def quit_all(self) -> None:\n\
+                                          ^\n\
+                   SyntaxError: invalid syntax";
+        assert_eq!(
+            extract_syntax_error_package(log),
+            Some("memcache".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_syntax_error_package_nested() {
+        let log = "  File \".../site-packages/foo/bar.py\", line 10\n\
+                   SyntaxError: invalid syntax";
+        assert_eq!(
+            extract_syntax_error_package(log),
+            Some("foo".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_syntax_error_package_not_in_site_packages() {
+        // SyntaxError from the snippet itself, not a package.
+        let log = "  File \"snippet.py\", line 5\n\
+                   SyntaxError: invalid syntax";
+        assert_eq!(extract_syntax_error_package(log), None);
     }
 }

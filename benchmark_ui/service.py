@@ -384,6 +384,7 @@ class BenchmarkService:
             "model": str(payload.get("model") or "").strip(),
             "base_url": str(payload.get("base_url") or payload.get("baseUrl") or "").strip(),
             "temperature": self._optional_float(payload.get("temperature") or payload.get("temp")),
+            "workers": int(payload.get("workers", 0) or 0),
         }
         if validate:
             if not config["tool"]:

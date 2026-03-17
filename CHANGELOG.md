@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.11 - 2026-03-17
+
+- Added configurable benchmark worker counts across the terminal/web control plane and taught the runner to execute cases in parallel with safer summary/context-log writes, so larger APDR runs can use available CPU more effectively while still supporting sequential mode when needed.
+- Expanded APDR's recovery and skip intelligence with persistent unsolvable-module learning, broader host/runtime skip detection, stronger local-helper heuristics, LLM-guided package replacement on failed validations, and safer Python 2 package-version fallback for legacy snippets.
+- Improved APDR performance and validation hygiene with mimalloc-enabled release builds, higher-throughput immutable KGraph SQLite reads, more system dependency hints, atomic validated-env archive writes, temporary venv cleanup after validation, and refreshed alias seed data such as `imagekit -> django-imagekit`.
+
 ## 0.2.10 - 2026-03-16
 
 - Added selectable APDR validation backends across the web UI, benchmark runner, saved loadouts, and Doctor flow, so runs can now target local env validation, Docker validation, or the new LLM resolver mode from the same control plane.

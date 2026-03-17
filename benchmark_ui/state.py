@@ -194,6 +194,7 @@ class AppState:
             "snippet_limit": "",
             "python_command": "",
             "validation_backend": "docker" if tool == "pllm" else "env",
+            "workers": 0,
         }
 
     def load_loadouts(self) -> list[dict[str, Any]]:

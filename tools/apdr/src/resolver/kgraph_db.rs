@@ -62,10 +62,17 @@ impl ConnectionPool {
                 });
             }
         }
-        // Open a new read-only connection.
+        // Open a new read-only connection with immutable flag for optimal read performance.
+        let uri = format!("file:{}?immutable=1", self.db_path.display());
         let conn = Connection::open_with_flags(
-            &self.db_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            &uri,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+        )
+        .ok()?;
+        conn.execute_batch(
+            "PRAGMA mmap_size = 268435456; PRAGMA cache_size = -65536; PRAGMA temp_store = MEMORY;",
         )
         .ok()?;
         Some(PooledConnection {
@@ -78,7 +85,7 @@ impl ConnectionPool {
 static KGRAPH_POOL: OnceLock<ConnectionPool> = OnceLock::new();
 
 fn get_pool(db_path: &Path) -> &'static ConnectionPool {
-    KGRAPH_POOL.get_or_init(|| ConnectionPool::new(db_path, 4))
+    KGRAPH_POOL.get_or_init(|| ConnectionPool::new(db_path, 16))
 }
 
 fn normalize(name: &str) -> String {

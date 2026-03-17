@@ -18,11 +18,17 @@ pub fn solvability_assessment_prompt(
     format!(
         "You are triaging whether a Python snippet is solvable in a generic Docker + PyPI environment.\n\
 Decide whether APDR should try dependency resolution or skip the snippet.\n\
-Treat host-application runtimes as NOT solvable in generic Docker, for example Maya, Blender, ArcGIS, Houdini, Rhino, Unreal, Nuke, Sublime, Autodesk, COM-only Windows APIs, or snippets that require a local project module not present here.\n\
-Return exactly three lines:\n\
+Treat these as NOT solvable in generic Docker:\n\
+- Host-application runtimes: Maya, Blender, ArcGIS, Houdini, Rhino, Unreal, Nuke, Sublime Text, GIMP, IDA Pro, Cinema4D, HexChat\n\
+- Platform-specific APIs: COM/Win32 Windows APIs, macOS Objective-C frameworks (Foundation, CoreFoundation, AppKit, SystemConfiguration, OpenDirectory), Raspberry Pi GPIO/camera\n\
+- Java/Jython interop: javax.*, java.*, com.android.*\n\
+- Local project modules not available on PyPI\n\
+Return exactly four lines:\n\
 decision=solve OR decision=skip\n\
 confidence=0.00 to 1.00\n\
 reason=short explanation\n\
+unsolvable_modules=comma,separated,import,names OR unsolvable_modules=none\n\
+The unsolvable_modules line must list the specific import names from the snippet that cannot be resolved from PyPI. Use the exact import names as they appear. If decision=solve, set unsolvable_modules=none.\n\
 Imports: {imports}\n\
 Import paths: {import_paths}\n\
 Benchmark trace context:\n{}\n\
@@ -61,6 +67,38 @@ Imports:\n{}",
             benchmark_context.to_string()
         },
         unresolved_imports.join("\n")
+    )
+}
+
+pub fn recovery_resolution_prompt(
+    resolved_packages: &[String],
+    error_log: &str,
+    snippet_source: &str,
+    python_version: &str,
+    error_type: &str,
+) -> String {
+    format!(
+        "You are fixing a Python dependency installation failure.\n\
+Target Python version: {python_version}\n\
+Error type: {error_type}\n\n\
+Currently resolved packages:\n{}\n\n\
+Installation/import error:\n```\n{}\n```\n\n\
+Python snippet being resolved:\n```python\n{}\n```\n\n\
+One of the resolved packages above is incorrect. Common problems:\n\
+- Package does not exist on PyPI (wrong name, needs prefix like `django-` or `python-`)\n\
+- Package needs system C libraries and a pure-Python alternative exists (e.g., mysqlclient -> PyMySQL)\n\
+- Wrong package was installed (same name on PyPI but unrelated project)\n\
+Return exactly one line in the format: wrong_package=correct_package\n\
+Use the exact current package name from the resolved list as wrong_package.\n\
+Use the correct PyPI package name as correct_package.\n\
+If no fix is possible, return: fix=NONE",
+        resolved_packages.join("\n"),
+        error_log,
+        snippet_source
+            .lines()
+            .take(50)
+            .collect::<Vec<_>>()
+            .join("\n"),
     )
 }
 

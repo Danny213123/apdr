@@ -1,6 +1,6 @@
 [package]
 name = "apdr"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 default-run = "apdr"
 
@@ -19,3 +19,11 @@ once_cell = "1.19"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tar = "0.4"
 zstd = "0.13"
+mimalloc = { version = "0.1", default-features = false }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = "symbols"
+panic = "abort"

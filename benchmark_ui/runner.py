@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,11 @@ import threading
 import time
 import traceback
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
+
 from .state import AppState
 
 
@@ -21,13 +27,27 @@ class BenchmarkWorker(threading.Thread):
         self.run_config = run_config
         self.message_queue = message_queue
         self.stop_requested = threading.Event()
-        self.current_process: subprocess.Popen[str] | None = None
+        self._active_processes: set[subprocess.Popen[str]] = set()
+        self._active_lock = threading.Lock()
+        self._summary_lock = threading.Lock()
         self.run_dir: Path | None = None
+
+    # Keep old attribute for backward compat
+    @property
+    def current_process(self) -> subprocess.Popen[str] | None:
+        with self._active_lock:
+            return next(iter(self._active_processes), None)
+
+    @current_process.setter
+    def current_process(self, value: subprocess.Popen[str] | None) -> None:
+        pass  # no-op; managed via _active_processes
 
     def stop(self) -> None:
         self.stop_requested.set()
-        if self.current_process and self.current_process.poll() is None:
-            self._terminate_process(self.current_process)
+        with self._active_lock:
+            for process in list(self._active_processes):
+                if process.poll() is None:
+                    self._terminate_process(process)
 
     def run(self) -> None:
         summary: dict[str, Any] = {}
@@ -142,15 +162,18 @@ class BenchmarkWorker(threading.Thread):
             if case_artifacts_root is not None:
                 case_artifacts_root.mkdir(parents=True, exist_ok=True)
 
+            # Determine worker count: 0 = auto (cpu_count - 2), 1 = sequential
+            workers = int(self.run_config.get("workers", 0))
+            if workers <= 0:
+                workers = max(1, (os.cpu_count() or 4) - 2)
+
+            # Pre-build per-case command + metadata
+            case_tasks: list[dict[str, Any]] = []
             for index, snippet in enumerate(snippets, start=1):
-                if self.stop_requested.is_set():
-                    break
-
-                snippet_label = self.state.relative_path(snippet)
                 overall_index = resumed_completed + index
-                self._emit("status", text=f"Running {snippet_label} ({overall_index}/{total_snippets})")
-
-                command = runner + [
+                snippet_label = self.state.relative_path(snippet)
+                artifact_dir = None
+                command = list(runner) + [
                     "test_executor.py",
                     "-f",
                     str(snippet),
@@ -178,38 +201,121 @@ class BenchmarkWorker(threading.Thread):
                     command.append("-v")
                 command.extend(["--benchmark-context-log", str(context_log)])
 
-                artifact_dir = None
                 if tool == "apdr" and case_artifacts_root is not None:
                     artifact_dir = case_artifacts_root / self._case_id_from_snippet(snippet)
                     artifact_dir.mkdir(parents=True, exist_ok=True)
                     command.extend(["--output-dir", str(artifact_dir)])
-                    # Benchmark parity: validate resolved dependencies via install/import smoke tests
-                    # without executing the whole snippet body.
                     command.append("--no-execute-snippet")
 
-                self._emit("command", text=self.state.format_command(command))
-                self._append_context_log(
-                    context_log,
-                    "case-start",
-                    f"index={overall_index}/{total_snippets}\nsnippet={snippet_label}\ncommand={self.state.format_command(command)}",
-                )
-                result = self._run_single(tool, tool_dir, command, snippet, overall_index, total_snippets, artifact_dir)
-                summary["results"].append(result)
-                self._write_summary(summary)
-                self._append_context_log(
-                    context_log,
-                    "case-finished",
-                    json.dumps(result, indent=2, sort_keys=True),
-                )
-                self._emit(
-                    "progress",
-                    completed=overall_index,
-                    total=total_snippets,
-                    snippet=snippet_label,
-                    returncode=result["returncode"],
-                    duration=result["duration_seconds"],
-                    result=result,
-                )
+                case_tasks.append({
+                    "command": command,
+                    "snippet": snippet,
+                    "snippet_label": snippet_label,
+                    "overall_index": overall_index,
+                    "artifact_dir": artifact_dir,
+                })
+
+            # Track completion count for progress reporting
+            completed_count = [resumed_completed]
+            completed_lock = threading.Lock()
+
+            if workers == 1:
+                # Sequential mode: same behavior as before
+                for task in case_tasks:
+                    if self.stop_requested.is_set():
+                        break
+                    self._emit("status", text=f"Running {task['snippet_label']} ({task['overall_index']}/{total_snippets})")
+                    self._emit("command", text=self.state.format_command(task["command"]))
+                    self._append_context_log(
+                        context_log,
+                        "case-start",
+                        f"index={task['overall_index']}/{total_snippets}\nsnippet={task['snippet_label']}\ncommand={self.state.format_command(task['command'])}",
+                    )
+                    result = self._run_single(tool, tool_dir, task["command"], task["snippet"], task["overall_index"], total_snippets, task["artifact_dir"])
+                    with self._summary_lock:
+                        summary["results"].append(result)
+                        self._write_summary(summary)
+                    self._append_context_log(
+                        context_log,
+                        "case-finished",
+                        json.dumps(result, indent=2, sort_keys=True),
+                    )
+                    self._emit(
+                        "progress",
+                        completed=task["overall_index"],
+                        total=total_snippets,
+                        snippet=task["snippet_label"],
+                        returncode=result["returncode"],
+                        duration=result["duration_seconds"],
+                        result=result,
+                    )
+            else:
+                # Parallel mode: use ThreadPoolExecutor
+                self._emit("status", text=f"Running {len(case_tasks)} cases with {workers} parallel workers")
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    future_to_task: dict[Future[dict[str, Any]], dict[str, Any]] = {}
+                    for task in case_tasks:
+                        if self.stop_requested.is_set():
+                            break
+                        future = pool.submit(
+                            self._run_single,
+                            tool, tool_dir, task["command"], task["snippet"],
+                            task["overall_index"], total_snippets, task["artifact_dir"],
+                        )
+                        future_to_task[future] = task
+
+                    for future in as_completed(future_to_task):
+                        if self.stop_requested.is_set():
+                            # Cancel pending futures
+                            for f in future_to_task:
+                                f.cancel()
+                            break
+                        task = future_to_task[future]
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            result = {
+                                "snippet": task["snippet_label"],
+                                "started_at": self.state.now_iso(),
+                                "finished_at": self.state.now_iso(),
+                                "duration_seconds": 0.0,
+                                "returncode": -1,
+                                "succeeded": False,
+                                "skipped": False,
+                                "requirements": [],
+                                "output_metadata": {},
+                                "log_lines_streamed": 0,
+                                "log_tail": [str(exc)],
+                                "output_files": [],
+                                "solve_duration_seconds": None,
+                                "validation_duration_seconds": None,
+                                "env_create_duration_seconds": None,
+                                "install_duration_seconds": None,
+                                "smoke_duration_seconds": None,
+                            }
+
+                        with self._summary_lock:
+                            summary["results"].append(result)
+                            self._write_summary(summary)
+
+                        with completed_lock:
+                            completed_count[0] += 1
+                            current_completed = completed_count[0]
+
+                        self._append_context_log(
+                            context_log,
+                            "case-finished",
+                            json.dumps(result, indent=2, sort_keys=True),
+                        )
+                        self._emit(
+                            "progress",
+                            completed=current_completed,
+                            total=total_snippets,
+                            snippet=task["snippet_label"],
+                            returncode=result["returncode"],
+                            duration=result["duration_seconds"],
+                            result=result,
+                        )
 
             if self.stop_requested.is_set():
                 summary["status"] = "stopped"
@@ -267,7 +373,8 @@ class BenchmarkWorker(threading.Thread):
         else:
             popen_kwargs["start_new_session"] = True
         process = subprocess.Popen(command, **popen_kwargs)
-        self.current_process = process
+        with self._active_lock:
+            self._active_processes.add(process)
         streamed_lines = 0
         captured_tail: list[str] = []
 
@@ -286,7 +393,8 @@ class BenchmarkWorker(threading.Thread):
                     self._emit("log", line=f"[{index}/{total}] {line}")
             returncode = process.wait()
         finally:
-            self.current_process = None
+            with self._active_lock:
+                self._active_processes.discard(process)
 
         finished_at = time.time()
         output_paths: list[Path] = []
@@ -436,8 +544,17 @@ class BenchmarkWorker(threading.Thread):
     def _append_context_log(self, path: Path, kind: str, message: str) -> None:
         timestamp = self.state.now_iso()
         block = f"===== {timestamp} kind={kind} =====\n{message.rstrip()}\n\n"
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(block)
+        try:
+            with path.open("a", encoding="utf-8") as handle:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    handle.write(block)
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
 
     def _emit(self, kind: str, **payload: Any) -> None:
         self.message_queue.put({"kind": kind, **payload})
