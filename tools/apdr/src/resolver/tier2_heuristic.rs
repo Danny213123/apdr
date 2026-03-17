@@ -120,36 +120,31 @@ fn levenshtein(left: &str, right: &str) -> usize {
     if left == right {
         return 0;
     }
-    if left.is_empty() {
-        return right.chars().count();
+    // Package names are ASCII — use bytes directly (no Vec<char> allocation).
+    let lb = left.as_bytes();
+    let rb = right.as_bytes();
+    if lb.is_empty() {
+        return rb.len();
     }
-    if right.is_empty() {
-        return left.chars().count();
+    if rb.is_empty() {
+        return lb.len();
     }
-
-    let left_chars = left.chars().collect::<Vec<_>>();
-    let right_chars = right.chars().collect::<Vec<_>>();
-    let mut costs = (0..=right_chars.len()).collect::<Vec<_>>();
-
-    for (left_index, left_char) in left_chars.iter().enumerate() {
+    // Stack-allocated cost array — package names are always short (<128 bytes).
+    let mut costs = [0usize; 129];
+    for (i, c) in costs.iter_mut().enumerate().take(rb.len() + 1) {
+        *c = i;
+    }
+    for (li, &lc) in lb.iter().enumerate() {
         let mut corner = costs[0];
-        costs[0] = left_index + 1;
-        for (right_index, right_char) in right_chars.iter().enumerate() {
-            let upper = costs[right_index + 1];
-            let substitution = if left_char == right_char {
-                corner
-            } else {
-                corner + 1
-            };
-            costs[right_index + 1] = std::cmp::min(
-                std::cmp::min(costs[right_index] + 1, upper + 1),
-                substitution,
-            );
+        costs[0] = li + 1;
+        for (ri, &rc) in rb.iter().enumerate() {
+            let upper = costs[ri + 1];
+            let sub = if lc == rc { corner } else { corner + 1 };
+            costs[ri + 1] = sub.min(costs[ri] + 1).min(upper + 1);
             corner = upper;
         }
     }
-
-    *costs.last().unwrap_or(&usize::MAX)
+    costs[rb.len()]
 }
 
 fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str) -> bool {
@@ -179,8 +174,10 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
         "util" | "utils" | "helper" | "helpers" | "common" | "shared"
     );
     generic_helper
-        && parse_result
-            .import_paths
-            .iter()
-            .any(|path| normalize(path).starts_with(&format!("{normalized}-")))
+        && parse_result.import_paths.iter().any(|path| {
+            let np = normalize(path);
+            np.len() > normalized.len()
+                && np.starts_with(normalized.as_str())
+                && np.as_bytes()[normalized.len()] == b'-'
+        })
 }

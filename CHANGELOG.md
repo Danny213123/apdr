@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.12 - 2026-03-17
+
+- Reduced APDR pre-solve overhead by deduplicating direct packages with a set, avoiding unnecessary constraint-string clones during propagation, and streamlining lockfile rendering so version-domain checks allocate less while solving.
+- Tightened APDR's cache and resolver hot paths with cheaper dotted-import/local-helper checks, single-lock knowledge-cache hydration during bulk KGraph prefetch, and lower-allocation requirement/operator parsing in the PyPI client.
+- Optimized heuristic package matching by switching Levenshtein distance and wildcard/compatible-release checks to byte-based paths, cutting extra temporary allocations for the short ASCII package names APDR compares most often.
+
 ## 0.2.11 - 2026-03-17
 
 - Added configurable benchmark worker counts across the terminal/web control plane and taught the runner to execute cases in parallel with safer summary/context-log writes, so larger APDR runs can use available CPU more effectively while still supporting sequential mode when needed.

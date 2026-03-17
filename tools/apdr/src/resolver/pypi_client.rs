@@ -313,14 +313,9 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
         let missing_owned: Vec<String> = missing.iter().map(|p| (*p).clone()).collect();
         let results = kgraph_db::kgraph_bulk_prefetch(&db_path, &missing_owned);
         if !results.is_empty() {
-            let cache_mutex = get_knowledge_cache();
+            // Batch all store writes first, then lock knowledge cache once
             for (pkg, (versions, deps_by_version)) in &results {
                 let _ = store.save_pypi_versions(pkg, versions);
-                if let Ok(mut cache) = cache_mutex.lock() {
-                    for version in versions {
-                        cache.add_package_version(pkg, version);
-                    }
-                }
                 for (version, specs) in deps_by_version {
                     let _ = store.save_version_dependency_specs(pkg, version, specs);
                     let dep_names: Vec<String> = specs
@@ -331,7 +326,15 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
                     if !dep_names.is_empty() {
                         let _ = store.save_dependency_graph_entry(pkg, &dep_names);
                     }
-                    if let Ok(mut cache) = cache_mutex.lock() {
+                }
+            }
+            // Single lock acquisition for all knowledge cache updates
+            if let Ok(mut cache) = get_knowledge_cache().lock() {
+                for (pkg, (versions, deps_by_version)) in &results {
+                    for version in versions {
+                        cache.add_package_version(pkg, version);
+                    }
+                    for (version, specs) in deps_by_version {
                         cache.add_dependencies(pkg, version, specs);
                     }
                 }
@@ -408,14 +411,11 @@ pub fn requirement_name(requirement: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    let operators = ["==", ">=", "<=", "!=", "~=", ">", "<"];
-    let mut base = trimmed;
-    for operator in operators {
-        if let Some((left, _right)) = trimmed.split_once(operator) {
-            base = left;
-            break;
-        }
-    }
+    // Find first operator character position (single scan instead of 7 split_once calls)
+    let base = match trimmed.find(|ch: char| matches!(ch, '<' | '>' | '!' | '=' | '~')) {
+        Some(pos) => &trimmed[..pos],
+        None => trimmed,
+    };
     let without_extras = base.split('[').next().unwrap_or(base);
     normalize(without_extras)
 }
@@ -774,18 +774,28 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {
-    for operator in ["==", ">=", "<=", "!=", "~=", ">", "<"] {
-        if let Some(target) = constraint.strip_prefix(operator) {
-            return match operator {
-                "==" => wildcard_match(version, target.trim()),
-                "!=" => !wildcard_match(version, target.trim()),
-                ">=" => compare_versions(version, target.trim()) != Ordering::Less,
-                "<=" => compare_versions(version, target.trim()) != Ordering::Greater,
-                ">" => compare_versions(version, target.trim()) == Ordering::Greater,
-                "<" => compare_versions(version, target.trim()) == Ordering::Less,
-                "~=" => compatible_release(version, target.trim()),
-                _ => true,
-            };
+    let bytes = constraint.as_bytes();
+    // Two-character operators (checked first)
+    if bytes.len() >= 2 {
+        match (bytes[0], bytes[1]) {
+            (b'=', b'=') => return wildcard_match(version, constraint[2..].trim()),
+            (b'>', b'=') => {
+                return compare_versions(version, constraint[2..].trim()) != Ordering::Less
+            }
+            (b'<', b'=') => {
+                return compare_versions(version, constraint[2..].trim()) != Ordering::Greater
+            }
+            (b'!', b'=') => return !wildcard_match(version, constraint[2..].trim()),
+            (b'~', b'=') => return compatible_release(version, constraint[2..].trim()),
+            _ => {}
+        }
+    }
+    // Single-character operators
+    if !bytes.is_empty() {
+        match bytes[0] {
+            b'>' => return compare_versions(version, constraint[1..].trim()) == Ordering::Greater,
+            b'<' => return compare_versions(version, constraint[1..].trim()) == Ordering::Less,
+            _ => {}
         }
     }
     wildcard_match(version, constraint)
@@ -797,29 +807,34 @@ fn wildcard_match(version: &str, target: &str) -> bool {
         return compare_versions(version, target) == Ordering::Equal;
     }
     let prefix = target.trim_end_matches('*').trim_end_matches('.');
-    version == prefix || version.starts_with(&format!("{prefix}."))
+    version == prefix
+        || (version.len() > prefix.len()
+            && version.starts_with(prefix)
+            && version.as_bytes()[prefix.len()] == b'.')
 }
 
 fn compatible_release(version: &str, base: &str) -> bool {
     if compare_versions(version, base) == Ordering::Less {
         return false;
     }
-    let parts = base.split('.').collect::<Vec<_>>();
+    let parts: Vec<&str> = base.split('.').collect();
     if parts.len() <= 1 {
         return true;
     }
-    let upper = if parts.len() == 2 {
-        format!("{}.0", increment_numeric(parts[0]))
-    } else {
-        let mut prefix = parts[..parts.len() - 1]
-            .iter()
-            .map(|item| (*item).to_string())
-            .collect::<Vec<_>>();
-        let index = prefix.len().saturating_sub(1);
-        prefix[index] = increment_numeric(&prefix[index]);
-        prefix.truncate(index + 1);
-        format!("{}.0", prefix.join("."))
-    };
+    // Build upper bound: take all but last segment, increment second-to-last, append ".0"
+    let inc_index = parts.len() - 2;
+    let mut upper = String::with_capacity(base.len() + 4);
+    for (i, part) in parts[..parts.len() - 1].iter().enumerate() {
+        if i > 0 {
+            upper.push('.');
+        }
+        if i == inc_index {
+            upper.push_str(&increment_numeric(part));
+        } else {
+            upper.push_str(part);
+        }
+    }
+    upper.push_str(".0");
     compare_versions(version, &upper) == Ordering::Less
 }
 

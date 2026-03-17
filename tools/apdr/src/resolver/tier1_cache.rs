@@ -119,7 +119,7 @@ fn lookup_import_record(
     }
 
     for import_path in &parse_result.import_paths {
-        if import_path != import_name && !import_path.starts_with(&format!("{import_name}.")) {
+        if import_path != import_name && !is_dotted_child(import_name, import_path) {
             continue;
         }
         for prefix in dotted_prefixes(import_path) {
@@ -134,6 +134,13 @@ fn lookup_import_record(
     }
 
     None
+}
+
+/// Check if `child` starts with `parent.` (without allocating a format string).
+fn is_dotted_child(parent: &str, child: &str) -> bool {
+    child.len() > parent.len()
+        && child.starts_with(parent)
+        && child.as_bytes()[parent.len()] == b'.'
 }
 
 fn dotted_prefixes(import_path: &str) -> Vec<String> {
@@ -159,8 +166,10 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
         "util" | "utils" | "helper" | "helpers" | "common" | "shared"
     );
     generic_helper
-        && parse_result
-            .import_paths
-            .iter()
-            .any(|path| crate::cache::store::normalize(path).starts_with(&format!("{normalized}-")))
+        && parse_result.import_paths.iter().any(|path| {
+            let np = crate::cache::store::normalize(path);
+            np.len() > normalized.len()
+                && np.starts_with(normalized.as_str())
+                && np.as_bytes()[normalized.len()] == b'-'
+        })
 }

@@ -298,13 +298,14 @@ fn initial_state(
 ) -> (SolveState, Vec<String>) {
     let mut state = SolveState::default();
     let mut direct_packages = Vec::new();
+    let mut seen_packages = BTreeSet::new();
 
     for dependency in resolved {
         let package = pypi_client::requirement_name(&dependency.package_name);
         if package.is_empty() {
             continue;
         }
-        if !direct_packages.iter().any(|item| item == &package) {
+        if seen_packages.insert(package.clone()) {
             direct_packages.push(package.clone());
         }
         let constraint = dependency
@@ -320,7 +321,7 @@ fn initial_state(
         if package.is_empty() {
             continue;
         }
-        if !direct_packages.iter().any(|item| item == &package) {
+        if seen_packages.insert(package.clone()) {
             direct_packages.push(package.clone());
         }
         merge_constraint(
@@ -443,14 +444,17 @@ fn propagate_forced(
             let (count, forced_version) =
                 domain_info(store, state, &package, python_version)?;
             if count == 0 {
-                let constraint =
-                    state.constraints.get(&package).cloned().unwrap_or_default();
+                let constraint = state
+                    .constraints
+                    .get(&package)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 return Err(SolveError::Hard(format!(
                     "package `{package}` has no versions satisfying `{}`",
                     if constraint.is_empty() {
                         "*"
                     } else {
-                        constraint.as_str()
+                        constraint
                     }
                 )));
             }
@@ -491,14 +495,17 @@ fn next_unsolved_package(
     for package in packages {
         let (count, _) = domain_info(store, state, &package, python_version)?;
         if count == 0 {
-            let constraint =
-                state.constraints.get(&package).cloned().unwrap_or_default();
+            let constraint = state
+                .constraints
+                .get(&package)
+                .map(|s| s.as_str())
+                .unwrap_or("");
             return Err(SolveError::Hard(format!(
                 "package `{package}` has no versions satisfying `{}`",
                 if constraint.is_empty() {
                     "*"
                 } else {
-                    constraint.as_str()
+                    constraint
                 }
             )));
         }
@@ -525,12 +532,13 @@ fn apply_dependency_specs(
         let dep_constraint = dependency_constraint(&spec);
         merge_constraint_tracked(state, &dep_package, &dep_constraint);
         if let Some(selected_version) = state.selected.get(&dep_package) {
+            // Use reference instead of clone for constraint check
             let merged = state
                 .constraints
                 .get(&dep_package)
-                .cloned()
-                .unwrap_or_default();
-            if !merged.is_empty() && !pypi_client::version_satisfies(selected_version, &merged) {
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            if !merged.is_empty() && !pypi_client::version_satisfies(selected_version, merged) {
                 return Err(SolveError::Hard(format!(
                     "selected `{dep_package}=={selected_version}` violates merged constraint `{merged}`"
                 )));
@@ -542,11 +550,11 @@ fn apply_dependency_specs(
             let merged = state
                 .constraints
                 .get(&dep_package)
-                .cloned()
-                .unwrap_or_default();
+                .map(|s| s.as_str())
+                .unwrap_or("");
             return Err(SolveError::Hard(format!(
                 "dependency `{dep_package}` introduced by `{package}=={version}` has no versions satisfying `{}`",
-                if merged.is_empty() { "*" } else { merged.as_str() }
+                if merged.is_empty() { "*" } else { merged }
             )));
         }
     }
@@ -561,14 +569,14 @@ fn domain_info(
     package: &str,
     python_version: &str,
 ) -> Result<(usize, Option<String>), SolveError> {
-    let constraint = state
+    // Check cache hit first without cloning the constraint string.
+    let current_cst = state
         .constraints
         .get(package)
-        .cloned()
-        .unwrap_or_default();
-
+        .map(|s| s.as_str())
+        .unwrap_or("");
     if let Some((cached_cst, cached_versions)) = state.domain_cache.get(package) {
-        if *cached_cst == constraint {
+        if cached_cst == current_cst {
             let len = cached_versions.len();
             let forced = if len == 1 {
                 Some(cached_versions[0].clone())
@@ -579,6 +587,8 @@ fn domain_info(
         }
     }
 
+    // Cache miss — clone constraint only now.
+    let constraint = current_cst.to_string();
     let versions =
         compatible_versions_for_constraint(store, package, &constraint, python_version)?;
     let len = versions.len();
@@ -601,8 +611,13 @@ fn merge_constraint_tracked(state: &mut SolveState, package: &str, incoming: &st
     }
     let old_value = state.constraints.get(&normalized).cloned();
     merge_constraint(&mut state.constraints, package, incoming);
-    let new_value = state.constraints.get(&normalized).cloned();
-    if old_value != new_value {
+    // Compare without cloning new value — use reference comparison
+    let changed = match (&old_value, state.constraints.get(&normalized)) {
+        (None, None) => false,
+        (Some(old), Some(new)) => old != new,
+        _ => true,
+    };
+    if changed {
         state
             .undo_stack
             .push(UndoOp::SetConstraint(normalized, old_value));
@@ -646,22 +661,19 @@ fn merge_constraint(constraints: &mut BTreeMap<String, String>, package: &str, i
         return;
     }
 
-    let mut existing_parts = entry
-        .split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
+    // Append only fragments not already present (zero intermediate allocations).
+    // Re-scanning entry on each iteration naturally includes previously appended fragments.
     for fragment in cleaned
         .split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())
     {
-        if !existing_parts.iter().any(|item| item == fragment) {
-            existing_parts.push(fragment.to_string());
+        let already_present = entry.split(',').map(str::trim).any(|p| p == fragment);
+        if !already_present {
+            entry.push(',');
+            entry.push_str(fragment);
         }
     }
-    *entry = existing_parts.join(",");
 }
 
 fn dependency_constraint(spec: &str) -> String {
@@ -701,20 +713,16 @@ fn render_lockfile(
         }
     }
 
-    let mut transitive = selected
-        .iter()
-        .filter(|(package, _)| !direct_set.contains(*package))
-        .map(|(package, version)| format!("{package}=={version}"))
-        .collect::<Vec<_>>();
-    transitive.sort();
-    let transitive_packages = transitive
-        .iter()
-        .filter_map(|item| {
-            item.split_once("==")
-                .map(|(package, _)| package.to_string())
-        })
-        .collect::<Vec<_>>();
-    lines.extend(transitive);
+    // BTreeMap iterates in sorted key order, so no additional sort needed.
+    // Build transitive_packages directly instead of build-and-split.
+    let mut transitive_packages = Vec::new();
+    for (package, version) in selected {
+        if !direct_set.contains(package) {
+            lines.push(format!("{package}=={version}"));
+            transitive_packages.push(package.clone());
+        }
+    }
+
     let lockfile = if lines.is_empty() {
         String::new()
     } else {
