@@ -1,0 +1,5 @@
+resolved:
+- import=scrapy package=scrapy version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

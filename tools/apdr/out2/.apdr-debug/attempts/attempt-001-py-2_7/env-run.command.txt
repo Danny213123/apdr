@@ -1,0 +1,1 @@
+out2/.apdr-debug/attempts/attempt-001-py-2_7/env/bin/python out2/.apdr-debug/attempts/attempt-001-py-2_7/smoke_test.py

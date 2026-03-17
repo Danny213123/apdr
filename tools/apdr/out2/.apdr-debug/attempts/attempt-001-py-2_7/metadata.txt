@@ -1,0 +1,22 @@
+attempt_index: 1
+python_version: 2.7
+validation_backend: env
+status: passed
+env_label: apdr-env:build-f8c07ba0bd0a1a5e-py2_7
+env_dir: out2/.apdr-debug/attempts/attempt-001-py-2_7/env
+env_create_duration_ms: 0
+build_key: build-f8c07ba0bd0a1a5e
+used_cached_env: true
+validated_env_cache_hit: true
+used_cached_lockfile: false
+error_type: --
+conflict_class: --
+fix_applied: --
+build_command: python2.7 -m virtualenv out2/.apdr-debug/attempts/attempt-001-py-2_7/env
+out2/.apdr-debug/attempts/attempt-001-py-2_7/env/bin/python -m pip install --disable-pip-version-check --default-timeout=100 --cache-dir /Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr/.apdr-cache/wheelhouse -r out2/.apdr-debug/attempts/attempt-001-py-2_7/requirements-install.txt
+build_exit_code: --
+build_duration_ms: 0
+run_command: out2/.apdr-debug/attempts/attempt-001-py-2_7/env/bin/python out2/.apdr-debug/attempts/attempt-001-py-2_7/smoke_test.py
+run_exit_code: 0
+run_duration_ms: 1839
+artifact_dir: out2/.apdr-debug/attempts/attempt-001-py-2_7

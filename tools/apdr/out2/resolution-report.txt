@@ -1,0 +1,45 @@
+snippet: ../../hard-gists/00056d4304c58a035c87cdf5ff1e5e3e/snippet.py
+python_version: 2.7
+solvability_decision: --
+solvability_confidence: 0.00
+solvability_reason: --
+solvability_source: --
+cache_hits: 1
+heuristic_hits: 0
+llm_calls: 0
+env_builds: 1
+retries: 0
+duration_ms: 6166
+solve_duration_ms: 2112
+validation_duration_ms: 4054
+env_create_duration_ms: 0
+install_duration_ms: 0
+smoke_duration_ms: 1839
+validation_backend: env
+validation_succeeded: true
+validation_status: passed
+validation_reason: --
+validation_python: 2.7
+build_image_id: --
+lockfile_key: build-f8c07ba0bd0a1a5e
+debug_dir: out2/.apdr-debug
+attempts_dir: out2/.apdr-debug/attempts
+llm_trace_dir: out2/.apdr-debug/llm
+context_log: out2/.apdr-debug/benchmark-context.log
+iterations_dir: out2/.apdr-debug/iterations
+
+resolved_dependencies:
+- scrapy -> scrapy [cache:seed | confidence 0.97]
+
+config_dependencies:
+- none
+
+unresolved:
+- none
+
+notes:
+- SMT pre-solve candidate Python versions: 2.7.
+- SMT pre-solve pinned 32 packages for Python 2.7 (1 direct, 31 transitive).
+
+validation_attempts:
+- attempt=1 py=2.7 backend=env status=passed error_type=-- conflict_class=-- fix=-- env_label=apdr-env:build-f8c07ba0bd0a1a5e-py2_7 env_dir=out2/.apdr-debug/attempts/attempt-001-py-2_7/env env_create_ms=0 cached_env=true env_cache_hit=true cached_lockfile=false artifact_dir=out2/.apdr-debug/attempts/attempt-001-py-2_7 build_log=out2/.apdr-debug/attempts/attempt-001-py-2_7/build.log run_log=out2/.apdr-debug/attempts/attempt-001-py-2_7/run.log combined_log=out2/.apdr-debug/attempts/attempt-001-py-2_7/combined.log metadata=out2/.apdr-debug/attempts/attempt-001-py-2_7/metadata.txt context_snapshot=out2/.apdr-debug/attempts/attempt-001-py-2_7/benchmark-context-tail.txt

@@ -1,0 +1,8 @@
+===== 1773551350 kind=apdr-resolve-command =====
+snippet=../../hard-gists/00056d4304c58a035c87cdf5ff1e5e3e/snippet.py
+output_dir=out2
+allow_llm=false
+validate=true
+python_override=
+range=1
+max_retries=10
