@@ -150,13 +150,22 @@ pub fn resolve(
     );
 
     let mut resolved = Vec::new();
-    let still_unresolved = preserved_unresolved;
+    let mut still_unresolved = preserved_unresolved;
     let mut notes = Vec::new();
 
     for import_name in &llm_candidates {
         let mapped =
             parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
         let versions = pypi_client::compatible_versions(store, &mapped, python_version);
+        // If LLM echoed the import name back unchanged AND the package doesn't
+        // exist on PyPI, skip it — it's almost certainly a local project module.
+        if versions.is_empty() && mapped == *import_name {
+            notes.push(format!(
+                "Skipped LLM mapping {import_name} -> {mapped}: package not found on PyPI (likely a local module)."
+            ));
+            still_unresolved.push(import_name.clone());
+            continue;
+        }
         let version = if versions.is_empty() {
             None
         } else {
@@ -197,9 +206,6 @@ pub fn resolve(
             });
             picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
         };
-        // Trust the LLM mapping even if the package isn't in KGraph/cache.
-        // Packages outside KGraph (~8K) still exist on PyPI (~400K); pip will
-        // verify at install time during validation.
         let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm");
         resolved.push(ResolvedDependency {
             import_name: import_name.clone(),
@@ -357,7 +363,16 @@ pub fn resolve_with_context(
         } else {
             None
         };
-        // Trust the LLM mapping even if the package isn't in KGraph/cache.
+        // If LLM echoed the import name back unchanged AND the package doesn't
+        // exist on PyPI, skip it — it's almost certainly a local project module.
+        let has_versions = pypi_client::compatible_versions(store, &mapped, python_version);
+        if has_versions.is_empty() && mapped == *import_name {
+            notes.push(format!(
+                "Skipped LLM retry mapping {import_name} -> {mapped}: package not found on PyPI (likely a local module)."
+            ));
+            still_unresolved.push(import_name.clone());
+            continue;
+        }
         let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm-retry");
         resolved.push(ResolvedDependency {
             import_name: import_name.clone(),

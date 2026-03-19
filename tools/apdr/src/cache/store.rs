@@ -1,9 +1,33 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
+use std::hash::{Hash, Hasher};
+use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 
-use crate::{CacheStats, FailurePattern, UnsolvableModuleRecord};
+use crate::{CacheStats, FailurePattern, ResolvedDependency, UnsolvableModuleRecord};
+
+/// Cached solution for a given import set.
+#[derive(Clone, Debug)]
+pub struct ImportSetSolution {
+    pub python_version: String,
+    pub requirements_txt: String,
+    pub resolved: Vec<ResolvedDependency>,
+}
+
+/// Compute a stable hash key for a set of imports (order-independent).
+pub fn import_set_key(imports: &[String]) -> String {
+    let mut sorted: Vec<String> = imports.iter().map(|s| normalize(s)).collect();
+    sorted.sort();
+    sorted.dedup();
+    let mut hasher = DefaultHasher::new();
+    for imp in &sorted {
+        imp.hash(&mut hasher);
+    }
+    format!("{:x}", hasher.finish())
+}
+
+const MAX_IMPORT_SET_SOLUTIONS: usize = 500;
 
 #[derive(Clone, Debug)]
 pub struct PackageRecord {
@@ -753,6 +777,146 @@ impl CacheStore {
             self.cache_path.join("dynamic_unsolvable_modules.tsv"),
             rows.join("\n") + if rows.is_empty() { "" } else { "\n" },
         )?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Import-set solution cache (zstd-compressed JSON)
+    // -----------------------------------------------------------------------
+
+    /// Save a validated solution keyed by import set hash.
+    pub fn save_import_set_solution(
+        &self,
+        key: &str,
+        python_version: &str,
+        requirements_txt: &str,
+        resolved: &[ResolvedDependency],
+    ) -> io::Result<()> {
+        let dir = self.cache_path.join("import_set_solutions");
+        fs::create_dir_all(&dir)?;
+
+        // Build JSON manually (no serde Derive)
+        let resolved_json: Vec<serde_json::Value> = resolved
+            .iter()
+            .map(|dep| {
+                serde_json::json!({
+                    "import_name": dep.import_name,
+                    "package_name": dep.package_name,
+                    "version": dep.version,
+                    "strategy": dep.strategy,
+                    "confidence": dep.confidence,
+                })
+            })
+            .collect();
+        let json = serde_json::json!({
+            "python_version": python_version,
+            "requirements_txt": requirements_txt,
+            "resolved": resolved_json,
+        });
+        let json_bytes = serde_json::to_vec(&json)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        // Compress with zstd level 3 (fast)
+        let compressed = zstd::encode_all(json_bytes.as_slice(), 3)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        // Atomic write
+        let final_path = dir.join(format!("{key}.json.zst"));
+        let tmp_path = dir.join(format!("{key}.json.zst.tmp"));
+        fs::write(&tmp_path, &compressed)?;
+        fs::rename(&tmp_path, &final_path)?;
+
+        // LRU eviction if over budget
+        self.evict_import_set_solutions(&dir)?;
+        Ok(())
+    }
+
+    /// Load a cached solution for the given import-set key.
+    pub fn load_import_set_solution(&self, key: &str) -> Option<ImportSetSolution> {
+        let path = self
+            .cache_path
+            .join("import_set_solutions")
+            .join(format!("{key}.json.zst"));
+        let mut file = fs::File::open(&path).ok()?;
+        let mut compressed = Vec::new();
+        file.read_to_end(&mut compressed).ok()?;
+        let json_bytes = zstd::decode_all(compressed.as_slice()).ok()?;
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).ok()?;
+
+        let python_version = value.get("python_version")?.as_str()?.to_string();
+        let requirements_txt = value.get("requirements_txt")?.as_str()?.to_string();
+        let resolved_arr = value.get("resolved")?.as_array()?;
+        let mut resolved = Vec::with_capacity(resolved_arr.len());
+        for item in resolved_arr {
+            resolved.push(ResolvedDependency {
+                import_name: item.get("import_name")?.as_str()?.to_string(),
+                package_name: item.get("package_name")?.as_str()?.to_string(),
+                version: item
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                strategy: item.get("strategy")?.as_str()?.to_string(),
+                confidence: item.get("confidence")?.as_f64()?,
+            });
+        }
+
+        // Touch a sibling marker for LRU tracking (same pattern as validated-env cache)
+        let marker = path.with_extension("zst.last-used");
+        let _ = fs::write(
+            &marker,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                .to_string(),
+        );
+
+        Some(ImportSetSolution {
+            python_version,
+            requirements_txt,
+            resolved,
+        })
+    }
+
+    fn evict_import_set_solutions(&self, dir: &Path) -> io::Result<()> {
+        let mut entries: Vec<(PathBuf, u64)> = Vec::new();
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.ends_with(".json.zst") && !name.ends_with(".tmp") {
+                // Use .last-used marker if it exists, otherwise fall back to file mtime
+                let marker = path.with_extension("zst.last-used");
+                let ts = fs::read_to_string(&marker)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or_else(|| {
+                        entry
+                            .metadata()
+                            .and_then(|m| {
+                                m.modified().map(|t| {
+                                    t.duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs()
+                                })
+                            })
+                            .unwrap_or(0)
+                    });
+                entries.push((path, ts));
+            }
+        }
+        if entries.len() <= MAX_IMPORT_SET_SOLUTIONS {
+            return Ok(());
+        }
+        // Sort oldest first
+        entries.sort_by_key(|(_, ts)| *ts);
+        let to_remove = entries.len() - MAX_IMPORT_SET_SOLUTIONS;
+        for (path, _) in entries.into_iter().take(to_remove) {
+            let _ = fs::remove_file(&path);
+            // Also remove the marker
+            let marker = path.with_extension("zst.last-used");
+            let _ = fs::remove_file(&marker);
+        }
         Ok(())
     }
 }

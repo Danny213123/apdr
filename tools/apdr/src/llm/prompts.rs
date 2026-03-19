@@ -53,8 +53,11 @@ pub fn package_resolution_prompt(
 Target Python version: {python_version}\n\
 Context:\n{}\n\
 Benchmark trace context:\n{}\n\
+IMPORTANT: Only return actual PyPI package names that can be installed with pip.\n\
+Do NOT return local project module names, helper scripts, or internal imports.\n\
+If an import appears to be a local/project-specific module (not a known PyPI package), \
+skip it entirely — do not include it in the output.\n\
 Return one mapping per line in the exact format import=package.\n\
-If unknown, repeat the import name as the package name.\n\
 Imports:\n{}",
         if context.is_empty() {
             "- none".to_string()

@@ -100,6 +100,8 @@ pub struct ResolutionReport {
     pub error_types: BTreeMap<String, usize>,
     pub notes: Vec<String>,
     pub duration: Duration,
+    pub min_confidence: f64,
+    pub mean_confidence: f64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -345,7 +347,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\nsmoke_duration_ms: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\nsmoke_duration_ms: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -369,6 +371,8 @@ impl ResolveResult {
             self.resolution_report.llm_calls,
             self.resolution_report.env_builds,
             self.resolution_report.retries,
+            self.resolution_report.min_confidence,
+            self.resolution_report.mean_confidence,
             self.resolution_report.duration.as_millis(),
             self.validation.solve_duration_ms,
             self.validation.validation_duration_ms,

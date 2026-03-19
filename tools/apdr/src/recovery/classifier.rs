@@ -35,6 +35,17 @@ pub fn classify_log(log: &str, store: &CacheStore) -> ClassifierResult {
         "InvalidVersion"
     } else if lowercase.contains("non-zero exit status") {
         "NonZeroCode"
+    } else if lowercase.contains("command not found")
+        || lowercase.contains("cannot find -l")
+        || lowercase.contains("no such file or directory")
+            && (lowercase.contains(".so") || lowercase.contains(".dylib") || lowercase.contains(".h"))
+        || lowercase.contains("pkg-config")
+    {
+        "SystemDependency"
+    } else if lowercase.contains("failed building wheel")
+        || lowercase.contains("error: subprocess-exited-with-error")
+    {
+        "BuildFailure"
     } else {
         "Unknown"
     };

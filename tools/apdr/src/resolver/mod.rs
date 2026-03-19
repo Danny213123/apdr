@@ -13,6 +13,7 @@ use std::io;
 use std::path::Path;
 use std::time::Instant;
 
+use crate::cache;
 use crate::cache::lockfile_cache;
 use crate::cache::store::CacheStore;
 use crate::context;
@@ -44,6 +45,43 @@ pub fn resolve_path(
         &parse_result,
         &selected_python,
     )?;
+
+    // Fast path: detect host-runtime / hardware dependencies from import names alone.
+    // This avoids 250-375s of wasted tier1/2/3 + pre-solve work for cases that will
+    // inevitably be skipped after resolution anyway.
+    if let Some((status, note)) = detect_skip_reason(&parse_result, &[], &[]) {
+        report.notes.push(note.clone());
+        let mut validation = skipped_validation_summary(
+            status,
+            &note,
+            &selected_python,
+            &config.output_dir,
+            config,
+            &render_requirements(&[]),
+        );
+        validation.solve_duration_ms = started.elapsed().as_millis();
+        report.unresolved = parse_result.imports.clone();
+        report.duration = started.elapsed();
+        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
+        write_state_artifacts(
+            &config.output_dir,
+            "resolved-final.txt",
+            &format_dependency_state(&[], &parse_result.imports),
+        )?;
+        return Ok(ResolveResult {
+            snippet_path: snippet_path.to_path_buf(),
+            python_version: selected_python.clone(),
+            parse_result,
+            solvability: None,
+            resolved: Vec::new(),
+            unresolved: report.unresolved.clone(),
+            requirements_txt: String::new(),
+            lockfile: Some(String::new()),
+            build_image_id: None,
+            validation,
+            resolution_report: report,
+        });
+    }
 
     // Fast path: check if any import is known-unsolvable from prior LLM assessments.
     // This avoids all resolution + validation work for cases already seen.
@@ -96,6 +134,52 @@ pub fn resolve_path(
             validation,
             resolution_report: report,
         });
+    }
+
+    // Fast path: reuse a previously validated solution for the exact same import set.
+    if config.validate {
+        let import_key = cache::store::import_set_key(&parse_result.imports);
+        if let Some(cached) = store.load_import_set_solution(&import_key) {
+            let note = format!(
+                "Import-set cache hit: reusing validated solution for {} imports",
+                parse_result.imports.len()
+            );
+            report.notes.push(note);
+            let mut validation = skipped_validation_summary(
+                "passed-import-set-cache",
+                "Reusing previously validated solution for identical import set",
+                &cached.python_version,
+                &config.output_dir,
+                config,
+                &cached.requirements_txt,
+            );
+            validation.succeeded = true;
+            validation.solve_duration_ms = started.elapsed().as_millis();
+            report.duration = started.elapsed();
+            write_state_artifacts(
+                &config.output_dir,
+                "requirements-final.txt",
+                &cached.requirements_txt,
+            )?;
+            write_state_artifacts(
+                &config.output_dir,
+                "resolved-final.txt",
+                &format_dependency_state(&cached.resolved, &[]),
+            )?;
+            return Ok(ResolveResult {
+                snippet_path: snippet_path.to_path_buf(),
+                python_version: cached.python_version.clone(),
+                parse_result,
+                solvability: None,
+                resolved: cached.resolved,
+                unresolved: Vec::new(),
+                requirements_txt: cached.requirements_txt.clone(),
+                lockfile: Some(cached.requirements_txt),
+                build_image_id: None,
+                validation,
+                resolution_report: report,
+            });
+        }
     }
 
     // Run tier1 (cache) + tier2 (heuristic) first — these are fast (~ms)
@@ -216,6 +300,14 @@ pub fn resolve_path(
     };
 
     dedupe_dependencies(&mut resolved);
+    if !resolved.is_empty() {
+        report.min_confidence = resolved
+            .iter()
+            .map(|d| d.confidence)
+            .fold(f64::INFINITY, f64::min);
+        report.mean_confidence =
+            resolved.iter().map(|d| d.confidence).sum::<f64>() / resolved.len() as f64;
+    }
     for note in
         apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config)
     {
@@ -330,6 +422,39 @@ pub fn resolve_path(
                 config,
                 &requirements_txt,
             )
+        } else if can_skip_validation_by_confidence(&resolved, pre_solve.as_ref()) {
+            let note = format!(
+                "Skipped validation: all {} deps have confidence >= {:.2}, pre-solve satisfiable",
+                resolved.len(),
+                CONFIDENCE_SKIP_THRESHOLD
+            );
+            report.notes.push(note.clone());
+            let mut summary = skipped_validation_summary(
+                "passed-high-confidence",
+                &note,
+                &selected_python,
+                &config.output_dir,
+                config,
+                &requirements_txt,
+            );
+            summary.succeeded = true;
+            summary
+        } else if let Some(missing_pkg) = find_nonexistent_package(&resolved, &mut store, &selected_python) {
+            let note = format!(
+                "Package `{}` does not exist on PyPI. Skipping validation.",
+                missing_pkg
+            );
+            report.notes.push(note.clone());
+            ValidationSummary {
+                succeeded: false,
+                status: "package-does-not-exist".to_string(),
+                reason: Some(note),
+                validation_backend: config.validation_backend().to_string(),
+                selected_python_version: Some(selected_python.clone()),
+                lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                ..Default::default()
+            }
         } else if let Some(pre_solve) = pre_solve
             .as_ref()
             .filter(|result| result.attempted && !result.satisfiable && result.hard_unsat)
@@ -400,6 +525,14 @@ pub fn resolve_path(
             let build_key = lockfile_cache::key_for(&requirements_txt, &selected_python);
             let _ = store.save_build_artifact(&build_key, image_id);
         }
+        // Import-set memory: cache the full solution for cross-case reuse
+        let import_key = cache::store::import_set_key(&parse_result.imports);
+        let _ = store.save_import_set_solution(
+            &import_key,
+            &selected_python,
+            &requirements_txt,
+            &resolved,
+        );
     }
 
     report.unresolved = unresolved.clone();
@@ -459,6 +592,43 @@ fn should_skip_from_assessment(assessment: Option<&crate::SolvabilityAssessment>
         return false;
     };
     assessment.decision == "skip" || assessment.confidence < 0.40
+}
+
+const CONFIDENCE_SKIP_THRESHOLD: f64 = 0.85;
+
+fn can_skip_validation_by_confidence(
+    resolved: &[ResolvedDependency],
+    pre_solve: Option<&pre_solve::PreSolveResult>,
+) -> bool {
+    if resolved.is_empty() {
+        return false;
+    }
+    let Some(ps) = pre_solve else { return false };
+    if !ps.satisfiable {
+        return false;
+    }
+    resolved
+        .iter()
+        .all(|dep| dep.confidence >= CONFIDENCE_SKIP_THRESHOLD)
+}
+
+/// Check if any low-confidence resolved package does not exist on PyPI.
+/// Only LLM-resolved (0.73) and recovery (0.65-0.78) packages are checked;
+/// seed/heuristic packages (confidence >= 0.85) are known to exist.
+fn find_nonexistent_package(
+    resolved: &[ResolvedDependency],
+    store: &mut CacheStore,
+    python_version: &str,
+) -> Option<String> {
+    for dep in resolved {
+        if dep.confidence >= CONFIDENCE_SKIP_THRESHOLD {
+            continue;
+        }
+        if !pypi_client::package_exists(store, &dep.package_name, python_version) {
+            return Some(dep.package_name.clone());
+        }
+    }
+    None
 }
 
 fn skipped_validation_summary(
@@ -846,6 +1016,14 @@ fn apply_recovery_fix(
                 }
             }
             if known_versions.is_empty() {
+                // Package has no versions at all — cache as unsolvable to
+                // prevent future cases from retrying the same ghost package.
+                let _ = store.save_unsolvable_module(
+                    &package_name,
+                    "non-existent-package",
+                    &format!("Package `{package_name}` has no versions on PyPI"),
+                    0.90,
+                );
                 return None;
             }
             let previous = attempted_versions.entry(package_name.clone()).or_default();
@@ -865,6 +1043,20 @@ fn apply_recovery_fix(
         }
         "ModuleNotFound" | "ImportError" | "AttributeError" => {
             let module_name = extract_missing_module(log)?;
+            // pkg_resources comes from setuptools — a common issue with modern pip
+            if module_name == "pkg_resources" {
+                if upsert_dependency(
+                    resolved,
+                    "pkg_resources",
+                    "setuptools",
+                    None,
+                    "recovery:pkg-resources",
+                ) {
+                    return Some(
+                        "Added setuptools to provide missing pkg_resources module.".to_string(),
+                    );
+                }
+            }
             // Skip recovery for modules in the stdlib list (e.g. Pythonista builtins
             // like `console` that were intentionally excluded from resolution).
             if parse_result
@@ -1071,6 +1263,12 @@ fn apply_recovery_fix(
                     }
                 }
             }
+            None
+        }
+        "SystemDependency" | "BuildFailure" => {
+            // System dependencies (missing C libs, build tools) and wheel build
+            // failures can't be fixed by pip — let environment_specific_note()
+            // or the generic fallback handle these after we return None.
             None
         }
         "SyntaxError" => {
