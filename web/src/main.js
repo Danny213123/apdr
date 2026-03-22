@@ -14,6 +14,7 @@ const state = {
   caseSearch: "",
   caseFilter: "all",
   openCaseIds: new Set(),
+  openLlmCaseIds: new Set(),
   pollTimer: null,
   previewTimer: null,
   serverStopping: false,
@@ -68,7 +69,11 @@ const ui = {
   metricsGrid: document.querySelector("#metrics-grid"),
   perfLine: document.querySelector("#perf-line"),
   researchLine: document.querySelector("#research-line"),
+  llmSummary: document.querySelector("#llm-summary"),
   lastLlmLine: document.querySelector("#last-llm-line"),
+  casesCount: document.querySelector("#cases-count"),
+  llmCasesCount: document.querySelector("#llm-cases-count"),
+  llmCasesScroll: document.querySelector("#llm-cases-scroll"),
   activeCases: document.querySelector("#active-cases"),
   recentActivity: document.querySelector("#recent-activity"),
   caseSearch: document.querySelector("#case-search"),
@@ -485,6 +490,10 @@ function selectedHistoryRun() {
   return state.runs.find((item) => item.runId === state.selectedHistoryRunId) || null;
 }
 
+function llmCasesForRun(run = displayRun()) {
+  return Array.isArray(run?.llmCases) ? run.llmCases : [];
+}
+
 function currentDisplaySource() {
   return state.currentRun && (state.currentRun.runId || state.currentRun.status !== "idle") ? state.currentRun : state.preview;
 }
@@ -517,6 +526,7 @@ function validationBackendOptions(tool) {
       { value: "env", label: "Local envs" },
       { value: "docker", label: "Docker" },
       { value: "llm", label: "LLM resolver" },
+      { value: "llm-only", label: "LLM-only" },
     ];
   }
   return [{ value: "env", label: "Local envs" }];
@@ -584,7 +594,7 @@ function renderHomeHeader() {
   const run = state.currentRun || {};
   const liveState = run.runId || isRunActive(run) || ["failed", "completed", "stopped"].includes(run.status || "");
   const selectedTool = state.form?.tool || "tool selection";
-  ui.homeTitle.textContent = liveState ? run.title || "PyRAG benchmark ready" : "FSE AIWare Command Center";
+  ui.homeTitle.textContent = liveState ? run.title || "APDR benchmark ready" : "FSE AIWare Command Center";
   ui.homeSubtitle.textContent = liveState
     ? run.subtitle || "Open Benchmark View to inspect progress and results."
     : "Run, report, and configure without memorizing commands.";
@@ -630,6 +640,7 @@ function renderProgress() {
     <span><span class="kv-label">Successes:</span> <span class="text-green">${escapeHtml(String(run.successes ?? 0))}</span></span>
     <span><span class="kv-label">Failures:</span> <span class="text-red">${escapeHtml(String(run.failures ?? 0))}</span></span>
     <span><span class="kv-label">Skipped:</span> <span class="text-yellow">${escapeHtml(String(run.skipped ?? 0))}</span></span>
+    <span><span class="kv-label">LLM calls:</span> <span class="text-yellow">${escapeHtml(String(run.totalLlmCalls ?? 0))}</span></span>
     <span><span class="kv-label">Elapsed:</span> <span class="text-yellow">${escapeHtml(run.elapsedLabel || "0m 00s")}</span></span>
     <span><span class="kv-label">Pass rate:</span> <span class="text-yellow">${escapeHtml(run.passRate || "0.0%")}</span></span>
     <span><span class="kv-label">Sec/case:</span> <span class="text-yellow">${escapeHtml(run.speed || "--")}</span></span>
@@ -663,6 +674,23 @@ function renderProgress() {
     <span class="kv-label">Artifacts</span>
     <span class="kv-value">${escapeHtml(run.runDir || "runs/pending")}</span>
   `;
+}
+
+function renderLlmInsights(run = displayRun() || {}) {
+  const llmCases = llmCasesForRun(run);
+  const totalCalls = Number(run.totalLlmCalls || 0);
+  const totalRetries = Number(run.totalRetries || 0);
+  const retryCases = Number(run.casesWithLlmRetries || 0);
+
+  if (!llmCases.length) {
+    ui.llmSummary.textContent = totalCalls > 0 ? `${totalCalls} total LLM calls recorded.` : "No completed LLM calls yet.";
+    return;
+  }
+
+  ui.llmSummary.textContent =
+    `${totalCalls} total call${totalCalls === 1 ? "" : "s"} across ${llmCases.length} ` +
+    `case${llmCases.length === 1 ? "" : "s"}; ${totalRetries} retr${totalRetries === 1 ? "y" : "ies"} ` +
+    `across ${retryCases} case${retryCases === 1 ? "" : "s"}.`;
 }
 
 function renderActivityList(container, items, emptyText, formatter) {
@@ -710,6 +738,9 @@ function renderCaseDetails(container, item) {
     ["Snippet", item.snippet || "-"],
     ["Result", item.result || "-"],
     ["Dependencies", item.dependencies || "-"],
+    ["LLM calls", item.llmCalls || "0"],
+    ["Retries", item.retries || "0"],
+    ["Env builds", item.envBuilds || "0"],
     ["Solve", item.solve || "-"],
     ["Validate", item.validation || "-"],
     ["Env create", item.envCreate || "-"],
@@ -767,6 +798,9 @@ function filteredCases() {
       item.readpySummary,
       item.result,
       item.dependencies,
+      item.llmCalls,
+      item.retries,
+      item.envBuilds,
       item.snippet,
       ...(item.outputFiles || []),
       ...(item.logTail || []),
@@ -791,62 +825,84 @@ function filteredCases() {
   });
 }
 
+function buildCaseRow(item, openIds) {
+  const node = ui.caseRowTemplate.content.firstElementChild.cloneNode(true);
+  node.dataset.caseId = item.caseId || "";
+  const stat = node.querySelector(".case-stat");
+  stat.textContent = item.status || "-";
+  stat.classList.add(statusToneClass(item.status));
+  node.querySelector(".case-id").textContent = item.caseId || "-";
+  node.querySelector(".case-python").textContent = item.python || "-";
+  node.querySelector(".case-attempts").textContent = item.tries || "-";
+  node.querySelector(".case-seconds").textContent = item.seconds || "0.0";
+
+  const pllm = node.querySelector(".case-pllm");
+  pllm.textContent = item.pllm || "-";
+  pllm.classList.add(markerClass(item.pllm));
+  pllm.title = item.pllmSummary || "";
+
+  const pyego = node.querySelector(".case-pyego");
+  pyego.textContent = item.legacy || "-";
+  pyego.classList.add(markerClass(item.legacy));
+  pyego.title = item.legacySummary || "";
+
+  const readpy = node.querySelector(".case-readpy");
+  readpy.textContent = item.readpy || "-";
+  readpy.classList.add(markerClass(item.readpy));
+  readpy.title = item.readpySummary || "";
+
+  node.querySelector(".case-result").textContent = item.result || "-";
+  node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
+
+  if (openIds.has(item.caseId)) {
+    node.open = true;
+    renderCaseDetails(node.querySelector(".case-detail"), item);
+  }
+
+  node.addEventListener("toggle", () => {
+    if (node.open) {
+      openIds.add(item.caseId);
+      renderCaseDetails(node.querySelector(".case-detail"), item);
+    } else {
+      openIds.delete(item.caseId);
+    }
+  });
+
+  return node;
+}
+
 function renderCases() {
   const previousScrollTop = ui.casesScroll.scrollTop;
   ui.casesScroll.innerHTML = "";
   const cases = filteredCases();
+  ui.casesCount.textContent = `(${cases.length})`;
   if (!cases.length) {
     ui.casesScroll.innerHTML = `<div class="empty-line">No completed cases yet.</div>`;
     return;
   }
   const fragment = document.createDocumentFragment();
   for (const item of cases) {
-    const node = ui.caseRowTemplate.content.firstElementChild.cloneNode(true);
-    node.dataset.caseId = item.caseId || "";
-    const stat = node.querySelector(".case-stat");
-    stat.textContent = item.status || "-";
-    stat.classList.add(statusToneClass(item.status));
-    node.querySelector(".case-id").textContent = item.caseId || "-";
-    node.querySelector(".case-python").textContent = item.python || "-";
-    node.querySelector(".case-attempts").textContent = item.tries || "-";
-    node.querySelector(".case-seconds").textContent = item.seconds || "0.0";
-
-    const pllm = node.querySelector(".case-pllm");
-    pllm.textContent = item.pllm || "-";
-    pllm.classList.add(markerClass(item.pllm));
-    pllm.title = item.pllmSummary || "";
-
-    const pyego = node.querySelector(".case-pyego");
-    pyego.textContent = item.legacy || "-";
-    pyego.classList.add(markerClass(item.legacy));
-    pyego.title = item.legacySummary || "";
-
-    const readpy = node.querySelector(".case-readpy");
-    readpy.textContent = item.readpy || "-";
-    readpy.classList.add(markerClass(item.readpy));
-    readpy.title = item.readpySummary || "";
-
-    node.querySelector(".case-result").textContent = item.result || "-";
-    node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
-
-    if (state.openCaseIds.has(item.caseId)) {
-      node.open = true;
-      renderCaseDetails(node.querySelector(".case-detail"), item);
-    }
-
-    node.addEventListener("toggle", () => {
-      if (node.open) {
-        state.openCaseIds.add(item.caseId);
-        renderCaseDetails(node.querySelector(".case-detail"), item);
-      } else {
-        state.openCaseIds.delete(item.caseId);
-      }
-    });
-
-    fragment.appendChild(node);
+    fragment.appendChild(buildCaseRow(item, state.openCaseIds));
   }
   ui.casesScroll.appendChild(fragment);
   ui.casesScroll.scrollTop = previousScrollTop;
+}
+
+function renderLlmCases() {
+  const previousScrollTop = ui.llmCasesScroll.scrollTop;
+  ui.llmCasesScroll.innerHTML = "";
+  const llmCases = llmCasesForRun();
+  ui.llmCasesCount.textContent = `(${llmCases.length})`;
+  if (!llmCases.length) {
+    ui.llmCasesScroll.innerHTML = `<div class="empty-line">No LLM cases yet.</div>`;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const item of llmCases) {
+    fragment.appendChild(buildCaseRow(item, state.openLlmCaseIds));
+  }
+  ui.llmCasesScroll.appendChild(fragment);
+  ui.llmCasesScroll.scrollTop = previousScrollTop;
 }
 
 function renderHome() {
@@ -863,6 +919,7 @@ function renderRunPage() {
   const historyRun = selectedHistoryRun();
   renderRunHeader();
   renderProgress();
+  renderLlmInsights(run);
   renderActivityList(
     ui.activeCases,
     run.activeCase ? [run.activeCase] : [],
@@ -876,6 +933,7 @@ function renderRunPage() {
     (item) => `• ${escapeHtml(item)}`,
   );
   renderCases();
+  renderLlmCases();
   ui.runStopButton.disabled = !isRunActive(state.currentRun);
   ui.refreshRunsButton.disabled = false;
   ui.loadRunButton.disabled = !historyRun || isRunActive(state.currentRun);
@@ -1012,9 +1070,14 @@ function applyLoadoutToForm(loadout) {
 }
 
 function currentConfigPayload() {
+  const isLlmOnly = state.form?.validation_backend === "llm-only";
   return {
     ...state.form,
     loadout_name: state.form?.loadout_name || "",
+    llm_only_mode: isLlmOnly,
+    // When llm-only is selected, the actual validation backend is "env" (validation
+    // still needs a backend), but the --llm-only flag handles the resolution logic.
+    validation_backend: isLlmOnly ? "env" : (state.form?.validation_backend || "env"),
   };
 }
 

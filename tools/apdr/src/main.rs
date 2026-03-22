@@ -132,6 +132,10 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
             "--allow-llm" => {
                 config.allow_llm = true;
             }
+            "--llm-only" => {
+                config.llm_only_mode = true;
+                config.allow_llm = true; // LLM-only mode implies allow_llm
+            }
             "--no-config-scan" => {
                 config.scan_config_files = false;
             }
@@ -489,7 +493,7 @@ fn print_help() {
     println!();
     println!("Usage:");
     println!("  apdr resolve <snippet.py>|--stdin [--output DIR] [--python 3.11] [--range 1] [--max-retries 10]");
-    println!("              [--cache-path DIR] [--allow-llm --llm-provider ollama --llm-model gemma3:4b]");
+    println!("              [--cache-path DIR] [--allow-llm --llm-only --llm-provider ollama --llm-model gemma3:4b]");
     println!(
         "              [--llm-base-url http://localhost:11434] [--benchmark-context-log trace.log]"
     );

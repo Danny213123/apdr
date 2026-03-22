@@ -194,6 +194,7 @@ class AppState:
             "snippet_limit": "",
             "python_command": "",
             "validation_backend": "docker" if tool == "pllm" else "env",
+            "llm_only_mode": False,
             "workers": 0,
         }
 
@@ -220,6 +221,7 @@ class AppState:
         return path
 
     def load_loadout(self, slug: str) -> dict[str, Any] | None:
+        slug = self._sanitize_path_component(slug)
         path = self.loadouts_dir / f"{slug}.json"
         data = self.read_json(path)
         if isinstance(data, dict):
@@ -229,6 +231,7 @@ class AppState:
         return None
 
     def delete_loadout(self, slug: str) -> bool:
+        slug = self._sanitize_path_component(slug)
         path = self.loadouts_dir / f"{slug}.json"
         if path.exists():
             path.unlink()
@@ -236,6 +239,7 @@ class AppState:
         return False
 
     def run_summary_path(self, run_id: str) -> Path:
+        run_id = self._sanitize_path_component(run_id)
         return self.runs_dir / run_id / "summary.json"
 
     def load_run_summary(self, run_id: str) -> dict[str, Any] | None:
@@ -1285,6 +1289,15 @@ class AppState:
             timeout=8,
         )
         return code == 0 and output.strip() == version
+
+    def _sanitize_path_component(self, value: str) -> str:
+        """Validate that *value* is a safe single path component (no traversal)."""
+        cleaned = value.strip()
+        if not cleaned or "/" in cleaned or "\\" in cleaned or "\0" in cleaned:
+            raise ValueError(f"Invalid path component: {value!r}")
+        if cleaned in (".", "..") or ".." in cleaned.split(os.sep):
+            raise ValueError(f"Invalid path component: {value!r}")
+        return cleaned
 
     def _is_metadata_archive_path(self, value: str) -> bool:
         cleaned = value.strip("/")

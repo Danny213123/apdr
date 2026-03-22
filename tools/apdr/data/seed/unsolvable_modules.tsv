@@ -29,3 +29,136 @@ spidev	platform-specific	Raspberry Pi SPI interface — requires Pi hardware	1.0
 smbus	platform-specific	I2C/SMBus interface — requires embedded hardware	1.00	0
 lx	host-runtime	Luxology MODO scripting API — not available on PyPI	1.00	0
 lxu	host-runtime	Luxology MODO scripting API — not available on PyPI	1.00	0
+appindicator	host-runtime	GNOME AppIndicator desktop API — not available on PyPI	1.00	0
+webkit	host-runtime	WebKit engine bindings — not available as standalone PyPI package	1.00	0
+weechat	host-runtime	WeeChat IRC client plugin API — not available on PyPI	1.00	0
+lldb	host-runtime	LLVM debugger Python API — not available on PyPI	1.00	0
+gst	host-runtime	GStreamer Python bindings — requires system GStreamer via gi.repository	1.00	0
+xbmc	host-runtime	Kodi/XBMC media center plugin API — not available on PyPI	1.00	0
+win32clipboard	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32file	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32process	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32event	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32service	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+win32pipe	platform-specific	Windows-only API (pywin32) — not available on Linux/macOS	1.00	0
+wmi	platform-specific	Windows Management Instrumentation — not available on Linux/macOS	1.00	0
+winreg	platform-specific	Windows-only registry API — not available on Linux/macOS	1.00	0
+pythoncom	platform-specific	Windows COM support (pywin32) — not available on Linux/macOS	1.00	0
+pywintypes	platform-specific	Windows types (pywin32) — not available on Linux/macOS	1.00	0
+ui	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+scene	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+console	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+objc_util	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+appex	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+dialogs	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+editor	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+photos	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+keychain	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+motion	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+sound	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+speech	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+cb	host-runtime	Pythonista iOS app module (Core Bluetooth) — not available on PyPI	1.00	0
+location	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+notification	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+reminders	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+contacts	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+google.appengine	host-runtime	Google App Engine SDK runtime — not available on PyPI	1.00	0
+webapp2	host-runtime	Google App Engine webapp2 framework — bundled with GAE SDK	1.00	0
+mapreduce	host-runtime	Google App Engine MapReduce library — bundled with GAE SDK	1.00	0
+pipeline	host-runtime	Google App Engine Pipeline library — bundled with GAE SDK	1.00	0
+endpoints	host-runtime	Google Cloud Endpoints runtime — requires GAE SDK	1.00	0
+ndb	host-runtime	Google App Engine NDB datastore client — bundled with GAE SDK	1.00	0
+maya.cmds	host-runtime	Autodesk Maya Python commands API — not available on PyPI	1.00	0
+maya.mel	host-runtime	Autodesk Maya MEL bindings — not available on PyPI	1.00	0
+maya.OpenMaya	host-runtime	Autodesk Maya OpenMaya API — not available on PyPI	1.00	0
+pymel	host-runtime	Autodesk Maya PyMEL scripting API — not available on PyPI	1.00	0
+MaxPlus	host-runtime	Autodesk 3ds Max Python API — not available on PyPI	1.00	0
+pymxs	host-runtime	Autodesk 3ds Max Python API — not available on PyPI	1.00	0
+unreal	host-runtime	Unreal Engine Python API — not available on PyPI	1.00	0
+clr	host-runtime	.NET CLR bridge (IronPython/pythonnet) — requires system CLR	1.00	0
+System	host-runtime	.NET System namespace (IronPython) — requires .NET runtime	1.00	0
+UnityEngine	host-runtime	Unity game engine Python API — not available on PyPI	1.00	0
+vim	host-runtime	Vim editor Python API — not available on PyPI	1.00	0
+rospy	host-runtime	ROS Python client — requires ROS installation, not standalone PyPI package	1.00	0
+roslib	host-runtime	ROS Python library — requires ROS installation	1.00	0
+tf	host-runtime	ROS transform library — requires ROS installation (not TensorFlow)	0.70	0
+sensor_msgs	host-runtime	ROS sensor messages — requires ROS installation	1.00	0
+geometry_msgs	host-runtime	ROS geometry messages — requires ROS installation	1.00	0
+std_msgs	host-runtime	ROS standard messages — requires ROS installation	1.00	0
+nav_msgs	host-runtime	ROS navigation messages — requires ROS installation	1.00	0
+genpy	host-runtime	ROS message generation — requires ROS installation	1.00	0
+Grasshopper	host-runtime	Rhino Grasshopper scripting API — not available on PyPI	1.00	0
+ghpythonlib	host-runtime	Rhino Grasshopper Python library — not available on PyPI	1.00	0
+Rhino	host-runtime	Rhino 3D Python API — not available on PyPI	1.00	0
+clepy	host-runtime	Custom organization module — not available on PyPI	1.00	0
+gtk	system-dependency	PyGTK/GTK bindings — requires system GTK development headers	1.00	0
+pygtk	system-dependency	PyGTK bindings — requires system GTK development headers	1.00	0
+gobject	system-dependency	GObject/GLib bindings — requires system GLib development headers	1.00	0
+glib	system-dependency	GLib bindings — requires system GLib development headers	1.00	0
+android	platform-specific	Python-for-Android (p4a/buildozer) runtime — requires Android device	1.00	0
+droid	platform-specific	Android automation module — requires Android device	1.00	0
+com	platform-specific	Windows COM automation — requires Windows platform	1.00	0
+_winapi	platform-specific	Windows-only internal API — not available on Linux/macOS	1.00	0
+winappdbg	platform-specific	Windows application debugging — not available on Linux/macOS	1.00	0
+winerror	platform-specific	Windows error codes — not available on Linux/macOS	1.00	0
+ntsecuritycon	platform-specific	Windows NT security constants — not available on Linux/macOS	1.00	0
+servicemanager	platform-specific	Windows service manager (pywin32) — not available on Linux/macOS	1.00	0
+win32serviceutil	platform-specific	Windows service utilities (pywin32) — not available on Linux/macOS	1.00	0
+win32ts	platform-specific	Windows Terminal Services (pywin32) — not available on Linux/macOS	1.00	0
+win32timezone	platform-specific	Windows timezone (pywin32) — not available on Linux/macOS	1.00	0
+win32com	platform-specific	Windows COM support (pywin32) — not available on Linux/macOS	1.00	0
+adodbapi	platform-specific	Windows ADO database API — not available on Linux/macOS	1.00	0
+commands	deprecated-stdlib	Python 2 stdlib module removed in Python 3 — use subprocess instead	1.00	0
+cStringIO	deprecated-stdlib	Python 2 C-accelerated StringIO — use io.StringIO in Python 3	1.00	0
+cPickle	deprecated-stdlib	Python 2 C-accelerated pickle — use pickle in Python 3	1.00	0
+copy_reg	deprecated-stdlib	Python 2 copy_reg — renamed to copyreg in Python 3	1.00	0
+htmllib	deprecated-stdlib	Python 2 HTML parser — removed in Python 3, use html.parser	1.00	0
+sgmllib	deprecated-stdlib	Python 2 SGML parser — removed in Python 3	1.00	0
+rfc822	deprecated-stdlib	Python 2 RFC 822 mail header parser — removed in Python 3	1.00	0
+mimetools	deprecated-stdlib	Python 2 MIME tools — removed in Python 3	1.00	0
+multifile	deprecated-stdlib	Python 2 multifile reader — removed in Python 3	1.00	0
+compiler	deprecated-stdlib	Python 2 compiler module — removed in Python 3	1.00	0
+dircache	deprecated-stdlib	Python 2 dircache — removed in Python 3	1.00	0
+fpformat	deprecated-stdlib	Python 2 floating point formatting — removed in Python 3	1.00	0
+hotshot	deprecated-stdlib	Python 2 profiler — removed in Python 3	1.00	0
+new	deprecated-stdlib	Python 2 new module — removed in Python 3	1.00	0
+user	deprecated-stdlib	Python 2 user module — removed in Python 3	1.00	0
+dl	deprecated-stdlib	Python 2 dynamic loading — removed in Python 3	1.00	0
+popen2	deprecated-stdlib	Python 2 popen2 — removed in Python 3, use subprocess	1.00	0
+statvfs	deprecated-stdlib	Python 2 statvfs constants — removed in Python 3	1.00	0
+markupbase	deprecated-stdlib	Python 2 markup base — renamed _markupbase in Python 3	1.00	0
+sets	deprecated-stdlib	Python 2 sets module — use built-in set in Python 3	1.00	0
+md5	deprecated-stdlib	Python 2 md5 module — use hashlib in Python 3	1.00	0
+sha	deprecated-stdlib	Python 2 sha module — use hashlib in Python 3	1.00	0
+gopherlib	deprecated-stdlib	Python 2 gopher protocol — removed in Python 3	1.00	0
+audiodev	deprecated-stdlib	Python 2 audio device — removed in Python 3	1.00	0
+Bastion	deprecated-stdlib	Python 2 restricted execution — removed in Python 3	1.00	0
+rexec	deprecated-stdlib	Python 2 restricted execution — removed in Python 3	1.00	0
+mutex	deprecated-stdlib	Python 2 mutex — removed in Python 3	1.00	0
+thread	deprecated-stdlib	Python 2 thread module — renamed _thread in Python 3	1.00	0
+Queue	deprecated-stdlib	Python 2 Queue module — renamed queue in Python 3	1.00	0
+repr	deprecated-stdlib	Python 2 repr module — renamed reprlib in Python 3	1.00	0
+ConfigParser	deprecated-stdlib	Python 2 ConfigParser — renamed configparser in Python 3	1.00	0
+StringIO	deprecated-stdlib	Python 2 StringIO module — use io.StringIO in Python 3	1.00	0
+Cookie	deprecated-stdlib	Python 2 Cookie — renamed http.cookies in Python 3	1.00	0
+cookielib	deprecated-stdlib	Python 2 cookielib — renamed http.cookiejar in Python 3	1.00	0
+httplib	deprecated-stdlib	Python 2 httplib — renamed http.client in Python 3	1.00	0
+BaseHTTPServer	deprecated-stdlib	Python 2 BaseHTTPServer — use http.server in Python 3	1.00	0
+CGIHTTPServer	deprecated-stdlib	Python 2 CGIHTTPServer — use http.server in Python 3	1.00	0
+SimpleHTTPServer	deprecated-stdlib	Python 2 SimpleHTTPServer — use http.server in Python 3	1.00	0
+urlparse	deprecated-stdlib	Python 2 urlparse — use urllib.parse in Python 3	1.00	0
+urllib2	deprecated-stdlib	Python 2 urllib2 — use urllib.request in Python 3	1.00	0
+robotparser	deprecated-stdlib	Python 2 robotparser — renamed urllib.robotparser in Python 3	1.00	0
+SocketServer	deprecated-stdlib	Python 2 SocketServer — renamed socketserver in Python 3	1.00	0
+Tkinter	deprecated-stdlib	Python 2 Tkinter — renamed tkinter in Python 3	1.00	0
+Dialog	deprecated-stdlib	Python 2 Dialog — use tkinter.dialog in Python 3	1.00	0
+FileDialog	deprecated-stdlib	Python 2 FileDialog — use tkinter.filedialog in Python 3	1.00	0
+ScrolledText	deprecated-stdlib	Python 2 ScrolledText — use tkinter.scrolledtext in Python 3	1.00	0
+Tix	deprecated-stdlib	Python 2 Tix — use tkinter.tix in Python 3	1.00	0
+ttk	deprecated-stdlib	Python 2 ttk — use tkinter.ttk in Python 3	1.00	0
+tkMessageBox	deprecated-stdlib	Python 2 tkMessageBox — use tkinter.messagebox in Python 3	1.00	0
+tkFileDialog	deprecated-stdlib	Python 2 tkFileDialog — use tkinter.filedialog in Python 3	1.00	0
+tkSimpleDialog	deprecated-stdlib	Python 2 tkSimpleDialog — use tkinter.simpledialog in Python 3	1.00	0
+xmlrpclib	deprecated-stdlib	Python 2 xmlrpclib — renamed xmlrpc.client in Python 3	1.00	0
+DocXMLRPCServer	deprecated-stdlib	Python 2 DocXMLRPCServer — renamed xmlrpc.server in Python 3	1.00	0
+SimpleXMLRPCServer	deprecated-stdlib	Python 2 SimpleXMLRPCServer — renamed xmlrpc.server in Python 3	1.00	0

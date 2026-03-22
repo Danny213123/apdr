@@ -141,57 +141,71 @@ pub fn kgraph_dependency_specs(db_path: &Path, package: &str, version: &str) -> 
 }
 
 /// Bulk-prefetch versions and dependency specs for a set of packages.
+/// Uses SQL IN clause for batch queries instead of N individual queries (#10).
 /// Returns a map of package_name -> (versions, deps_by_version).
 pub fn kgraph_bulk_prefetch(
     db_path: &Path,
     packages: &[String],
 ) -> BTreeMap<String, (Vec<String>, BTreeMap<String, Vec<String>>)> {
     let mut results = BTreeMap::new();
+    if packages.is_empty() {
+        return results;
+    }
     let Some(conn) = get_pool(db_path).get() else {
         return results;
     };
 
-    let mut ver_stmt = match conn.prepare_cached("SELECT version FROM versions WHERE package = ?1")
-    {
-        Ok(s) => s,
-        Err(_) => return results,
-    };
-    let mut dep_stmt =
-        match conn.prepare_cached("SELECT spec FROM deps WHERE package = ?1 AND version = ?2") {
-            Ok(s) => s,
-            Err(_) => return results,
-        };
+    let normalized: Vec<String> = packages.iter().map(|p| normalize(p)).collect();
 
-    for package in packages {
-        let normalized = normalize(package);
-        let rows = ver_stmt.query_map([&normalized], |row| row.get::<_, String>(0));
-        let Ok(rows) = rows else { continue };
-        let mut versions: Vec<String> = rows.filter_map(|r| r.ok()).collect();
+    // Single LEFT JOIN query: fetch versions and their deps in one round-trip
+    // instead of two separate queries. Rows with no deps have spec = NULL.
+    let placeholders: String = normalized.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT v.package, v.version, d.spec \
+         FROM versions v \
+         LEFT JOIN deps d ON v.package = d.package AND v.version = d.version \
+         WHERE v.package IN ({})",
+        placeholders
+    );
+    if let Ok(mut stmt) = conn.prepare(&sql) {
+        let params: Vec<&dyn rusqlite::types::ToSql> = normalized
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
+        if let Ok(rows) = stmt.query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        }) {
+            for row in rows.flatten() {
+                let (pkg, version, spec) = row;
+                let entry = results
+                    .entry(pkg)
+                    .or_insert_with(|| (Vec::new(), BTreeMap::new()));
+                entry.0.push(version.clone());
+                if let Some(spec) = spec {
+                    let spec = spec.trim().to_string();
+                    if !spec.is_empty() {
+                        entry.1.entry(version).or_insert_with(Vec::new).push(spec);
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort and dedup versions for each package (JOIN produces duplicates
+    // when a version has multiple deps).
+    for (_, (versions, _)) in results.iter_mut() {
         versions.sort_unstable();
         versions.dedup();
         versions.sort_by(|a, b| compare_version_keys(a, b));
-        if versions.is_empty() {
-            continue;
-        }
-
-        let mut deps_by_version = BTreeMap::new();
-        for version in &versions {
-            let dep_rows = dep_stmt.query_map(rusqlite::params![&normalized, version], |row| {
-                row.get::<_, String>(0)
-            });
-            let Ok(dep_rows) = dep_rows else { continue };
-            let specs: Vec<String> = dep_rows
-                .filter_map(|r| r.ok())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !specs.is_empty() {
-                deps_by_version.insert(version.clone(), specs);
-            }
-        }
-
-        results.insert(normalized, (versions, deps_by_version));
     }
+
+    // Remove packages with no versions
+    results.retain(|_, (versions, _)| !versions.is_empty());
+
     results
 }
 
@@ -203,12 +217,95 @@ pub fn db_available(db_path: &Path) -> bool {
     get_pool(db_path).get().is_some()
 }
 
+/// #3: Find KGraph packages whose normalized name contains or matches a pattern.
+/// Used to build tier2 candidates for LLM prompt injection.
+/// Returns up to `limit` package names that are similar to the import name.
+pub fn kgraph_candidate_packages(
+    db_path: &Path,
+    import_name: &str,
+    limit: usize,
+) -> Vec<String> {
+    let Some(conn) = get_pool(db_path).get() else {
+        return Vec::new();
+    };
+    let norm = normalize(import_name);
+    if norm.is_empty() {
+        return Vec::new();
+    }
+
+    let mut candidates = Vec::new();
+
+    // Strategy 1: Exact match (import_name == package_name after normalization)
+    if let Ok(mut stmt) = conn.prepare_cached(
+        "SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1",
+    ) {
+        if let Ok(rows) = stmt.query_map([&norm], |row| row.get::<_, String>(0)) {
+            for row in rows.flatten() {
+                if !candidates.contains(&row) {
+                    candidates.push(row);
+                }
+            }
+        }
+    }
+
+    // Strategy 2: Common prefix/suffix patterns (e.g. cv2 -> opencv-python, PIL -> pillow)
+    // Use LIKE patterns: "python-{name}", "{name}-python", "py{name}", "{name}"
+    let patterns = vec![
+        format!("python-{}", norm),
+        format!("{}-python", norm),
+        format!("py{}", norm),
+        format!("{}py", norm),
+    ];
+    for pattern in &patterns {
+        if candidates.len() >= limit {
+            break;
+        }
+        if let Ok(mut stmt) = conn.prepare_cached(
+            "SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1",
+        ) {
+            if let Ok(rows) = stmt.query_map([pattern], |row| row.get::<_, String>(0)) {
+                for row in rows.flatten() {
+                    if !candidates.contains(&row) {
+                        candidates.push(row);
+                    }
+                }
+            }
+        }
+    }
+
+    // Strategy 3: LIKE containment search (e.g. "cv2" -> "opencv-python-headless")
+    if candidates.len() < limit {
+        let like_pattern = format!("%{}%", norm);
+        if let Ok(mut stmt) = conn.prepare_cached(
+            "SELECT DISTINCT package FROM versions WHERE package LIKE ?1 LIMIT ?2",
+        ) {
+            let remaining = (limit - candidates.len()) as i64;
+            if let Ok(rows) = stmt.query_map(
+                rusqlite::params![&like_pattern, remaining + 5],
+                |row| row.get::<_, String>(0),
+            ) {
+                for row in rows.flatten() {
+                    if candidates.len() >= limit {
+                        break;
+                    }
+                    if !candidates.contains(&row) && row != norm {
+                        candidates.push(row);
+                    }
+                }
+            }
+        }
+    }
+
+    candidates.truncate(limit);
+    candidates
+}
+
 // ---------------------------------------------------------------------------
 // Version sorting (replicates Python's version_key for KGraph compatibility)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum VersionToken {
+pub(crate) enum VersionToken {
     Num(u64),
     Str(String),
 }
@@ -231,7 +328,7 @@ impl PartialOrd for VersionToken {
     }
 }
 
-fn version_sort_key(version: &str) -> Vec<VersionToken> {
+pub(crate) fn version_sort_key(version: &str) -> Vec<VersionToken> {
     let mut tokens = Vec::new();
     let mut current_digits = String::new();
     for ch in version.chars() {

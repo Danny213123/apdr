@@ -54,7 +54,14 @@ struct ValidatedEnvEntry {
 /// Compress a directory into a tar.zst archive.
 /// Uses atomic write (temp file + rename) for safe concurrent access.
 pub fn compress_env_to_archive(env_dir: &Path, archive_path: &Path) -> io::Result<u64> {
-    let tmp_path = archive_path.with_extension("tar.zst.tmp");
+    // Append ".tmp" to the full filename to avoid the with_extension() bug:
+    // Path::with_extension replaces only the last extension, so on
+    // "build-xxx.tar.zst" it would produce "build-xxx.tar.tar.zst.tmp"
+    // instead of the intended "build-xxx.tar.zst.tmp".
+    let tmp_path = archive_path.with_file_name(format!(
+        "{}.tmp",
+        archive_path.file_name().unwrap_or_default().to_string_lossy()
+    ));
     let file = fs::File::create(&tmp_path)?;
     let encoder = zstd::Encoder::new(file, 6)?; // level 6: ~30% better ratio than 3, <1s extra
     let mut tar_builder = tar::Builder::new(encoder.auto_finish());
@@ -112,6 +119,46 @@ fn read_archive_last_used(archive_path: &Path) -> u128 {
 
 fn is_env_archive(path: &Path) -> bool {
     path.to_string_lossy().ends_with(".tar.zst")
+}
+
+/// Path to the `.hot` (uncompressed) sibling of an archive for fast CoW cloning.
+pub fn hot_dir_path(archive_path: &Path) -> PathBuf {
+    let stem = archive_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .replace(".tar.zst", "");
+    archive_path.with_file_name(format!("{stem}.hot"))
+}
+
+// ---------------------------------------------------------------------------
+// CoW clonefile (macOS APFS)
+// ---------------------------------------------------------------------------
+
+/// Try to copy a directory tree using macOS APFS copy-on-write (clonefile).
+/// Returns `Ok(true)` on success, `Ok(false)` on non-macOS or non-APFS
+/// filesystems, and `Err` only on unexpected I/O failures.
+pub fn try_cow_clone(src: &Path, dst: &Path) -> io::Result<bool> {
+    if !cfg!(target_os = "macos") {
+        return Ok(false);
+    }
+    if !src.exists() {
+        return Ok(false);
+    }
+    // Use `cp -c -R` which invokes clonefile() under the hood.
+    // Fails on non-APFS filesystems with exit code 1.
+    let status = std::process::Command::new("cp")
+        .args(["-c", "-R"])
+        .arg(src)
+        .arg(dst)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match status {
+        Ok(exit) if exit.success() => Ok(true),
+        Ok(_) => Ok(false), // non-APFS or other cp failure
+        Err(_) => Ok(false),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +243,50 @@ pub fn prune_validated_env_cache(
         return Ok(summary);
     }
 
+    // Phase 0: Clean up orphan files and directories.
+    // - .tmp files: leftover from failed/interrupted archive compression
+    // - .hot dirs without a matching .tar.zst archive: orphaned CoW clones
+    if let Ok(dir_iter) = fs::read_dir(validated_envs_dir) {
+        for entry in dir_iter.flatten() {
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+
+            // Remove all .tmp files (stale compression artifacts)
+            if name.ends_with(".tmp") {
+                if path.is_file() {
+                    summary.removed_bytes += fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                    let _ = fs::remove_file(&path);
+                } else if path.is_dir() {
+                    summary.removed_bytes += path_size(&path).unwrap_or(0);
+                    let _ = fs::remove_dir_all(&path);
+                }
+                summary.removed_validated_envs += 1;
+                continue;
+            }
+
+            // Remove orphan .hot dirs that have no corresponding .tar.zst archive
+            if name.ends_with(".hot") && path.is_dir() {
+                let archive_name = name.replace(".hot", ".tar.zst");
+                let archive_path = validated_envs_dir.join(&archive_name);
+                if !archive_path.exists() {
+                    summary.removed_bytes += path_size(&path).unwrap_or(0);
+                    let _ = fs::remove_dir_all(&path);
+                    summary.removed_validated_envs += 1;
+                }
+                continue;
+            }
+
+            // Remove orphan .last-used markers that have no corresponding archive
+            if name.ends_with(".last-used") && path.is_file() {
+                let archive_name = name.replace(".last-used", "");
+                let archive_path = validated_envs_dir.join(&archive_name);
+                if !archive_path.exists() {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+        }
+    }
+
     let mut entries = validated_env_cache_entries(validated_envs_dir)?;
     if entries.is_empty() {
         return Ok(summary);
@@ -217,6 +308,10 @@ pub fn prune_validated_env_cache(
     for entry in entries.into_iter().skip(keep) {
         if entry.is_archive {
             let _ = fs::remove_file(archive_marker_path(&entry.path));
+            let hot = hot_dir_path(&entry.path);
+            if hot.exists() {
+                let _ = fs::remove_dir_all(&hot);
+            }
             fs::remove_file(&entry.path)?;
         } else {
             fs::remove_dir_all(&entry.path)?;
@@ -334,6 +429,16 @@ fn validated_env_cache_entries(validated_envs_dir: &Path) -> io::Result<Vec<Vali
     for entry in fs::read_dir(validated_envs_dir)? {
         let entry = entry?;
         let path = entry.path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        // Skip .hot sibling directories — their size is accounted for
+        // alongside the parent archive entry.
+        if name.ends_with(".hot") {
+            continue;
+        }
+        // Skip .last-used marker files
+        if name.ends_with(".last-used") {
+            continue;
+        }
         if path.is_dir() {
             entries.push(ValidatedEnvEntry {
                 bytes: path_size(&path)?,
@@ -342,8 +447,14 @@ fn validated_env_cache_entries(validated_envs_dir: &Path) -> io::Result<Vec<Vali
                 is_archive: false,
             });
         } else if is_env_archive(&path) {
+            let mut archive_bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            // Include .hot sibling in byte count for accurate LRU budgeting
+            let hot = hot_dir_path(&path);
+            if hot.exists() {
+                archive_bytes += path_size(&hot).unwrap_or(0);
+            }
             entries.push(ValidatedEnvEntry {
-                bytes: fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                bytes: archive_bytes,
                 last_used: read_archive_last_used(&path),
                 path,
                 is_archive: true,

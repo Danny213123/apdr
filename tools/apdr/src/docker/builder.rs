@@ -53,15 +53,68 @@ pub fn validate_requirements(
             config,
             store,
         ),
-        _ => validate_requirements_env(
-            snippet_path,
-            requirements_txt,
-            imports,
-            candidate_versions,
-            attempt_offset,
-            config,
-            store,
-        ),
+        _ => {
+            // When LLM is enabled, go straight to Docker validation instead
+            // of wasting env attempts.  Docker provides broader Python version
+            // coverage (3.6, 3.7 via images), system deps via apt-get, and the
+            // LangGraph multi-agent retry pipeline.  This matches PLLM's
+            // approach and avoids env failures on old packages (e.g. use_2to3).
+            if config.allow_llm && command_on_path("docker") {
+                eprintln!(
+                    "[validation] LLM enabled — using Docker validation directly"
+                );
+                return validate_requirements_docker(
+                    snippet_path,
+                    requirements_txt,
+                    imports,
+                    candidate_versions,
+                    attempt_offset,
+                    config,
+                    store,
+                );
+            }
+
+            let mut summary = validate_requirements_env(
+                snippet_path,
+                requirements_txt,
+                imports,
+                candidate_versions,
+                attempt_offset,
+                config,
+                store,
+            )?;
+            if summary.succeeded {
+                return Ok(summary);
+            }
+            // Check if env failure looks like a system-dep build error that
+            // Docker (with apt-get) could fix.  Only fall back when Docker is
+            // available and the build logs contain recognizable C-header /
+            // system-library patterns.
+            if command_on_path("docker") && env_has_system_dep_failure(&summary) {
+                eprintln!(
+                    "[validation] env build failed with system-dep errors, retrying with Docker"
+                );
+                let docker_offset = attempt_offset + summary.attempts.len();
+                let mut docker_summary = validate_requirements_docker(
+                    snippet_path,
+                    requirements_txt,
+                    imports,
+                    candidate_versions,
+                    docker_offset,
+                    config,
+                    store,
+                )?;
+                // Merge env attempts into docker summary to keep full history
+                let mut combined = std::mem::take(&mut summary.attempts);
+                combined.append(&mut docker_summary.attempts);
+                docker_summary.attempts = combined;
+                summary = docker_summary;
+                if summary.succeeded {
+                    return Ok(summary);
+                }
+            }
+            Ok(summary)
+        }
     }
 }
 
@@ -88,6 +141,9 @@ fn validate_requirements_env(
 
     let validation_started = Instant::now();
     let total_budget = config.validation_timeout;
+    // Pre-generate the smoke test script once — it's identical across Python
+    // version attempts since imports and execute_snippet don't change.
+    let smoke_test_script = smoke_test::generate(imports, config.execute_snippet);
 
     for (local_index, python_version) in candidate_versions.iter().enumerate() {
         // Check total validation budget before starting another attempt
@@ -111,10 +167,7 @@ fn validate_requirements_env(
         let env_dir = work_dir.join("env");
 
         fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
-        fs::write(
-            work_dir.join("smoke_test.py"),
-            smoke_test::generate(imports, config.execute_snippet),
-        )?;
+        fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
         fs::copy(snippet_path, work_dir.join("snippet.py"))?;
         let build_log_path = work_dir.join("build.log");
         let run_log_path = work_dir.join("run.log");
@@ -235,10 +288,31 @@ fn validate_requirements_env(
 
         let (build_logs, build_exit_code, build_duration_ms) = if cache_hit {
             let restore_result = if cache_is_archive {
-                maintenance::extract_archive_to_env(&cached_archive, &env_dir)
+                // Try CoW clone from .hot sibling first (near-instant on APFS)
+                let hot = maintenance::hot_dir_path(&cached_archive);
+                if hot.exists() {
+                    match maintenance::try_cow_clone(&hot, &env_dir) {
+                        Ok(true) => Ok(()),
+                        _ => maintenance::extract_archive_to_env(&cached_archive, &env_dir),
+                    }
+                } else {
+                    maintenance::extract_archive_to_env(&cached_archive, &env_dir)
+                }
             } else {
                 copy_dir_all(&cached_env_dir, &env_dir)
             };
+            // Verify the extracted env has a usable Python binary
+            let restore_result = restore_result.and_then(|()| {
+                let has_bin = env_dir.join("bin").exists() || env_dir.join("Scripts").exists();
+                if has_bin {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("Extracted env missing bin/ directory: {}", env_dir.display()),
+                    ))
+                }
+            });
             match restore_result {
                 Ok(()) => {
                     if cache_is_archive {
@@ -427,7 +501,7 @@ fn validate_requirements_llm(
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
     // Phase 1: Try the traditional env-based validation first
-    let env_summary = validate_requirements_env(
+    let mut env_summary = validate_requirements_env(
         snippet_path,
         requirements_txt,
         imports,
@@ -446,6 +520,7 @@ fn validate_requirements_llm(
         "[llm-resolver] env validation failed ({} attempt(s)), trying LangGraph agent…",
         env_summary.attempts.len()
     );
+    env_summary.agent_invocations += 1;
     if let Some(mut agent_summary) = attempt_langgraph_agent(
         snippet_path,
         requirements_txt,
@@ -453,7 +528,7 @@ fn validate_requirements_llm(
         candidate_versions,
         config,
     ) {
-        // Carry over the env attempts into the agent summary so we don't lose history
+        agent_summary.agent_invocations = env_summary.agent_invocations;
         let mut combined_attempts = env_summary.attempts;
         combined_attempts.append(&mut agent_summary.attempts);
         agent_summary.attempts = combined_attempts;
@@ -659,13 +734,15 @@ fn validate_requirements_docker(
 
     // Try LangGraph multi-agent pipeline first when LLM is enabled
     if config.allow_llm {
-        if let Some(agent_summary) = attempt_langgraph_agent(
+        summary.agent_invocations += 1;
+        if let Some(mut agent_summary) = attempt_langgraph_agent(
             snippet_path,
             requirements_txt,
             imports,
             candidate_versions,
             config,
         ) {
+            agent_summary.agent_invocations = summary.agent_invocations;
             return Ok(agent_summary);
         }
         // Fall through to deterministic loop if agent is unavailable or failed
@@ -684,6 +761,8 @@ fn validate_requirements_docker(
 
     let validation_started = Instant::now();
     let total_budget = config.validation_timeout;
+    // Pre-generate once — identical across all Python version / retry attempts.
+    let smoke_test_script = smoke_test::generate(imports, config.execute_snippet);
 
     // Infer system deps deterministically from requirements
     let mut sys_deps = system_deps::infer_system_deps_from_requirements(requirements_txt);
@@ -737,10 +816,7 @@ fn validate_requirements_docker(
                 format!("docker run --rm --name {container_name} {image_tag}");
 
             fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
-            fs::write(
-                work_dir.join("smoke_test.py"),
-                smoke_test::generate(imports, config.execute_snippet),
-            )?;
+            fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
             fs::copy(snippet_path, work_dir.join("snippet.py"))?;
             // Generate Dockerfile with inferred system deps
             fs::write(
@@ -1069,6 +1145,29 @@ fn create_and_install_env(
         return Ok((log, create_output.exit_code, create_output.duration_ms));
     }
 
+    // Ensure setuptools + wheel are present in every venv.  Modern pip (23.1+)
+    // no longer bundles setuptools, causing `No module named 'setuptools'`
+    // failures when packages use setup.py-based builds.
+    let mut bootstrap_ms = 0u128;
+    {
+        let bootstrap_timeout =
+            timeout.saturating_sub(Duration::from_millis(create_output.duration_ms as u64));
+        let mut bootstrap_cmd = Command::new(env_python);
+        bootstrap_cmd
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("--cache-dir")
+            .arg(wheelhouse_dir)
+            .arg("setuptools")
+            .arg("wheel")
+            .env("PYTHONNOUSERSITE", "1");
+        if let Ok(result) = run_command_with_timeout(&mut bootstrap_cmd, bootstrap_timeout) {
+            bootstrap_ms = result.duration_ms;
+        }
+    }
+
     // Pre-install build-time prerequisites for packages with broken setup.py
     // that import their own dependencies during egg_info (e.g., clipboard → pyperclip).
     let requirements_content = fs::read_to_string(install_requirements_path)?;
@@ -1076,7 +1175,7 @@ fn create_and_install_env(
     let mut prereq_ms = 0u128;
     if !prereqs.is_empty() {
         let prereq_timeout =
-            timeout.saturating_sub(Duration::from_millis(create_output.duration_ms as u64));
+            timeout.saturating_sub(Duration::from_millis((create_output.duration_ms + bootstrap_ms) as u64));
         let mut command = Command::new(env_python);
         command
             .arg("-m")
@@ -1096,7 +1195,7 @@ fn create_and_install_env(
 
     // Install requirements into env (use remaining budget after env creation)
     let install_timeout = timeout.saturating_sub(Duration::from_millis(
-        (create_output.duration_ms + prereq_ms) as u64,
+        (create_output.duration_ms + bootstrap_ms + prereq_ms) as u64,
     ));
     let install_output = run_env_install_requirements(
         env_python,
@@ -1141,6 +1240,44 @@ fn create_and_install_env(
     }
 
     if !install_output.success {
+        // Retry with --no-build-isolation: some packages need access to
+        // already-installed dependencies during their build (e.g. numpy
+        // for scipy, Cython for certain C extensions).  The flag lets the
+        // build process see the current env's site-packages.
+        let remaining = timeout.saturating_sub(Duration::from_millis(
+            (create_output.duration_ms + bootstrap_ms + prereq_ms + install_output.duration_ms) as u64,
+        ));
+        if remaining > Duration::from_secs(10) {
+            let mut no_iso_cmd = Command::new(env_python);
+            no_iso_cmd
+                .arg("-m")
+                .arg("pip")
+                .arg("install")
+                .arg("--disable-pip-version-check")
+                .arg("--default-timeout=100")
+                .arg("--no-build-isolation")
+                .arg("--cache-dir")
+                .arg(wheelhouse_dir)
+                .arg("-r")
+                .arg(install_requirements_path)
+                .env("PYTHONNOUSERSITE", "1");
+            if let Ok(retry_output) = run_command_with_timeout(&mut no_iso_cmd, remaining) {
+                if retry_output.success {
+                    let retry_build_output = format!(
+                        "{}\n--- pip install --no-build-isolation (retry) ---\n{}",
+                        build_output, retry_output.combined_output
+                    );
+                    fs::write(build_log_path, &retry_build_output)?;
+                    summary.install_duration_ms += retry_output.duration_ms;
+                    return Ok((
+                        retry_build_output,
+                        retry_output.exit_code,
+                        create_output.duration_ms + install_output.duration_ms + retry_output.duration_ms,
+                    ));
+                }
+            }
+        }
+
         attempt.status = "build-failed".to_string();
         attempt.log_excerpt = truncate_log(&build_output);
         fs::write(combined_log_path, &build_output)?;
@@ -1224,6 +1361,9 @@ fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Res
         .stderr(Stdio::piped())
         .spawn()?;
     let started = Instant::now();
+    // Adaptive polling: start fast (50ms) for short commands, back off
+    // exponentially (cap 1000ms) to reduce CPU wake-ups for long installs.
+    let mut poll_interval_ms: u64 = 50;
 
     loop {
         if child.try_wait()?.is_some() {
@@ -1248,7 +1388,8 @@ fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Res
             ));
         }
 
-        thread::sleep(Duration::from_millis(150));
+        thread::sleep(Duration::from_millis(poll_interval_ms));
+        poll_interval_ms = (poll_interval_ms * 3 / 2).min(1000);
     }
 }
 
@@ -1612,6 +1753,22 @@ fn python_install_specs(python_version: &str) -> Vec<String> {
         }
     }
     values
+}
+
+/// Returns true when any env-backend attempt failed during build with errors
+/// that look like missing system C libraries / headers — the kind Docker with
+/// `apt-get install` can fix.
+fn env_has_system_dep_failure(summary: &ValidationSummary) -> bool {
+    for attempt in &summary.attempts {
+        if attempt.status != "build-failed" {
+            continue;
+        }
+        let log = &attempt.log_excerpt;
+        if !system_deps::extract_system_deps_from_log(log).is_empty() {
+            return true;
+        }
+    }
+    false
 }
 
 fn command_on_path(command: &str) -> bool {
@@ -2061,7 +2218,11 @@ fn smoke_test_command(env_python: &Path, work_dir: &Path) -> Command {
     command
         .arg("smoke_test.py")
         .current_dir(work_dir)
-        .env("PYTHONNOUSERSITE", "1");
+        .env("PYTHONNOUSERSITE", "1")
+        // Force matplotlib to use non-interactive Agg backend.  On macOS the
+        // default backend_macosx requires Python to be installed as a framework
+        // (Python.app), which venv pythons are not → RuntimeError at import.
+        .env("MPLBACKEND", "Agg");
     command
 }
 
@@ -2097,6 +2258,22 @@ fn ensure_py2_virtualenv(interpreter: &Path) {
     });
 }
 
+/// Check whether `uv` (Astral's fast Python package installer) is on PATH.
+/// Cached via OnceLock — probed at most once per process.
+fn uv_available() -> bool {
+    use std::sync::OnceLock;
+    static UV: OnceLock<bool> = OnceLock::new();
+    *UV.get_or_init(|| {
+        Command::new("uv")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
+}
+
 fn create_env(
     interpreter: &Path,
     env_dir: &Path,
@@ -2114,8 +2291,22 @@ fn create_env(
         return run_command_with_timeout(&mut cmd, timeout);
     }
 
-    // Python 3.x: prefer stdlib venv, but retry with virtualenv when
-    // ensurepip is broken in the local interpreter install.
+    // Python 3.x: try uv first (10-100x faster), then stdlib venv, then virtualenv.
+    if uv_available() {
+        let mut uv_cmd = Command::new("uv");
+        uv_cmd
+            .arg("venv")
+            .arg("--python")
+            .arg(interpreter)
+            .arg(env_dir);
+        let uv_result = run_command_with_timeout(&mut uv_cmd, timeout)?;
+        if uv_result.success {
+            return Ok(uv_result);
+        }
+        // uv failed — clean up partial env and fall through
+        let _ = fs::remove_dir_all(env_dir);
+    }
+
     let mut venv_command = Command::new(interpreter);
     venv_command.arg("-m").arg("venv").arg(env_dir);
     let venv_output = run_command_with_timeout(&mut venv_command, timeout)?;
@@ -2160,6 +2351,53 @@ fn run_env_install_requirements(
     requirements_path: &Path,
     timeout: Duration,
 ) -> io::Result<CommandResult> {
+    // Try uv pip install first (10-100x faster than pip).
+    // Skip for Python 2 envs (uv doesn't support them).
+    if uv_available() {
+        let mut uv_cmd = Command::new("uv");
+        uv_cmd
+            .arg("pip")
+            .arg("install")
+            .arg("--python")
+            .arg(env_python)
+            .arg("--cache-dir")
+            .arg(cache_dir)
+            .arg("-r")
+            .arg(requirements_path);
+        let uv_result = run_command_with_timeout(&mut uv_cmd, timeout)?;
+        if uv_result.success {
+            return Ok(uv_result);
+        }
+        // Fall through to pip on uv failure
+    }
+
+    // First pass: try --only-binary :all: to avoid compilation failures.
+    // Many build failures come from missing C headers (mysql-dev, libpq-dev, etc.)
+    // and pre-built wheels sidestep these entirely.
+    {
+        let mut binary_cmd = Command::new(env_python);
+        binary_cmd
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("--default-timeout=100")
+            .arg("--only-binary")
+            .arg(":all:")
+            .arg("--cache-dir")
+            .arg(cache_dir)
+            .arg("-r")
+            .arg(requirements_path)
+            .env("PYTHONNOUSERSITE", "1");
+        let half_timeout = Duration::from_millis((timeout.as_millis() / 3) as u64);
+        if let Ok(result) = run_command_with_timeout(&mut binary_cmd, half_timeout) {
+            if result.success {
+                return Ok(result);
+            }
+        }
+        // Fall through to normal install (allows source builds)
+    }
+
     let mut command = Command::new(env_python);
     command
         .arg("-m")
@@ -2172,7 +2410,35 @@ fn run_env_install_requirements(
         .arg("-r")
         .arg(requirements_path)
         .env("PYTHONNOUSERSITE", "1");
-    run_command_with_timeout(&mut command, timeout)
+    let result = run_command_with_timeout(&mut command, timeout)?;
+    if result.success {
+        return Ok(result);
+    }
+
+    // Last resort: try with --pre to allow pre-release versions.
+    // Some packages only have pre-release wheels for certain Python versions.
+    let remaining = timeout.saturating_sub(Duration::from_millis(result.duration_ms as u64));
+    if remaining > Duration::from_secs(5) {
+        let mut pre_cmd = Command::new(env_python);
+        pre_cmd
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("--default-timeout=100")
+            .arg("--pre")
+            .arg("--cache-dir")
+            .arg(cache_dir)
+            .arg("-r")
+            .arg(requirements_path)
+            .env("PYTHONNOUSERSITE", "1");
+        let pre_result = run_command_with_timeout(&mut pre_cmd, remaining)?;
+        if pre_result.success {
+            return Ok(pre_result);
+        }
+    }
+
+    Ok(result)
 }
 
 fn env_python_path(env_dir: &Path) -> PathBuf {
@@ -2216,11 +2482,30 @@ fn save_validated_env(
     if legacy_dir.exists() {
         return maintenance::touch_validated_env_cache_entry(&legacy_dir);
     }
-    // Write to temp path, then atomic rename
-    let tmp_path = archive_path.with_extension("tar.zst.tmp");
-    maintenance::compress_env_to_archive(env_dir, &tmp_path)?;
-    fs::rename(&tmp_path, &archive_path)?;
-    maintenance::touch_archive_marker(&archive_path)
+    // Keep .hot uncompressed copy for fast CoW clone on next hit (macOS APFS).
+    // On macOS the .hot dir is the primary cache; archive is created in background
+    // from the .hot copy (the caller deletes the original env_dir immediately).
+    if cfg!(target_os = "macos") {
+        let hot = maintenance::hot_dir_path(&archive_path);
+        if maintenance::try_cow_clone(env_dir, &hot).unwrap_or(false) {
+            // Spawn archive compression from the .hot copy on a background thread.
+            // The caller will delete the original env_dir, so we must use .hot.
+            let archive_path_owned = archive_path.to_path_buf();
+            let hot_owned = hot.to_path_buf();
+            std::thread::spawn(move || {
+                if maintenance::compress_env_to_archive(&hot_owned, &archive_path_owned).is_ok() {
+                    let _ = maintenance::touch_archive_marker(&archive_path_owned);
+                }
+            });
+            return Ok(());
+        }
+    }
+    // Non-macOS or CoW clone failed: compress synchronously from env_dir
+    // (caller deletes env_dir after we return, so we can't defer).
+    if maintenance::compress_env_to_archive(env_dir, &archive_path).is_ok() {
+        let _ = maintenance::touch_archive_marker(&archive_path);
+    }
+    Ok(())
 }
 
 /// Packages whose setup.py imports their own dependencies at build time.

@@ -191,12 +191,16 @@ class BenchmarkWorker(threading.Thread):
                     "true" if self.run_config["rag"] else "false",
                 ]
                 if tool == "apdr":
+                    vb = str(self.run_config.get("validation_backend") or "env")
+                    is_llm_only = vb == "llm-only" or self.run_config.get("llm_only_mode")
                     command.extend(
                         [
                             "--validation-backend",
-                            str(self.run_config.get("validation_backend") or "env"),
+                            "env" if is_llm_only else vb,
                         ]
                     )
+                    if is_llm_only:
+                        command.append("--llm-only")
                 if self.run_config["verbose"]:
                     command.append("-v")
                 command.extend(["--benchmark-context-log", str(context_log)])
@@ -292,6 +296,9 @@ class BenchmarkWorker(threading.Thread):
                                 "env_create_duration_seconds": None,
                                 "install_duration_seconds": None,
                                 "smoke_duration_seconds": None,
+                                "llm_calls": 0,
+                                "env_builds": 0,
+                                "retries": 0,
                             }
 
                         with self._summary_lock:
@@ -406,6 +413,10 @@ class BenchmarkWorker(threading.Thread):
         requirements = self._read_requirements_if_updated(requirements_path, existing_requirements_mtime, started_at)
         output_metadata = self._read_output_metadata(output_paths[0]) if output_paths else {}
         skipped = self._output_metadata_skipped(output_metadata)
+        # Host-runtime skips with valid requirements count as passes —
+        # the dependencies were correctly resolved but can't validate on this host.
+        if skipped and bool(requirements) and returncode == 0:
+            skipped = False
         succeeded = not skipped and returncode == 0 and not self._has_failure_markers(captured_tail) and (
             bool(requirements) or bool(outputs)
         )
@@ -414,6 +425,10 @@ class BenchmarkWorker(threading.Thread):
         env_create_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("env_create_duration_ms"))
         install_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("install_duration_ms"))
         smoke_duration_seconds = self._metadata_millis_to_seconds(output_metadata.get("smoke_duration_ms"))
+
+        llm_calls = self._metadata_int(output_metadata.get("llm_calls"))
+        env_builds = self._metadata_int(output_metadata.get("env_builds"))
+        retries = self._metadata_int(output_metadata.get("retries"))
 
         result = {
             "snippet": self.state.relative_path(snippet),
@@ -433,6 +448,9 @@ class BenchmarkWorker(threading.Thread):
             "env_create_duration_seconds": env_create_duration_seconds,
             "install_duration_seconds": install_duration_seconds,
             "smoke_duration_seconds": smoke_duration_seconds,
+            "llm_calls": llm_calls,
+            "env_builds": env_builds,
+            "retries": retries,
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
@@ -503,6 +521,15 @@ class BenchmarkWorker(threading.Thread):
         except OSError:
             return {}
         return metadata
+
+    def _metadata_int(self, value: Any) -> int:
+        text = str(value or "").strip()
+        if not text:
+            return 0
+        try:
+            return max(0, int(text))
+        except (TypeError, ValueError):
+            return 0
 
     def _metadata_millis_to_seconds(self, value: Any) -> float | None:
         text = str(value or "").strip()

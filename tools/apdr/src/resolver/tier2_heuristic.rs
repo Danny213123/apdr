@@ -11,6 +11,80 @@ pub struct StageResult {
     pub heuristic_hits: usize,
 }
 
+/// Well-known namespace package prefix → PyPI package name mappings.
+/// When an import path matches a prefix, we can directly resolve it.
+const NAMESPACE_PACKAGES: &[(&str, &str)] = &[
+    ("google.cloud.storage", "google-cloud-storage"),
+    ("google.cloud.bigquery", "google-cloud-bigquery"),
+    ("google.cloud.pubsub", "google-cloud-pubsub"),
+    ("google.cloud.datastore", "google-cloud-datastore"),
+    ("google.cloud.firestore", "google-cloud-firestore"),
+    ("google.cloud.logging", "google-cloud-logging"),
+    ("google.cloud.spanner", "google-cloud-spanner"),
+    ("google.cloud.vision", "google-cloud-vision"),
+    ("google.cloud.translate", "google-cloud-translate"),
+    ("google.cloud.language", "google-cloud-language"),
+    ("google.cloud.speech", "google-cloud-speech"),
+    ("google.cloud.texttospeech", "google-cloud-texttospeech"),
+    ("google.cloud.bigtable", "google-cloud-bigtable"),
+    ("google.cloud.kms", "google-cloud-kms"),
+    ("google.cloud.tasks", "google-cloud-tasks"),
+    ("google.cloud.secret_manager", "google-cloud-secret-manager"),
+    ("google.cloud.monitoring", "google-cloud-monitoring"),
+    ("google.cloud.container", "google-cloud-container"),
+    ("google.cloud.dns", "google-cloud-dns"),
+    ("google.cloud.redis", "google-cloud-redis"),
+    ("google.cloud.ndb", "google-cloud-ndb"),
+    ("google.cloud.memcache", "google-cloud-memcache"),
+    ("google.auth", "google-auth"),
+    ("google.oauth2", "google-auth"),
+    ("google.api_core", "google-api-core"),
+    ("google.protobuf", "protobuf"),
+    ("azure.storage.blob", "azure-storage-blob"),
+    ("azure.storage.queue", "azure-storage-queue"),
+    ("azure.storage.file", "azure-storage-file-share"),
+    ("azure.cosmos", "azure-cosmos"),
+    ("azure.identity", "azure-identity"),
+    ("azure.keyvault", "azure-keyvault"),
+    ("azure.servicebus", "azure-servicebus"),
+    ("azure.eventhub", "azure-eventhub"),
+    ("azure.cognitiveservices", "azure-cognitiveservices-vision-computervision"),
+    ("azure.mgmt", "azure-mgmt-core"),
+    ("azure.core", "azure-core"),
+    ("zope.interface", "zope.interface"),
+    ("zope.component", "zope.component"),
+    ("zope.schema", "zope.schema"),
+    ("zope.event", "zope.event"),
+    ("zope.security", "zope.security"),
+    ("zope.sqlalchemy", "zope.sqlalchemy"),
+    ("twisted.internet", "twisted"),
+    ("twisted.web", "twisted"),
+    ("twisted.protocols", "twisted"),
+    ("twisted.conch", "twisted"),
+    ("twisted.names", "twisted"),
+    ("twisted.mail", "twisted"),
+    ("pkg_resources", "setuptools"),
+    ("setuptools", "setuptools"),
+    ("OpenSSL", "pyOpenSSL"),
+    ("jwt", "PyJWT"),
+    ("yaml", "PyYAML"),
+    ("cv2", "opencv-python"),
+    ("PIL", "Pillow"),
+    ("Image", "Pillow"),
+    ("gi.repository", "PyGObject"),
+    ("Crypto", "pycryptodome"),
+    ("Cryptodome", "pycryptodome"),
+    ("serial", "pyserial"),
+    ("usb", "pyusb"),
+    ("dateutil", "python-dateutil"),
+    ("dotenv", "python-dotenv"),
+    ("magic", "python-magic"),
+    ("attr", "attrs"),
+    ("skimage", "scikit-image"),
+    ("sklearn", "scikit-learn"),
+    ("bs4", "beautifulsoup4"),
+];
+
 pub fn resolve(
     unresolved_imports: &[String],
     parse_result: &ParseResult,
@@ -23,6 +97,13 @@ pub fn resolve(
         .map(|dependency| normalize(&dependency.package))
         .collect::<BTreeSet<_>>();
     let known_names = pypi_client::cached_package_names(store);
+
+    // Pre-compute trigram sets for all known package names once (avoids
+    // re-computing O(K) trigrams per import during the Jaccard scan).
+    let known_trigrams: Vec<(&str, Vec<[u8; 3]>)> = known_names
+        .iter()
+        .map(|name| (name.as_str(), trigrams(name)))
+        .collect();
 
     let mut resolved = Vec::new();
     let mut unresolved = Vec::new();
@@ -50,6 +131,51 @@ pub fn resolve(
             continue;
         }
 
+        // Namespace package prefix lookup — resolves dotted imports like
+        // google.cloud.storage → google-cloud-storage, PIL → Pillow, etc.
+        // Also handles well-known import-name-differs-from-package-name mappings.
+        {
+            let mut ns_found = false;
+            // Check full import paths from parse_result for dotted namespace matches
+            let import_lower = import_name.to_lowercase();
+            for &(prefix, package) in NAMESPACE_PACKAGES {
+                let prefix_lower = prefix.to_lowercase();
+                if import_lower == prefix_lower
+                    || import_lower.starts_with(&format!("{prefix_lower}."))
+                    || parse_result.import_paths.iter().any(|p| {
+                        let p_lower = p.to_lowercase();
+                        p_lower == prefix_lower || p_lower.starts_with(&format!("{prefix_lower}."))
+                    })
+                {
+                    let pkg_norm = normalize(package);
+                    if pypi_client::package_exists(store, &pkg_norm, python_version) {
+                        let versions =
+                            pypi_client::compatible_versions(store, &pkg_norm, python_version);
+                        let version = version_sampler::equally_distanced_sample(&versions, &[]);
+                        let _ = store.save_import_mapping(
+                            import_name,
+                            &pkg_norm,
+                            version.as_deref(),
+                            "heuristic:namespace-prefix",
+                        );
+                        resolved.push(ResolvedDependency {
+                            import_name: import_name.clone(),
+                            package_name: pkg_norm,
+                            version,
+                            strategy: "heuristic:namespace-prefix".to_string(),
+                            confidence: 0.90,
+                        });
+                        heuristic_hits += 1;
+                        ns_found = true;
+                        break;
+                    }
+                }
+            }
+            if ns_found {
+                continue;
+            }
+        }
+
         if pypi_client::package_exists(store, &normalized, python_version) {
             let versions = pypi_client::compatible_versions(store, &normalized, python_version);
             let version = version_sampler::equally_distanced_sample(&versions, &[]);
@@ -70,28 +196,84 @@ pub fn resolve(
             continue;
         }
 
+        // Tier 2.5: Trigram Jaccard similarity — catches underscore/hyphen
+        // variations (e.g. google_cloud_storage → google-cloud-storage).
+        let import_tg = trigrams(&normalized);
+        if !import_tg.is_empty() {
+            let best_trigram = known_trigrams
+                .iter()
+                .filter_map(|(candidate, candidate_tg)| {
+                    if candidate_tg.is_empty() {
+                        return None;
+                    }
+                    // Length pre-filter: very different lengths can't have high Jaccard
+                    let len_diff = normalized.len().abs_diff(candidate.len());
+                    if len_diff > normalized.len().max(candidate.len()) / 2 {
+                        return None;
+                    }
+                    let sim = trigram_jaccard(&import_tg, candidate_tg);
+                    if sim >= 0.35 {
+                        Some((candidate.to_string(), sim))
+                    } else {
+                        None
+                    }
+                })
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+            if let Some((candidate, _sim)) = best_trigram {
+                if pypi_client::package_exists(store, &candidate, python_version) {
+                    let versions =
+                        pypi_client::compatible_versions(store, &candidate, python_version);
+                    let version = version_sampler::equally_distanced_sample(&versions, &[]);
+                    resolved.push(ResolvedDependency {
+                        import_name: import_name.clone(),
+                        package_name: candidate,
+                        version,
+                        strategy: "heuristic:trigram-jaccard".to_string(),
+                        confidence: 0.70,
+                    });
+                    heuristic_hits += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Hoist loop-invariant values outside the closure
+        let is_short = normalized.len() <= 4;
+        let allowed_distance: usize = if is_short { 1 } else { 2 };
+
         let best_match = known_names
             .iter()
             .filter_map(|candidate| {
-                let distance = levenshtein(&normalized, candidate);
-                let is_short = normalized.chars().count() <= 4;
-                // Substring match requires the shorter name to be at least
-                // 50% the length of the longer — prevents common words like
-                // "settings" from matching "pydantic-settings".
                 let min_len = normalized.len().min(candidate.len());
                 let max_len = normalized.len().max(candidate.len());
+                let len_diff = max_len - min_len;
+
+                // Length pre-filter: edit distance >= length difference,
+                // so skip expensive Levenshtein when impossible to match.
                 let length_ratio_ok = max_len == 0 || min_len * 2 >= max_len;
                 let substring_match = !is_short
                     && length_ratio_ok
                     && (candidate.contains(&normalized) || normalized.contains(candidate));
-                let allowed_distance = if is_short { 1 } else { 2 };
+
+                if len_diff > allowed_distance && !substring_match {
+                    return None;
+                }
+
+                let distance = levenshtein(&normalized, candidate);
                 if distance <= allowed_distance || substring_match {
                     Some((candidate.clone(), distance))
                 } else {
                     None
                 }
             })
-            .min_by_key(|(_, distance)| *distance);
+            .min_by(|(a, dist_a), (b, dist_b)| {
+                dist_a.cmp(dist_b).then_with(|| {
+                    let rank_a = store.popularity.get(a).copied().unwrap_or(usize::MAX);
+                    let rank_b = store.popularity.get(b).copied().unwrap_or(usize::MAX);
+                    rank_a.cmp(&rank_b)
+                })
+            });
 
         if let Some((candidate, _distance)) = best_match {
             let versions = pypi_client::compatible_versions(store, &candidate, python_version);
@@ -147,27 +329,66 @@ fn levenshtein(left: &str, right: &str) -> usize {
     costs[rb.len()]
 }
 
+/// Compute character trigrams for a string. Returns sorted, deduplicated byte triples.
+fn trigrams(s: &str) -> Vec<[u8; 3]> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 3 {
+        return Vec::new();
+    }
+    let mut result: Vec<[u8; 3]> = Vec::with_capacity(bytes.len() - 2);
+    for window in bytes.windows(3) {
+        result.push([window[0], window[1], window[2]]);
+    }
+    result.sort();
+    result.dedup();
+    result
+}
+
+/// Jaccard similarity between two sorted trigram sets. Range: 0.0–1.0.
+fn trigram_jaccard(a: &[[u8; 3]], b: &[[u8; 3]]) -> f64 {
+    if a.is_empty() && b.is_empty() {
+        return 0.0;
+    }
+    let (mut i, mut j) = (0, 0);
+    let (mut intersection, mut union) = (0usize, 0usize);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            std::cmp::Ordering::Equal => {
+                intersection += 1;
+                union += 1;
+                i += 1;
+                j += 1;
+            }
+            std::cmp::Ordering::Less => {
+                union += 1;
+                i += 1;
+            }
+            std::cmp::Ordering::Greater => {
+                union += 1;
+                j += 1;
+            }
+        }
+    }
+    union += (a.len() - i) + (b.len() - j);
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
+}
+
 fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str) -> bool {
     let normalized = normalize(import_name);
-    if normalized == "input-data" {
-        return true;
-    }
-    // Django/Flask project-local modules: when the framework is imported, treat
-    // `settings`, `urls`, `wsgi`, `asgi`, `apps` as local project modules.
+    // Unconditionally local: names that are never a correct PyPI import.
+    // These are standard Django/Flask project structure names and generic
+    // project-local module names.
     if matches!(
         normalized.as_str(),
-        "settings" | "urls" | "wsgi" | "asgi" | "apps" | "conf"
+        "input-data" | "settings" | "config" | "conf" | "constants" | "urls"
+            | "api" | "app" | "apps" | "views" | "models" | "forms" | "admin"
+            | "tests" | "manage" | "wsgi" | "asgi"
     ) {
-        let has_framework = parse_result.imports.iter().any(|i| {
-            let n = normalize(i);
-            n == "django" || n.starts_with("django-") || n == "flask"
-        }) || parse_result.import_paths.iter().any(|p| {
-            let n = p.to_ascii_lowercase();
-            n.starts_with("django.") || n.starts_with("flask.")
-        });
-        if has_framework {
-            return true;
-        }
+        return true;
     }
     let generic_helper = matches!(
         normalized.as_str(),

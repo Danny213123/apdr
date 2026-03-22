@@ -51,6 +51,9 @@ pub struct CacheStore {
     pub dependency_graph: BTreeMap<String, Vec<String>>,
     pub version_dependency_specs: BTreeMap<String, Vec<String>>,
     pub unsolvable_modules: BTreeMap<String, UnsolvableModuleRecord>,
+    /// Package popularity ranking (lower = more popular). Used as tiebreaker
+    /// in fuzzy matching when multiple candidates have equal edit distance.
+    pub popularity: BTreeMap<String, usize>,
 }
 
 impl CacheStore {
@@ -77,7 +80,11 @@ impl CacheStore {
         store.load_build_artifacts()?;
         store.load_package_artifacts()?;
         store.load_unsolvable_modules()?;
-        store.load_dynamic_unsolvable_modules()?;
+        // NOTE: dynamic_unsolvable_modules.tsv is intentionally NOT loaded.
+        // Only curated seed entries (confidence 1.00) are trusted.  The
+        // dynamic file was prone to false positives (e.g. caching django as
+        // unsolvable due to transient version-lookup failures).
+        store.load_popularity()?;
         Ok(store)
     }
 
@@ -159,7 +166,7 @@ impl CacheStore {
         let mut rows = self
             .import_map
             .values()
-            .filter(|item| item.source != "seed" && item.source != "discrepancy")
+            .filter(|item| item.source != "seed" && item.source != "discrepancy" && item.source != "harvest" && item.source != "pipreqs")
             .map(|item| {
                 format!(
                     "{}\t{}\t{}\t{}",
@@ -354,8 +361,18 @@ impl CacheStore {
         package_name: &str,
         versions: &[String],
     ) -> io::Result<()> {
+        // Filter out phantom version "0" — it doesn't exist on PyPI and causes
+        // "No matching distribution found" errors during validation.
+        let filtered: Vec<String> = versions
+            .iter()
+            .filter(|v| v.as_str() != "0")
+            .cloned()
+            .collect();
+        if filtered.is_empty() {
+            return Ok(());
+        }
         self.pypi_index
-            .insert(normalize(package_name), versions.to_vec());
+            .insert(normalize(package_name), filtered);
         let rows = self
             .pypi_index
             .iter()
@@ -374,13 +391,36 @@ impl CacheStore {
 
     fn load_seed_imports(&mut self) -> io::Result<()> {
         let paths = [
+            self.tool_root.join("data/seed/pipreqs_mapping.tsv"),
             self.tool_root.join("data/seed/top_5000_mappings.tsv"),
+            self.tool_root.join("data/seed/top_level_harvest.tsv"),
             self.tool_root.join("data/seed/name_discrepancies.tsv"),
             self.tool_root.join("data/seed/reference_aliases.tsv"),
         ];
 
         for path in paths {
             self.load_import_file(&path)?;
+        }
+        Ok(())
+    }
+
+    fn load_popularity(&mut self) -> io::Result<()> {
+        let path = self
+            .tool_root
+            .join("data/seed/high_centrality_packages.tsv");
+        if !path.exists() {
+            return Ok(());
+        }
+        let content = fs::read_to_string(&path)?;
+        for (rank, line) in content.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let package = line.split('\t').next().unwrap_or("").trim();
+            if !package.is_empty() {
+                self.popularity.insert(normalize(package), rank);
+            }
         }
         Ok(())
     }
@@ -399,18 +439,30 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 2 {
+            let Some((col0, remaining)) = trimmed.split_once('\t') else {
                 continue;
-            }
+            };
+            let (col1, remaining) = remaining.split_once('\t').unwrap_or((remaining, ""));
+            let (col2, col3) = remaining.split_once('\t').unwrap_or((remaining, "seed"));
             let record = PackageRecord {
-                import_name: normalize(parts[0]),
-                package_name: parts[1].trim().to_string(),
-                default_version: parts
-                    .get(2)
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty()),
-                source: parts.get(3).copied().unwrap_or("seed").to_string(),
+                import_name: normalize(col0),
+                package_name: col1.trim().to_string(),
+                default_version: {
+                    let v = col2.trim();
+                    if v.is_empty() {
+                        None
+                    } else {
+                        Some(v.to_string())
+                    }
+                },
+                source: {
+                    let v = col3.trim();
+                    if v.is_empty() {
+                        "seed".to_string()
+                    } else {
+                        v.to_string()
+                    }
+                },
             };
             let should_replace = self
                 .import_map
@@ -463,23 +515,38 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 4 {
+            let Some((col0, remaining)) = trimmed.split_once('\t') else {
                 continue;
-            }
+            };
+            let Some((col1, remaining)) = remaining.split_once('\t') else {
+                continue;
+            };
+            let Some((col2, remaining)) = remaining.split_once('\t') else {
+                continue;
+            };
+            let (col3, remaining) = remaining.split_once('\t').unwrap_or((remaining, ""));
+            let (col4, col5) = remaining.split_once('\t').unwrap_or((remaining, ""));
             self.failure_patterns.push(FailurePattern {
-                pattern: parts[0].trim().to_string(),
-                error_type: parts[1].trim().to_string(),
-                conflict_class: parts[2].trim().to_string(),
-                fix: parts[3].trim().to_string(),
-                success_rate: parts
-                    .get(4)
-                    .and_then(|value| value.trim().parse::<f64>().ok())
-                    .unwrap_or(1.0),
-                times_applied: parts
-                    .get(5)
-                    .and_then(|value| value.trim().parse::<u32>().ok())
-                    .unwrap_or(1),
+                pattern: col0.trim().to_string(),
+                error_type: col1.trim().to_string(),
+                conflict_class: col2.trim().to_string(),
+                fix: col3.trim().to_string(),
+                success_rate: {
+                    let v = col4.trim();
+                    if v.is_empty() {
+                        1.0
+                    } else {
+                        v.parse::<f64>().unwrap_or(1.0)
+                    }
+                },
+                times_applied: {
+                    let v = col5.trim();
+                    if v.is_empty() {
+                        1
+                    } else {
+                        v.parse::<u32>().unwrap_or(1)
+                    }
+                },
             });
         }
         Ok(())
@@ -503,16 +570,15 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 2 {
+            let Some((col0, col1)) = trimmed.split_once('\t') else {
                 continue;
-            }
-            let versions = parts[1]
+            };
+            let versions = col1
                 .split(',')
                 .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
+                .filter(|value| !value.is_empty() && value != "0")
                 .collect::<Vec<_>>();
-            let entry = self.pypi_index.entry(normalize(parts[0])).or_default();
+            let entry = self.pypi_index.entry(normalize(col0)).or_default();
             for version in versions {
                 if !entry.iter().any(|item| item == &version) {
                     entry.push(version);
@@ -533,16 +599,15 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 2 {
+            let Some((col0, col1)) = trimmed.split_once('\t') else {
                 continue;
-            }
-            let deps = parts[1]
+            };
+            let deps = col1
                 .split(',')
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>();
-            self.dependency_graph.insert(normalize(parts[0]), deps);
+            self.dependency_graph.insert(normalize(col0), deps);
         }
         Ok(())
     }
@@ -558,16 +623,15 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 2 {
+            let Some((col0, col1)) = trimmed.split_once('\t') else {
                 continue;
-            }
-            let deps = parts[1]
+            };
+            let deps = col1
                 .split(',')
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>();
-            self.dependency_graph.insert(normalize(parts[0]), deps);
+            self.dependency_graph.insert(normalize(col0), deps);
         }
         Ok(())
     }
@@ -583,17 +647,16 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts = trimmed.split('\t').collect::<Vec<_>>();
-            if parts.len() < 2 {
+            let Some((col0, col1)) = trimmed.split_once('\t') else {
                 continue;
-            }
-            let specs = parts[1]
+            };
+            let specs = col1
                 .split(',')
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>();
             self.version_dependency_specs
-                .insert(parts[0].trim().to_string(), specs);
+                .insert(col0.trim().to_string(), specs);
         }
         Ok(())
     }
@@ -690,12 +753,6 @@ impl CacheStore {
         )
     }
 
-    fn load_dynamic_unsolvable_modules(&mut self) -> io::Result<()> {
-        self.load_unsolvable_module_file(
-            &self.cache_path.join("dynamic_unsolvable_modules.tsv"),
-        )
-    }
-
     fn load_unsolvable_module_file(&mut self, path: &Path) -> io::Result<()> {
         if !path.exists() {
             return Ok(());
@@ -706,21 +763,33 @@ impl CacheStore {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            let parts: Vec<&str> = trimmed.split('\t').collect();
-            if parts.len() < 3 {
+            let Some((col0, remaining)) = trimmed.split_once('\t') else {
                 continue;
-            }
-            let module_name = normalize(parts[0]);
-            let category = parts[1].trim().to_string();
-            let reason = parts[2].trim().to_string();
-            let confidence = parts
-                .get(3)
-                .and_then(|v| v.trim().parse::<f64>().ok())
-                .unwrap_or(1.0);
-            let times_seen = parts
-                .get(4)
-                .and_then(|v| v.trim().parse::<u32>().ok())
-                .unwrap_or(0);
+            };
+            let Some((col1, remaining)) = remaining.split_once('\t') else {
+                continue;
+            };
+            let (col2, remaining) = remaining.split_once('\t').unwrap_or((remaining, ""));
+            let (col3, col4) = remaining.split_once('\t').unwrap_or((remaining, ""));
+            let module_name = normalize(col0);
+            let category = col1.trim().to_string();
+            let reason = col2.trim().to_string();
+            let confidence = {
+                let v = col3.trim();
+                if v.is_empty() {
+                    1.0
+                } else {
+                    v.parse::<f64>().unwrap_or(1.0)
+                }
+            };
+            let times_seen = {
+                let v = col4.trim();
+                if v.is_empty() {
+                    0
+                } else {
+                    v.parse::<u32>().unwrap_or(0)
+                }
+            };
             self.unsolvable_modules.insert(
                 module_name.clone(),
                 UnsolvableModuleRecord {
@@ -922,7 +991,34 @@ impl CacheStore {
 }
 
 pub fn normalize(value: &str) -> String {
-    value.trim().replace(['_', '.'], "-").to_lowercase()
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::with_capacity(256));
+    }
+    const MAX_ENTRIES: usize = 10_000;
+
+    let trimmed = value.trim();
+    // Fast path: if already normalized (no uppercase, no _ or .), skip allocations
+    if !trimmed
+        .bytes()
+        .any(|b| b == b'_' || b == b'.' || b.is_ascii_uppercase())
+    {
+        return trimmed.to_string();
+    }
+    // Thread-local cache for repeated normalize calls with the same input
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.get(trimmed) {
+            return cached.clone();
+        }
+        let result = trimmed.replace(['_', '.'], "-").to_lowercase();
+        if cache.len() < MAX_ENTRIES {
+            cache.insert(trimmed.to_string(), result.clone());
+        }
+        result
+    })
 }
 
 fn version_dependency_key(package_name: &str, version: &str) -> String {
@@ -955,8 +1051,8 @@ fn source_rank(source: &str) -> usize {
     match source {
         "discrepancy" => 6,
         "seed" => 5,
-        "llm" => 4,
-        "recovery:cache" | "recovery:llm" => 3,
+        "harvest" | "llm" => 4,
+        "pipreqs" | "recovery:cache" | "recovery:llm" => 3,
         "heuristic:pypi-exact" | "recovery:heuristic" => 2,
         "heuristic:fuzzy" => 1,
         _ => 0,

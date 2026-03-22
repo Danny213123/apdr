@@ -49,6 +49,7 @@ fn tier1_ignores_poisoned_fuzzy_cache_entries() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
@@ -75,6 +76,7 @@ fn tier2_does_not_fuzzy_match_short_imports_to_unrelated_packages() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier2_heuristic::resolve(
@@ -106,6 +108,7 @@ fn tier1_resolves_specific_namespace_aliases_from_import_paths() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -131,6 +134,7 @@ fn tier1_resolves_reference_alias_seed_entries() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -164,6 +168,7 @@ fn tier1_discrepancy_versions_fall_back_to_latest_python_compatible_release() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
@@ -189,6 +194,7 @@ fn tier1_resolves_libxmp_to_python_xmp_toolkit() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "3.9");
@@ -213,6 +219,7 @@ fn tier1_skips_generic_local_helper_imports() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
 
     let stage = apdr::resolver::tier1_cache::resolve(&parse_result, &mut store, "2.7");
@@ -281,6 +288,7 @@ fn legacy_pymc3_validation_prefers_supported_runtime_order() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
     let resolved = vec![
         apdr::ResolvedDependency {
@@ -322,6 +330,7 @@ fn legacy_pymc3_family_recovery_keeps_curated_bundle_pins() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
     let mut resolved = vec![
         apdr::ResolvedDependency {
@@ -450,6 +459,7 @@ fn legacy_tensorflow_validation_prefers_py37_before_py27() {
         confidence: 0.8,
         scanned_files: Vec::new(),
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
     let resolved = vec![
         apdr::ResolvedDependency {
@@ -477,7 +487,8 @@ fn legacy_tensorflow_validation_prefers_py37_before_py27() {
     )
     .unwrap();
 
-    assert_eq!(versions, vec!["3.7", "2.7", "3.8"]);
+    // 3.7 and 2.7 get TF 1.15.0 bundle; 3.8+ get unpinned TF (pip resolves freely)
+    assert_eq!(versions, vec!["3.7", "2.7", "3.8", "3.9", "3.10"]);
 }
 
 #[test]
@@ -531,6 +542,7 @@ fn pre_solver_pins_compatible_versions_before_validation() {
         confidence: 0.9,
         scanned_files: vec!["requirements.txt".to_string()],
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
     let resolved = vec![apdr::ResolvedDependency {
         import_name: "click".to_string(),
@@ -592,6 +604,7 @@ fn pre_solver_reports_unsat_without_validation_attempts() {
         confidence: 0.9,
         scanned_files: vec!["requirements.txt".to_string()],
         stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
     };
     let resolved = vec![apdr::ResolvedDependency {
         import_name: "click".to_string(),

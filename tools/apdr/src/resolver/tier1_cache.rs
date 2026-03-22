@@ -64,7 +64,7 @@ pub fn resolve(
                         python_version,
                     ),
                     strategy,
-                    confidence: 0.97,
+                    confidence: source_confidence(&record.source),
                 });
                 cache_hits += 1;
             }
@@ -156,9 +156,30 @@ fn top_level(import_path: &str) -> &str {
     import_path.split('.').next().unwrap_or(import_path)
 }
 
+/// Confidence score based on the data source of the import mapping.
+fn source_confidence(source: &str) -> f64 {
+    match source {
+        "discrepancy" => 0.97,
+        "seed" => 0.97,
+        "harvest" => 0.92,
+        "pipreqs" => 0.85,
+        "llm" => 0.73,
+        "recovery:cache" | "recovery:llm" => 0.70,
+        "heuristic:pypi-exact" | "recovery:heuristic" => 0.80,
+        "heuristic:fuzzy" | "heuristic:trigram-jaccard" => 0.70,
+        _ => 0.60,
+    }
+}
+
 fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str) -> bool {
     let normalized = crate::cache::store::normalize(import_name);
-    if normalized == "input-data" {
+    // Unconditionally local: names that are never a correct PyPI import.
+    // `settings` is almost always a Django project-local settings module.
+    // `config`/`conf` are project-local configuration modules.
+    if matches!(
+        normalized.as_str(),
+        "input-data" | "settings" | "config" | "conf" | "constants" | "urls" | "api" | "app" | "apps" | "views" | "models" | "forms" | "admin" | "tests" | "manage"
+    ) {
         return true;
     }
     let generic_helper = matches!(

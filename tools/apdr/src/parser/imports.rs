@@ -1,13 +1,19 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub struct ImportScan {
     pub top_levels: Vec<String>,
     pub full_paths: Vec<String>,
+    /// Maps imported module name → set of attributes accessed on it in code.
+    /// E.g. `import cv2; cv2.imread(...)` → {"cv2": {"imread"}}
+    pub attribute_usage: BTreeMap<String, BTreeSet<String>>,
 }
 
 pub fn scan_imports(source: &str) -> ImportScan {
     let mut top_levels = BTreeSet::new();
     let mut full_paths = BTreeSet::new();
+    let mut attribute_usage: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    // Collect non-import lines for attribute scanning in a single pass.
+    let mut code_lines: Vec<&str> = Vec::new();
 
     for raw_line in source.lines() {
         let trimmed = raw_line.trim();
@@ -15,6 +21,7 @@ pub fn scan_imports(source: &str) -> ImportScan {
             continue;
         }
         let trimmed = strip_comment(trimmed);
+        let mut is_import_line = false;
 
         // Split on semicolons to handle multiple statements per line
         // e.g. "import sys; from PIL import Image; import numpy"
@@ -25,6 +32,7 @@ pub fn scan_imports(source: &str) -> ImportScan {
             }
 
             if let Some(rest) = stmt.strip_prefix("import ") {
+                is_import_line = true;
                 for part in rest.split(',') {
                     let import_path = normalize_import(part);
                     if import_path.is_empty() {
@@ -37,20 +45,90 @@ pub fn scan_imports(source: &str) -> ImportScan {
             }
 
             if let Some(rest) = stmt.strip_prefix("from ") {
+                is_import_line = true;
                 if let Some((module, import_part)) = rest.split_once(" import ") {
                     let module_path = normalize_import(module);
                     if module_path.is_empty() {
                         continue;
                     }
+
+                    // flask.ext.X → flask_X (Flask extension convention)
+                    // e.g. `from flask.ext.sqlalchemy import SQLAlchemy` → flask_sqlalchemy
+                    if let Some(ext) = module_path.strip_prefix("flask.ext.") {
+                        if !ext.is_empty() {
+                            let flask_pkg = format!("flask_{ext}");
+                            top_levels.insert(flask_pkg.clone());
+                            full_paths.insert(module_path.clone());
+                            full_paths.insert(flask_pkg);
+                            // Also keep flask as a dependency
+                            top_levels.insert("flask".to_string());
+                            for name in import_part.split(',') {
+                                let imported_name = normalize_member(name);
+                                if !imported_name.is_empty() && imported_name != "*" {
+                                    full_paths.insert(format!("{module_path}.{imported_name}"));
+                                }
+                            }
+                            continue;
+                        }
+                    }
+
                     top_levels.insert(top_level(&module_path).to_string());
                     full_paths.insert(module_path.clone());
 
                     for name in import_part.split(',') {
                         let imported_name = normalize_member(name);
-                        if imported_name.is_empty() || imported_name == "*" {
+                        if imported_name.is_empty() {
+                            continue;
+                        }
+                        if imported_name == "*" {
+                            // `from X import *` — we can't know what's imported
+                            // but the module itself is definitely needed.
+                            // Mark it explicitly so resolution covers it.
+                            full_paths.insert(format!("{module_path}.*"));
                             continue;
                         }
                         full_paths.insert(format!("{module_path}.{imported_name}"));
+                    }
+                }
+            }
+        }
+
+        if !is_import_line {
+            code_lines.push(trimmed);
+        }
+    }
+
+    // Scan collected code lines for MODULE.ATTRIBUTE usage patterns.
+    // This helps the LLM disambiguate imports (e.g. crypto.AES → pycryptodome).
+    let top_levels_set: BTreeSet<&str> = top_levels.iter().map(String::as_str).collect();
+    for trimmed in &code_lines {
+        let bytes = trimmed.as_bytes();
+        let mut pos = 0;
+        while pos < bytes.len() {
+            if !bytes[pos].is_ascii_alphanumeric() && bytes[pos] != b'_' {
+                pos += 1;
+                continue;
+            }
+            let start = pos;
+            while pos < bytes.len() && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_') {
+                pos += 1;
+            }
+            let word = &trimmed[start..pos];
+            if pos < bytes.len() && bytes[pos] == b'.' && top_levels_set.contains(word) {
+                pos += 1;
+                let attr_start = pos;
+                while pos < bytes.len()
+                    && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_')
+                {
+                    pos += 1;
+                }
+                if pos > attr_start {
+                    let attr = &trimmed[attr_start..pos];
+                    if attr.chars().next().map_or(false, |c| c.is_alphabetic()) {
+                        attribute_usage
+                            .entry(word.to_string())
+                            .or_default()
+                            .insert(attr.to_string());
                     }
                 }
             }
@@ -60,6 +138,7 @@ pub fn scan_imports(source: &str) -> ImportScan {
     ImportScan {
         top_levels: top_levels.into_iter().collect(),
         full_paths: full_paths.into_iter().collect(),
+        attribute_usage,
     }
 }
 

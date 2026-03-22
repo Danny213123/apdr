@@ -138,6 +138,7 @@ class BenchmarkService:
         return [self._run_descriptor(entry["run_id"], entry["summary"], entry["run_dir"]) for entry in self.state.list_run_summaries()]
 
     def load_run(self, run_id: str) -> dict[str, Any]:
+        run_id = self.state._sanitize_path_component(run_id)
         summary = self.state.load_run_summary(run_id)
         if not summary:
             raise ValueError(f"Saved run not found: {run_id}")
@@ -149,6 +150,7 @@ class BenchmarkService:
         }
 
     def resume_run(self, run_id: str) -> dict[str, Any]:
+        run_id = self.state._sanitize_path_component(run_id)
         with self._lock:
             self._drain_messages()
             if self.worker and self.worker.is_alive():
@@ -191,7 +193,7 @@ class BenchmarkService:
             config = self._hydrate_run_config(self._normalize_run_config(payload, validate=True))
             self._current_run = self._make_idle_run(config)
             self._current_run["status"] = "booting"
-            self._current_run["title"] = "PyRAG benchmark in progress"
+            self._current_run["title"] = "APDR benchmark in progress"
             self._current_run["subtitle"] = (
                 f"warning: preparing resolver {config['tool']} against "
                 f"{self._strip_archive_suffix(config['dataset_tar'])}; live activity will stream below."
@@ -403,7 +405,7 @@ class BenchmarkService:
     def _make_idle_run(self, config: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "idle",
-            "title": "PyRAG benchmark ready",
+            "title": "APDR benchmark ready",
             "subtitle": (
                 f"warning: terminal dashboard armed for {config.get('tool') or 'tool selection'}; "
                 "configure the run, verify Doctor, then start the benchmark."
@@ -434,6 +436,7 @@ class BenchmarkService:
             "eta": "--",
             "recentActivity": [],
             "completedCases": [],
+            "llmCases": [],
             "_recentActivityLimit": 350,
             "_completedCasesLimit": 500,
             "_solveSecondsTotal": 0.0,
@@ -446,6 +449,10 @@ class BenchmarkService:
             "_envCreateSamples": 0,
             "_installSamples": 0,
             "_smokeSamples": 0,
+            "totalLlmCalls": 0,
+            "totalEnvBuilds": 0,
+            "totalRetries": 0,
+            "casesWithLlmRetries": 0,
         }
 
     def _drain_messages(self) -> None:
@@ -500,7 +507,7 @@ class BenchmarkService:
                         f"Resuming {resumed_run_id} into {self.state.relative_path(message['run_dir'])} | "
                         f"{resumed_completed}/{message['total']} cases already recorded"
                     )
-                    self._current_run["title"] = "PyRAG benchmark resumed"
+                    self._current_run["title"] = "APDR benchmark resumed"
                     self._current_run["subtitle"] = (
                         "warning: historical results were restored; only the remaining cases will execute below."
                     )
@@ -508,7 +515,7 @@ class BenchmarkService:
                     self._current_run["statusText"] = (
                         f"Run directory: {self.state.relative_path(message['run_dir'])} | Total snippets: {message['total']}"
                     )
-                    self._current_run["title"] = "PyRAG benchmark in progress"
+                    self._current_run["title"] = "APDR benchmark in progress"
                     self._current_run["subtitle"] = (
                         "warning: benchmark telemetry is live; monitor active cases, logs, and completed rows below."
                     )
@@ -567,10 +574,12 @@ class BenchmarkService:
                     f"{self._current_run['failures']} failures, "
                     f"{self._current_run['skipped']} skips, {self._current_run['speed']} pace."
                 )
-                self._current_run["completedCases"].insert(0, self._build_case_row(result))
+                case_row = self._build_case_row(result)
+                self._current_run["completedCases"].insert(0, case_row)
                 self._current_run["completedCases"] = self._current_run["completedCases"][
                     : self._current_run["_completedCasesLimit"]
                 ]
+                self._record_llm_case(self._current_run, case_row)
                 self._refresh_run_fields()
             elif kind == "done":
                 self._refresh_live_run_metrics_locked(force=True)
@@ -581,7 +590,7 @@ class BenchmarkService:
                 )
                 self._current_run["activeCase"] = "benchmark finished"
                 self._current_run["title"] = (
-                    "PyRAG benchmark complete" if message["status"] == "completed" else "PyRAG benchmark stopped"
+                    "APDR benchmark complete" if message["status"] == "completed" else "APDR benchmark stopped"
                 )
                 self._current_run["subtitle"] = (
                     f"warning: artifacts written to {self.state.relative_path(message['run_dir'])}; "
@@ -595,7 +604,7 @@ class BenchmarkService:
                 self._current_run["status"] = "failed"
                 self._current_run["statusText"] = str(message["message"])
                 self._current_run["activeCase"] = "run aborted"
-                self._current_run["title"] = "PyRAG benchmark failed"
+                self._current_run["title"] = "APDR benchmark failed"
                 self._current_run["subtitle"] = (
                     "warning: benchmark execution aborted; inspect the recent activity panel and doctor checks."
                 )
@@ -666,6 +675,9 @@ class BenchmarkService:
         env_create_seconds = self._result_phase_seconds(result, "env_create")
         install_seconds = self._result_phase_seconds(result, "install")
         smoke_seconds = self._result_phase_seconds(result, "smoke")
+        llm_calls = self._result_int_metric(result, "llm_calls")
+        env_builds = self._result_int_metric(result, "env_builds")
+        retries = self._result_int_metric(result, "retries")
         return {
             "status": status,
             "caseId": case_id,
@@ -688,6 +700,10 @@ class BenchmarkService:
             "envCreate": self._format_phase_average(env_create_seconds),
             "install": self._format_phase_average(install_seconds),
             "smoke": self._format_phase_average(smoke_seconds),
+            "llmCalls": str(llm_calls),
+            "envBuilds": str(env_builds),
+            "retries": str(retries),
+            "hadLlmRetry": retries > 0,
         }
 
     def _append_activity(self, text: str) -> None:
@@ -735,6 +751,8 @@ class BenchmarkService:
         skipped = sum(1 for item in results if self._result_skipped(item))
         failures = completed - successes - skipped
         phase_totals = self._phase_totals(results)
+        llm_val_totals = self._llm_validation_totals(results)
+        llm_cases = self._llm_case_rows(results, config)
         elapsed = self._summary_elapsed_seconds(summary)
         case_pace = (elapsed / completed) if completed > 0 and elapsed > 0 else None
         remaining = max(total - completed, 0)
@@ -785,6 +803,7 @@ class BenchmarkService:
                     self._build_case_row(item, config)
                     for item in reversed(results[-run["_completedCasesLimit"] :])
                 ],
+                "llmCases": llm_cases,
                 "resumeAvailable": resume_available,
                 "remaining": remaining,
                 "_solveSecondsTotal": phase_totals["solve"][0],
@@ -797,6 +816,10 @@ class BenchmarkService:
                 "_envCreateSamples": phase_totals["env_create"][1],
                 "_installSamples": phase_totals["install"][1],
                 "_smokeSamples": phase_totals["smoke"][1],
+                "totalLlmCalls": llm_val_totals["totalLlmCalls"],
+                "totalEnvBuilds": llm_val_totals["totalEnvBuilds"],
+                "totalRetries": llm_val_totals["totalRetries"],
+                "casesWithLlmRetries": llm_val_totals["casesWithLlmRetries"],
             }
         )
         self._refresh_run_fields_for(run)
@@ -1176,6 +1199,23 @@ class BenchmarkService:
         except (TypeError, ValueError):
             return None
 
+    def _result_int_metric(self, result: dict[str, Any], key: str) -> int:
+        direct = result.get(key)
+        if direct is not None:
+            try:
+                return max(0, int(direct))
+            except (TypeError, ValueError):
+                pass
+        metadata = result.get("output_metadata")
+        if isinstance(metadata, dict):
+            text = str(metadata.get(key) or "").strip()
+            if text:
+                try:
+                    return max(0, int(text))
+                except (TypeError, ValueError):
+                    pass
+        return 0
+
     def _result_phase_seconds(self, result: dict[str, Any], phase: str) -> float | None:
         direct = self._safe_float(result.get(f"{phase}_duration_seconds"))
         if direct is not None:
@@ -1205,6 +1245,44 @@ class BenchmarkService:
                 totals[phase] = (total + seconds, samples + 1)
         return totals
 
+    def _llm_validation_totals(self, results: list[dict[str, Any]]) -> dict[str, int]:
+        total_llm_calls = 0
+        total_env_builds = 0
+        total_retries = 0
+        cases_with_retries = 0
+        for result in results:
+            total_llm_calls += self._result_int_metric(result, "llm_calls")
+            total_env_builds += self._result_int_metric(result, "env_builds")
+            retries = self._result_int_metric(result, "retries")
+            total_retries += retries
+            if retries > 0:
+                cases_with_retries += 1
+        return {
+            "totalLlmCalls": total_llm_calls,
+            "totalEnvBuilds": total_env_builds,
+            "totalRetries": total_retries,
+            "casesWithLlmRetries": cases_with_retries,
+        }
+
+    def _llm_case_rows(self, results: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
+        llm_cases: list[dict[str, Any]] = []
+        for result in reversed(results):
+            if self._result_int_metric(result, "llm_calls") <= 0:
+                continue
+            llm_cases.append(self._build_case_row(result, config))
+        return llm_cases
+
+    def _record_llm_case(self, run: dict[str, Any], case_row: dict[str, Any]) -> None:
+        if int(case_row.get("llmCalls") or 0) <= 0:
+            return
+        llm_cases = [
+            item
+            for item in run.get("llmCases", [])
+            if item.get("snippet") != case_row.get("snippet")
+        ]
+        llm_cases.insert(0, deepcopy(case_row))
+        run["llmCases"] = llm_cases
+
     def _accumulate_phase_metrics(self, run: dict[str, Any], result: dict[str, Any]) -> None:
         for phase in ("solve", "validation", "env_create", "install", "smoke"):
             seconds = self._result_phase_seconds(result, phase)
@@ -1214,6 +1292,14 @@ class BenchmarkService:
             sample_key = f"_{phase}Samples"
             run[total_key] = float(run.get(total_key) or 0.0) + seconds
             run[sample_key] = int(run.get(sample_key) or 0) + 1
+        llm_calls = self._result_int_metric(result, "llm_calls")
+        env_builds = self._result_int_metric(result, "env_builds")
+        retries = self._result_int_metric(result, "retries")
+        run["totalLlmCalls"] = int(run.get("totalLlmCalls") or 0) + llm_calls
+        run["totalEnvBuilds"] = int(run.get("totalEnvBuilds") or 0) + env_builds
+        run["totalRetries"] = int(run.get("totalRetries") or 0) + retries
+        if retries > 0:
+            run["casesWithLlmRetries"] = int(run.get("casesWithLlmRetries") or 0) + 1
 
     def _result_succeeded(self, result: dict[str, Any]) -> bool:
         if self._result_skipped(result):
@@ -1222,20 +1308,35 @@ class BenchmarkService:
             return False
         if self._result_has_failure_markers(result):
             return False
-        explicit = result.get("succeeded")
-        if explicit is not None:
-            return bool(explicit)
+        # Don't trust the stored "succeeded" flag for host-runtime skips that
+        # were reclassified as passes (old runs stored succeeded=False).
+        validation_status = self._result_validation_status(result)
+        is_reclassified_skip = (
+            validation_status.startswith("skipped") or validation_status == "host-runtime-required"
+        )
+        if not is_reclassified_skip:
+            explicit = result.get("succeeded")
+            if explicit is not None:
+                return bool(explicit)
         if self._result_requirements(str(result.get("snippet", "")), result):
             return True
         output_files = [str(item) for item in result.get("output_files", []) if str(item).strip()]
         return bool(output_files) and int(result.get("returncode", 1)) == 0
 
     def _result_skipped(self, result: dict[str, Any]) -> bool:
+        validation_status = self._result_validation_status(result)
+        is_host_skip = validation_status.startswith("skipped") or validation_status == "host-runtime-required"
+        # Host-runtime skips with valid requirements count as passes —
+        # the dependencies were correctly resolved but can't validate on this host.
+        if is_host_skip:
+            has_requirements = bool(self._result_requirements(str(result.get("snippet", "")), result))
+            if has_requirements and int(result.get("returncode", 1)) == 0:
+                return False
+            return True
         explicit = result.get("skipped")
         if explicit is not None:
             return bool(explicit)
-        validation_status = self._result_validation_status(result)
-        return validation_status.startswith("skipped") or validation_status == "host-runtime-required"
+        return False
 
     def _display_status(self, result: dict[str, Any]) -> str:
         if self._result_succeeded(result):
@@ -1361,6 +1462,20 @@ class BenchmarkService:
             return inline
         if not snippet:
             return []
+        # Prefer artifact_dir (APDR --output-dir) over snippet parent directory
+        artifact_dir = result.get("artifact_dir")
+        if artifact_dir:
+            artifact_path = self._repo_relative_path(str(artifact_dir))
+            req_path = artifact_path / "requirements.txt"
+            if req_path.exists():
+                try:
+                    return [
+                        line.strip()
+                        for line in req_path.read_text(encoding="utf-8").splitlines()
+                        if line.strip() and not line.lstrip().startswith("#")
+                    ]
+                except OSError:
+                    pass
         snippet_path = self._repo_relative_path(snippet)
         requirements_path = snippet_path.parent / "requirements.txt"
         if not requirements_path.exists():

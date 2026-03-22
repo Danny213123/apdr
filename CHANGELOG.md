@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.13 - 2026-03-22
+
+- Reworked APDR's resolution core around a new PubGrub-backed pre-solver, expanded version-range/PyPI plumbing, and a Python-side `llm_py` service that now handles solvability, package resolution, recovery, version selection, and ReAct-style fallback actions.
+- Expanded APDR's learned dependency knowledge with harvested top-level import mappings, refreshed alias/reference seed data, persistent unsolvable-module tracking, and broader parser/version-detection heuristics so local-helper, legacy, and host-runtime cases are classified more accurately.
+- Improved the benchmark runner and dashboard with `llm-only` execution mode, safer saved-run/loadout path sanitization, richer LLM telemetry (`LLM calls`, env builds, retries, and LLM-case inspection), and renamed the remaining PyRAG benchmark labels to APDR.
+
 ## 0.2.12 - 2026-03-17
 
 - Reduced APDR pre-solve overhead by deduplicating direct packages with a set, avoiding unnecessary constraint-string clones during propagation, and streamlining lockfile rendering so version-domain checks allocate less while solving.

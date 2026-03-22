@@ -8,12 +8,26 @@ pub fn generate(imports: &[String], execute_snippet: bool) -> String {
         "import traceback".to_string(),
         "".to_string(),
     ];
+    // Install PyMySQL as MySQLdb shim if needed
+    lines.push("try:".to_string());
+    lines.push("    import pymysql; pymysql.install_as_MySQLdb()".to_string());
+    lines.push("except Exception:".to_string());
+    lines.push("    pass".to_string());
+    lines.push("".to_string());
     lines.push("def _load_import(name):".to_string());
     lines.push("    try:".to_string());
     lines.push("        importlib.import_module(name)".to_string());
-    lines.push("    except Exception:".to_string());
-    lines.push("        traceback.print_exc()".to_string());
-    lines.push("        raise".to_string());
+    lines.push("    except ImportError:".to_string());
+    // Fallback: try known parent-package aliases before raising.
+    // e.g. `import Image` → `from PIL import Image` (Pillow).
+    lines.push("        _aliases = {'Image':'PIL','ImageDraw':'PIL','ImageFont':'PIL','ImageFilter':'PIL','ImageEnhance':'PIL','ImageOps':'PIL','ImageFile':'PIL','ImageTk':'PIL'}".to_string());
+    lines.push("        if name in _aliases:".to_string());
+    lines.push("            parent = _aliases[name]".to_string());
+    lines.push("            mod = importlib.import_module(parent + '.' + name)".to_string());
+    lines.push("            sys.modules[name] = mod".to_string());
+    lines.push("        else:".to_string());
+    lines.push("            traceback.print_exc()".to_string());
+    lines.push("            raise".to_string());
     lines.push("".to_string());
     for import_name in imports {
         lines.push(format!("_load_import({import_name:?})"));

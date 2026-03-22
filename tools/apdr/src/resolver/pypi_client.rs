@@ -103,7 +103,20 @@ pub fn fetch_versions(
         return versions;
     }
 
-    // 5. Fallback to PyPI API
+    // 4.5. PEP 658 / PyPI Simple API (JSON, no subprocess overhead)
+    let versions = fetch_versions_from_pypi_simple(package_name);
+    if !versions.is_empty() {
+        let _ = store.save_pypi_versions(package_name, &versions);
+        let cache_mutex = get_knowledge_cache();
+        if let Ok(mut cache) = cache_mutex.lock() {
+            for version in &versions {
+                cache.add_package_version(package_name, version);
+            }
+        }
+        return versions;
+    }
+
+    // 5. Fallback to PyPI API (subprocess)
     let Some(output) = run_host_python(&["-c", PYPI_VERSION_SCRIPT, package_name, python_version])
     else {
         return Vec::new();
@@ -133,7 +146,9 @@ pub fn fetch_versions(
 }
 
 pub fn package_exists(store: &mut CacheStore, package_name: &str, python_version: &str) -> bool {
-    !fetch_versions(store, package_name, python_version).is_empty()
+    let versions = fetch_versions(store, package_name, python_version);
+    // A package with only version "0" is treated as nonexistent (phantom cache entry).
+    versions.iter().any(|v| v != "0")
 }
 
 pub fn compatible_versions(
@@ -141,7 +156,10 @@ pub fn compatible_versions(
     package_name: &str,
     python_version: &str,
 ) -> Vec<String> {
-    fetch_versions(store, package_name, python_version)
+    let mut versions = fetch_versions(store, package_name, python_version);
+    // Filter phantom version "0" that contaminates caches.
+    versions.retain(|v| v != "0");
+    versions
 }
 
 pub fn best_matching_version(
@@ -407,27 +425,50 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
 }
 
 pub fn requirement_name(requirement: &str) -> String {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::with_capacity(256));
+    }
+    const MAX_ENTRIES: usize = 8192;
+
     let trimmed = requirement.trim();
     if trimmed.is_empty() {
         return String::new();
     }
-    // Find first operator character position (single scan instead of 7 split_once calls)
-    let base = match trimmed.find(|ch: char| matches!(ch, '<' | '>' | '!' | '=' | '~')) {
-        Some(pos) => &trimmed[..pos],
-        None => trimmed,
-    };
-    let without_extras = base.split('[').next().unwrap_or(base);
-    normalize(without_extras)
+
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.get(trimmed) {
+            return cached.clone();
+        }
+        // Find first operator character position (single scan instead of 7 split_once calls)
+        let base = match trimmed.find(|ch: char| matches!(ch, '<' | '>' | '!' | '=' | '~')) {
+            Some(pos) => &trimmed[..pos],
+            None => trimmed,
+        };
+        let without_extras = base.split('[').next().unwrap_or(base);
+        let result = normalize(without_extras);
+        if cache.len() < MAX_ENTRIES {
+            cache.insert(trimmed.to_string(), result.clone());
+        }
+        result
+    })
 }
 
 pub fn cached_package_names(store: &CacheStore) -> Vec<String> {
-    let mut names = store
-        .import_records()
-        .into_iter()
-        .map(|record| normalize(&record.package_name))
-        .collect::<Vec<_>>();
+    // Pre-allocate with estimated capacity to avoid re-allocation (#6)
+    let estimated = store.import_map.len() + store.pypi_index.len();
+    let mut names = Vec::with_capacity(estimated);
+    names.extend(
+        store
+            .import_records()
+            .into_iter()
+            .map(|record| normalize(&record.package_name)),
+    );
     names.extend(store.pypi_index.keys().cloned());
-    names.sort();
+    names.sort_unstable();
     names.dedup();
     names
 }
@@ -483,6 +524,88 @@ fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec
         let _ = store.save_pypi_versions(package_name, &versions);
     }
     versions
+}
+
+/// Fetch available versions for a package from the PyPI Simple API (PEP 658).
+/// Uses the JSON variant (`application/vnd.pypi.simple.v1+json`) to avoid HTML parsing.
+/// Returns an empty Vec on any error or timeout (10s).
+fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
+    let url = format!("https://pypi.org/simple/{}/", normalize(package_name));
+    let agent = ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(10)))
+            .build(),
+    );
+    let response = agent
+        .get(&url)
+        .header("Accept", "application/vnd.pypi.simple.v1+json")
+        .call();
+    let Ok(mut response) = response else {
+        return Vec::new();
+    };
+    let Ok(body) = response.body_mut().read_to_string() else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return Vec::new();
+    };
+    // Extract versions from the "versions" key (PEP 700 / Simple API v1)
+    // PyPI returns "versions" as either:
+    //   - A JSON array of version strings (current PyPI behavior)
+    //   - A JSON object with version keys (PEP 700 draft spec)
+    if let Some(versions_arr) = json.get("versions").and_then(|v| v.as_array()) {
+        let mut versions: Vec<String> = versions_arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        if !versions.is_empty() {
+            versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+            return versions;
+        }
+    }
+    if let Some(versions_obj) = json.get("versions").and_then(|v| v.as_object()) {
+        let mut versions: Vec<String> = versions_obj.keys().cloned().collect();
+        versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+        return versions;
+    }
+    // Fallback: parse version from filenames in "files" array
+    if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
+        let mut version_set = std::collections::BTreeSet::new();
+        for file in files {
+            if let Some(filename) = file.get("filename").and_then(|v| v.as_str()) {
+                if let Some(version) = extract_version_from_filename(filename, package_name) {
+                    version_set.insert(version);
+                }
+            }
+        }
+        let mut versions: Vec<String> = version_set.into_iter().collect();
+        versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+        return versions;
+    }
+    Vec::new()
+}
+
+/// Extract version string from a PyPI filename (sdist or wheel).
+fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<String> {
+    let normalized = normalize(package_name);
+    let prefix = format!("{}-", normalized);
+    let lower = filename.to_lowercase().replace('-', "_");
+    let norm_prefix = prefix.to_lowercase().replace('-', "_");
+    if !lower.starts_with(&norm_prefix) {
+        return None;
+    }
+    let rest = &filename[prefix.len()..].replace(&normalized, "");
+    // For wheel: name-version-py-abi-platform.whl
+    // For sdist: name-version.tar.gz or name-version.zip
+    let version_end = rest.find(|c: char| c == '-' || c == '.')
+        .filter(|&pos| pos > 0)
+        .unwrap_or(rest.len());
+    let candidate = &rest[..version_end];
+    if candidate.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
 }
 
 fn smtpip_kgraph_path(store: &CacheStore) -> Option<PathBuf> {
@@ -934,9 +1057,34 @@ fn tokenize_version(value: &str) -> ([VersionPart; MAX_VERSION_PARTS], usize) {
     (parts, len)
 }
 
+/// Thread-local cache for tokenized version strings. Avoids re-tokenizing
+/// the same version (e.g. "3.11", "1.0.0") thousands of times in the solver loop.
+fn tokenize_cached(version: &str) -> ([VersionPart; MAX_VERSION_PARTS], usize) {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CACHE: RefCell<HashMap<String, ([VersionPart; MAX_VERSION_PARTS], usize)>> =
+            RefCell::new(HashMap::with_capacity(256));
+    }
+    const MAX_ENTRIES: usize = 4096;
+
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.get(version) {
+            return *cached;
+        }
+        let result = tokenize_version(version);
+        if cache.len() < MAX_ENTRIES {
+            cache.insert(version.to_string(), result);
+        }
+        result
+    })
+}
+
 fn compare_versions(left: &str, right: &str) -> Ordering {
-    let (lp, ll) = tokenize_version(left);
-    let (rp, rl) = tokenize_version(right);
+    let (lp, ll) = tokenize_cached(left);
+    let (rp, rl) = tokenize_cached(right);
     let max_len = std::cmp::max(ll, rl);
     for i in 0..max_len {
         let left_part = if i < ll { lp[i] } else { VersionPart::Number(0) };

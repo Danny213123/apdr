@@ -29,7 +29,9 @@ pub fn classify_log(log: &str, store: &CacheStore) -> ClassifierResult {
         }
     }
 
-    let inferred_type = if lowercase.contains("attributeerror") {
+    let inferred_type = if lowercase.contains("double requirement given") {
+        "DependencyConflict"
+    } else if lowercase.contains("attributeerror") {
         "AttributeError"
     } else if lowercase.contains("invalid version") {
         "InvalidVersion"

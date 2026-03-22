@@ -22,7 +22,7 @@
         <section class="tab-content tab-active" id="tab-home">
           <section class="terminal-section" id="command-center">
             <div class="terminal-divider"><span>FSE AIWare Command Center</span></div>
-            <div class="warning-title" id="home-title">PyRAG benchmark ready</div>
+            <div class="warning-title" id="home-title">APDR benchmark ready</div>
             <div class="warning-copy" id="home-subtitle">loading...</div>
             <div class="warning-copy" id="home-description">Run, report, and configure without memorizing commands.</div>
             <div class="meta-grid" id="home-info-grid"></div>
@@ -138,6 +138,10 @@
             <div class="metrics-line" id="metrics-grid"></div>
             <div class="perf-line" id="perf-line"></div>
             <div class="research-line" id="research-line"></div>
+            <div class="llm-line">
+              <span class="kv-label">LLM activity</span>
+              <span class="kv-value" id="llm-summary">No completed LLM calls yet.</span>
+            </div>
             <div class="last-llm-line" id="last-llm-line"></div>
           </section>
 
@@ -165,36 +169,65 @@
             </div>
           </details>
 
-          <section class="terminal-section cases-section" id="cases-panel">
-            <div class="terminal-divider">
-              <span>Completed Cases (newest first; click to expand case details)</span>
-            </div>
-            <div class="toolbar-line case-controls">
-              <label class="toolbar-label" for="case-search">Search</label>
-              <input id="case-search" type="search" placeholder="case id, result, dependency" />
-              <span class="toolbar-label">Filter</span>
-              <div class="custom-select custom-select-compact" id="case-filter" data-placeholder="All cases">
-                <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter cases">
-                  <span class="custom-select-label">All cases</span>
-                  <span class="custom-select-arrow" aria-hidden="true">▾</span>
-                </button>
-                <div class="custom-select-menu" role="listbox" aria-label="Case filters"></div>
+          <details class="terminal-section cases-section collapsible-panel" id="cases-panel" open>
+            <summary class="collapsible-summary">
+              <span class="section-title">Completed Cases <span class="collapsible-count" id="cases-count"></span></span>
+              <span class="collapsible-meta">expand / collapse</span>
+            </summary>
+            <div class="collapsible-body">
+              <div class="collapsible-inner">
+                <div class="toolbar-line case-controls">
+                  <label class="toolbar-label" for="case-search">Search</label>
+                  <input id="case-search" type="search" placeholder="case id, result, dependency" />
+                  <span class="toolbar-label">Filter</span>
+                  <div class="custom-select custom-select-compact" id="case-filter" data-placeholder="All cases">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter cases">
+                      <span class="custom-select-label">All cases</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Case filters"></div>
+                  </div>
+                </div>
+                <div class="case-table-head">
+                  <span>STAT</span>
+                  <span>CASE ID</span>
+                  <span>PY</span>
+                  <span>TRY</span>
+                  <span>SEC</span>
+                  <span>PLLM</span>
+                  <span>PYEGO</span>
+                  <span>READPY</span>
+                  <span>RESULT</span>
+                  <span>DEPENDENCIES</span>
+                </div>
+                <div class="cases-scroll" id="cases-scroll"></div>
               </div>
             </div>
-            <div class="case-table-head">
-              <span>STAT</span>
-              <span>CASE ID</span>
-              <span>PY</span>
-              <span>TRY</span>
-              <span>SEC</span>
-              <span>PLLM</span>
-              <span>PYEGO</span>
-              <span>READPY</span>
-              <span>RESULT</span>
-              <span>DEPENDENCIES</span>
+          </details>
+
+          <details class="terminal-section cases-section collapsible-panel" id="llm-cases-panel">
+            <summary class="collapsible-summary">
+              <span class="section-title">LLM Cases <span class="collapsible-count" id="llm-cases-count"></span></span>
+              <span class="collapsible-meta">expand / collapse</span>
+            </summary>
+            <div class="collapsible-body">
+              <div class="collapsible-inner">
+                <div class="case-table-head">
+                  <span>STAT</span>
+                  <span>CASE ID</span>
+                  <span>PY</span>
+                  <span>TRY</span>
+                  <span>SEC</span>
+                  <span>PLLM</span>
+                  <span>PYEGO</span>
+                  <span>READPY</span>
+                  <span>RESULT</span>
+                  <span>DEPENDENCIES</span>
+                </div>
+                <div class="cases-scroll" id="llm-cases-scroll"></div>
+              </div>
             </div>
-            <div class="cases-scroll" id="cases-scroll"></div>
-          </section>
+          </details>
         </section>
 
         <section class="tab-content tab-hidden" id="tab-configure">

@@ -4,24 +4,83 @@ pub fn detect_minimum_python(source: &str) -> String {
     }
 
     let mut version = "3.9".to_string();
+
+    // Walrus operator :=  → 3.8+
     if source.contains(":=") {
         version = max_version(&version, "3.8");
     }
+
+    // Structural pattern matching → 3.10+
     if source.contains("match ") && source.contains("case ") {
         version = max_version(&version, "3.10");
     }
+
     for line in source.lines() {
         let trimmed = line.trim();
+
+        // Type alias statement `type Foo = ...` → 3.12+
         if trimmed.starts_with("type ") && trimmed.contains('=') {
             version = max_version(&version, "3.12");
         }
-        if trimmed.starts_with("async def ") || trimmed.contains(" await ") {
+
+        // async/await → 3.7+ (native async for, async with)
+        if trimmed.starts_with("async def ")
+            || trimmed.starts_with("async for ")
+            || trimmed.starts_with("async with ")
+            || trimmed.contains(" await ")
+        {
             version = max_version(&version, "3.7");
         }
+
+        // f-strings → 3.6+
         if trimmed.contains("f\"") || trimmed.contains("f'") {
             version = max_version(&version, "3.6");
         }
+
+        // `except* ExceptionGroup` → 3.11+
+        if trimmed.starts_with("except*") || trimmed.starts_with("except *") {
+            version = max_version(&version, "3.11");
+        }
+
+        // `from __future__ import annotations` (PEP 563) → 3.7+
+        if trimmed == "from __future__ import annotations" {
+            version = max_version(&version, "3.7");
+        }
+
+        // Union type syntax X | Y in annotations → 3.10+
+        // Heuristic: look for type hints like `def foo(x: int | str)` or `-> list[int]`
+        if (trimmed.contains("-> ") || trimmed.contains(": "))
+            && trimmed.contains(" | ")
+            && (trimmed.starts_with("def ") || trimmed.starts_with("class "))
+        {
+            version = max_version(&version, "3.10");
+        }
+
+        // Built-in generic types: list[X], dict[X, Y], tuple[X], set[X] → 3.9+
+        for generic in ["list[", "dict[", "tuple[", "set[", "frozenset["] {
+            if trimmed.contains(generic) && !trimmed.starts_with('#') {
+                version = max_version(&version, "3.9");
+                break;
+            }
+        }
+
+        // `dataclasses` module usage → 3.7+
+        if trimmed.starts_with("from dataclasses import")
+            || trimmed.starts_with("import dataclasses")
+            || trimmed.contains("@dataclass")
+        {
+            version = max_version(&version, "3.7");
+        }
+
+        // `importlib.resources` → 3.7+, `importlib.metadata` → 3.8+
+        if trimmed.contains("importlib.metadata") {
+            version = max_version(&version, "3.8");
+        }
+        if trimmed.contains("importlib.resources") {
+            version = max_version(&version, "3.7");
+        }
     }
+
     max_version(&version, "3.9")
 }
 
@@ -70,7 +129,7 @@ fn looks_like_python_27(source: &str) -> bool {
             }
         }
 
-        if trimmed.starts_with("print ") && !trimmed.starts_with("print(") {
+        if trimmed.starts_with("print ") && !trimmed.starts_with("print(") && !trimmed.starts_with("print (") {
             return true;
         }
         if trimmed.contains("xrange(")
@@ -83,6 +142,13 @@ fn looks_like_python_27(source: &str) -> bool {
             || trimmed.contains("iteritems(")
             || trimmed.contains("itervalues(")
             || trimmed.contains("iterkeys(")
+            || trimmed.contains("has_key(")
+            || trimmed.contains("execfile(")
+            || trimmed.contains("reload(")
+            || trimmed.contains("reduce(")
+            || trimmed.contains("apply(")
+            || trimmed.contains(".next()")
+            || (trimmed.contains("raise ") && trimmed.contains(',') && !trimmed.contains("raise ("))
         {
             return true;
         }

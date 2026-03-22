@@ -1,5 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+
+use rustc_hash::FxHashMap;
 
 use crate::cache::store::CacheStore;
 use crate::docker;
@@ -22,12 +24,12 @@ pub struct PreSolveResult {
 
 #[derive(Clone, Debug, Default)]
 struct SolveState {
-    constraints: BTreeMap<String, String>,
-    selected: BTreeMap<String, String>,
+    constraints: FxHashMap<String, String>,
+    selected: FxHashMap<String, String>,
     /// Cached domains: maps package → (constraint_when_computed, compatible_versions).
     /// A cache entry is valid iff its constraint matches the current constraint.
     /// Entries become stale when constraints change and are lazily recomputed.
-    domain_cache: BTreeMap<String, (String, Vec<String>)>,
+    domain_cache: FxHashMap<String, (String, Vec<String>)>,
     /// Undo stack for backtracking without cloning.
     undo_stack: Vec<UndoOp>,
 }
@@ -296,9 +298,16 @@ fn initial_state(
     resolved: &[ResolvedDependency],
     config_deps: &[ConfigDep],
 ) -> (SolveState, Vec<String>) {
-    let mut state = SolveState::default();
-    let mut direct_packages = Vec::new();
-    let mut seen_packages = BTreeSet::new();
+    // Pre-allocate capacity for solver maps based on input size (#6)
+    let capacity = resolved.len() + config_deps.len();
+    let mut state = SolveState {
+        constraints: FxHashMap::with_capacity_and_hasher(capacity, Default::default()),
+        selected: FxHashMap::with_capacity_and_hasher(capacity, Default::default()),
+        domain_cache: FxHashMap::with_capacity_and_hasher(capacity, Default::default()),
+        undo_stack: Vec::with_capacity(capacity * 4),
+    };
+    let mut direct_packages = Vec::with_capacity(capacity);
+    let mut seen_packages = rustc_hash::FxHashSet::default();
 
     for dependency in resolved {
         let package = pypi_client::requirement_name(&dependency.package_name);
@@ -340,8 +349,56 @@ fn solve_for_python(
     python_version: &str,
     budget: &mut usize,
 ) -> Result<SolveOutcome, SolveError> {
+    // Tier 1: Try PubGrub CDCL solver (context-aware conflict learning).
+    let constraints_btree: BTreeMap<String, String> = state.constraints.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    match super::pubgrub_solver::solve_with_pubgrub(store, &constraints_btree, python_version) {
+        Ok(selected) => {
+            return Ok(SolveOutcome {
+                python_version: python_version.to_string(),
+                selected,
+            });
+        }
+        Err(_) => {
+            // PubGrub failed — fall through to backtracking solver.
+        }
+    }
+
+    // Tier 2: Existing backtracking solver with MRV + unit propagation.
     let mut working = state.clone();
-    let selected = solve_recursive(store, &mut working, python_version, budget)?;
+    match solve_recursive(store, &mut working, python_version, budget) {
+        Ok(selected) => Ok(SolveOutcome {
+            python_version: python_version.to_string(),
+            selected: selected.into_iter().collect(),
+        }),
+        Err(SolveError::Incomplete(_)) => {
+            // Budget exhausted — try Minimal Version Selection as fallback.
+            // MVS picks the lowest compatible version for each package with
+            // zero backtracking, producing a candidate in O(P) time.
+            solve_mvs(store, state, python_version)
+        }
+        Err(hard) => Err(hard),
+    }
+}
+
+/// Minimal Version Selection fallback: for each package, pick the lowest
+/// version satisfying its constraints. No backtracking needed — O(P).
+fn solve_mvs(
+    store: &mut CacheStore,
+    state: &SolveState,
+    python_version: &str,
+) -> Result<SolveOutcome, SolveError> {
+    let mut selected = BTreeMap::new();
+    for (package, constraint) in &state.constraints {
+        let versions =
+            compatible_versions_for_constraint(store, package, constraint, python_version)?;
+        if let Some(min_version) = versions.first() {
+            selected.insert(package.clone(), min_version.clone());
+        } else {
+            return Err(SolveError::Hard(format!(
+                "MVS fallback: package `{package}` has no versions satisfying `{constraint}`"
+            )));
+        }
+    }
     Ok(SolveOutcome {
         python_version: python_version.to_string(),
         selected,
@@ -353,7 +410,7 @@ fn solve_recursive(
     state: &mut SolveState,
     python_version: &str,
     budget: &mut usize,
-) -> Result<BTreeMap<String, String>, SolveError> {
+) -> Result<FxHashMap<String, String>, SolveError> {
     if *budget == 0 {
         return Err(SolveError::Incomplete(
             "solver budget exhausted before finding a compatible assignment".to_string(),
@@ -430,14 +487,16 @@ fn propagate_forced(
 ) -> Result<(), SolveError> {
     loop {
         let mut progress = false;
-        let packages: Vec<String> = state
+        // Build unsolved list once per outer loop instead of re-scanning all constraints.
+        let unsolved: Vec<String> = state
             .constraints
             .keys()
             .filter(|pkg| !state.selected.contains_key(*pkg))
             .cloned()
             .collect();
 
-        for package in packages {
+        for package in unsolved {
+            // A prior iteration in this inner loop may have forced this package.
             if state.selected.contains_key(&package) {
                 continue;
             }
@@ -485,14 +544,16 @@ fn next_unsolved_package(
 ) -> Result<Option<String>, SolveError> {
     let mut best: Option<(String, usize)> = None;
 
-    let packages: Vec<String> = state
+    // Iterate constraints directly — avoid cloned Vec allocation.
+    // Safety: we collect keys first because domain_info needs &mut state.
+    let unsolved: Vec<String> = state
         .constraints
         .keys()
         .filter(|pkg| !state.selected.contains_key(*pkg))
         .cloned()
         .collect();
 
-    for package in packages {
+    for package in unsolved {
         let (count, _) = domain_info(store, state, &package, python_version)?;
         if count == 0 {
             let constraint = state
@@ -636,15 +697,28 @@ fn compatible_versions_for_constraint(
             "package `{package}` has no cached or KGraph version metadata"
         )));
     }
+    if constraint.is_empty() {
+        return Ok(all_versions);
+    }
+    // Fast path (#2): exact pin (==X.Y.Z) is the most common constraint in the
+    // solver — skip linear version_satisfies scan and just check membership.
+    if let Some(pinned) = constraint.strip_prefix("==") {
+        let pinned = pinned.trim();
+        if !pinned.contains('*') && !pinned.contains(',') {
+            return Ok(if all_versions.iter().any(|v| v == pinned) {
+                vec![pinned.to_string()]
+            } else {
+                Vec::new()
+            });
+        }
+    }
     Ok(all_versions
         .into_iter()
-        .filter(|version| {
-            constraint.is_empty() || pypi_client::version_satisfies(version, constraint)
-        })
+        .filter(|version| pypi_client::version_satisfies(version, constraint))
         .collect())
 }
 
-fn merge_constraint(constraints: &mut BTreeMap<String, String>, package: &str, incoming: &str) {
+fn merge_constraint(constraints: &mut FxHashMap<String, String>, package: &str, incoming: &str) {
     let normalized_package = pypi_client::requirement_name(package);
     if normalized_package.is_empty() {
         return;
@@ -661,15 +735,19 @@ fn merge_constraint(constraints: &mut BTreeMap<String, String>, package: &str, i
         return;
     }
 
-    // Append only fragments not already present (zero intermediate allocations).
-    // Re-scanning entry on each iteration naturally includes previously appended fragments.
+    // Build a set of existing fragments for O(1) duplicate checks instead of
+    // O(M) linear scan per incoming fragment — total O(N+M) vs O(N*M).
+    let existing: rustc_hash::FxHashSet<String> = entry
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     for fragment in cleaned
         .split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())
     {
-        let already_present = entry.split(',').map(str::trim).any(|p| p == fragment);
-        if !already_present {
+        if !existing.contains(fragment) {
             entry.push(',');
             entry.push_str(fragment);
         }
@@ -700,10 +778,10 @@ fn render_lockfile(
     selected: &BTreeMap<String, String>,
     direct_packages: &[String],
 ) -> (String, Vec<String>) {
-    let direct_set = direct_packages
+    let direct_set: rustc_hash::FxHashSet<String> = direct_packages
         .iter()
         .map(|item| pypi_client::requirement_name(item))
-        .collect::<BTreeSet<_>>();
+        .collect();
 
     let mut lines = Vec::new();
     for package in direct_packages {
@@ -732,8 +810,8 @@ fn render_lockfile(
 }
 
 fn dedupe_strings(values: Vec<String>) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    let mut deduped = Vec::new();
+    let mut seen = rustc_hash::FxHashSet::default();
+    let mut deduped = Vec::with_capacity(values.len());
     for value in values {
         if seen.insert(value.clone()) {
             deduped.push(value);

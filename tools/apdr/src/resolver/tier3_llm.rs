@@ -1,9 +1,13 @@
 use crate::cache::store::CacheStore;
 use crate::context;
-use crate::llm::client::LlmClient;
-use crate::llm::{prompts, rag};
 use crate::resolver::{pypi_client, version_sampler};
 use crate::{ParseResult, ResolveConfig, ResolvedDependency, SolvabilityAssessment};
+
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 
 pub struct StageResult {
     pub resolved: Vec<ResolvedDependency>,
@@ -12,54 +16,328 @@ pub struct StageResult {
     pub prompts_issued: usize,
 }
 
+// ---------------------------------------------------------------------------
+// Python subprocess IPC
+// ---------------------------------------------------------------------------
+
+struct LlmProcess {
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    _child: Child,
+}
+
+static LLM_PROCESS: OnceLock<Mutex<LlmProcess>> = OnceLock::new();
+
+fn find_python() -> String {
+    for cmd in &["python3", "python"] {
+        if Command::new(cmd)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return cmd.to_string();
+        }
+    }
+    "python3".to_string()
+}
+
+fn llm_py_dir() -> std::path::PathBuf {
+    // The llm_py package lives next to the apdr binary's source tree.
+    // At runtime, the binary is in target/release/ or target/debug/,
+    // but the llm_py dir is at tools/apdr/llm_py/.
+    // We locate it relative to the executable or via APDR_LLM_PY_DIR env var.
+    if let Ok(dir) = std::env::var("APDR_LLM_PY_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    // Walk up from executable to find tools/apdr/llm_py/
+    if let Ok(exe) = std::env::current_exe() {
+        let mut p = exe.as_path();
+        for _ in 0..6 {
+            if let Some(parent) = p.parent() {
+                let candidate = parent.join("llm_py");
+                if candidate.join("__main__.py").exists() {
+                    return candidate;
+                }
+                let candidate2 = parent.join("tools").join("apdr").join("llm_py");
+                if candidate2.join("__main__.py").exists() {
+                    return candidate2;
+                }
+                p = parent;
+            }
+        }
+    }
+    // Fallback: assume CWD-relative
+    std::path::PathBuf::from("tools/apdr/llm_py")
+}
+
+fn spawn_python_process() -> Mutex<LlmProcess> {
+    let python = find_python();
+    let py_dir = llm_py_dir();
+    let parent = py_dir.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut child = Command::new(&python)
+        .arg("-m")
+        .arg("llm_py")
+        .current_dir(parent)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to spawn Python LLM service: {e}"));
+
+    let stdin = child.stdin.take().expect("Failed to open stdin");
+    let stdout = child.stdout.take().expect("Failed to open stdout");
+    let mut reader = BufReader::new(stdout);
+
+    // Wait for ready signal
+    let mut ready_line = String::new();
+    if reader.read_line(&mut ready_line).is_ok() {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&ready_line) {
+            if json.get("ready").and_then(|v| v.as_bool()) != Some(true) {
+                eprintln!("Warning: Python LLM service did not send ready signal");
+            }
+        }
+    }
+
+    Mutex::new(LlmProcess {
+        stdin,
+        stdout: reader,
+        _child: child,
+    })
+}
+
+fn call_python(request: &serde_json::Value) -> Option<serde_json::Value> {
+    let process = LLM_PROCESS.get_or_init(spawn_python_process);
+    let mut guard = process.lock().ok()?;
+
+    let request_str = serde_json::to_string(request).ok()?;
+    writeln!(guard.stdin, "{}", request_str).ok()?;
+    guard.stdin.flush().ok()?;
+
+    let mut line = String::new();
+    guard.stdout.read_line(&mut line).ok()?;
+    if line.trim().is_empty() {
+        return None;
+    }
+    serde_json::from_str(line.trim()).ok()
+}
+
+fn build_base_request(config: &ResolveConfig) -> serde_json::Value {
+    serde_json::json!({
+        "provider": config.llm_provider,
+        "model": config.llm_model,
+        "base_url": config.llm_base_url,
+        "cache_path": config.cache_path.to_string_lossy(),
+        "output_dir": config.output_dir.to_string_lossy(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Inlined RAG context assembly (from llm/rag.rs)
+// ---------------------------------------------------------------------------
+
+fn assemble_context_for_import(store: &CacheStore, name: &str) -> Vec<String> {
+    let mut context = Vec::new();
+    if let Some(record) = store.import_lookup(name) {
+        context.push(format!(
+            "known import mapping: {} -> {}",
+            record.import_name, record.package_name
+        ));
+    }
+    if let Some(versions) = store.pypi_index.get(name) {
+        context.push(format!("known versions: {}", versions.join(", ")));
+    }
+    if let Some(deps) = store.dependency_graph.get(name) {
+        context.push(format!("known transitive deps: {}", deps.join(", ")));
+    }
+    context
+}
+
+fn assemble_batch_context(
+    store: &CacheStore,
+    import_names: &[String],
+    failure_context: &str,
+) -> Vec<String> {
+    let mut context: Vec<String> = import_names
+        .iter()
+        .flat_map(|name| assemble_context_for_import(store, name))
+        .collect();
+    if !failure_context.is_empty() {
+        context.push(failure_context.to_string());
+    }
+    context
+}
+
+// ---------------------------------------------------------------------------
+// Inlined failure memory (from llm/failure_memory.rs)
+// ---------------------------------------------------------------------------
+
+struct FailureEntry {
+    package_tried: String,
+    #[allow(dead_code)]
+    error_reason: String,
+}
+
+fn load_failure_memory(cache_path: &Path) -> HashMap<String, Vec<FailureEntry>> {
+    let path = cache_path.join("llm_failure_memory.tsv");
+    let mut failures: HashMap<String, Vec<FailureEntry>> = HashMap::new();
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = line.splitn(5, '\t').collect();
+            if parts.len() >= 4 {
+                let import_name = parts[0].to_string();
+                let entry = FailureEntry {
+                    package_tried: parts[1].to_string(),
+                    error_reason: parts[2].to_string(),
+                };
+                failures.entry(import_name).or_default().push(entry);
+            }
+        }
+    }
+    failures
+}
+
+fn format_failure_context(
+    failures: &HashMap<String, Vec<FailureEntry>>,
+    import_names: &[String],
+) -> String {
+    let mut lines = Vec::new();
+    for name in import_names {
+        if let Some(records) = failures.get(name) {
+            for r in records {
+                lines.push(format!(
+                    "PREVIOUS FAILURE: import `{}` mapped to `{}` failed ({}). DO NOT suggest `{}` again.",
+                    name, r.package_tried, r.error_reason, r.package_tried
+                ));
+            }
+        }
+    }
+    lines.join("\n")
+}
+
+fn has_failed(
+    failures: &HashMap<String, Vec<FailureEntry>>,
+    import_name: &str,
+    package_name: &str,
+) -> bool {
+    failures
+        .get(import_name)
+        .map(|records| {
+            records
+                .iter()
+                .any(|r| r.package_tried.eq_ignore_ascii_case(package_name))
+        })
+        .unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
+// Trace persistence (simplified — logs JSON request/response)
+// ---------------------------------------------------------------------------
+
+fn persist_trace(
+    config: &ResolveConfig,
+    label: &str,
+    request: &serde_json::Value,
+    response: Option<&serde_json::Value>,
+) {
+    let _ = (|| -> std::io::Result<()> {
+        let trace_dir = context::create_llm_trace_dir(&config.output_dir, label)?;
+        context::write_text(
+            &trace_dir.join("request.json"),
+            &serde_json::to_string_pretty(request).unwrap_or_default(),
+        )?;
+        if let Some(resp) = response {
+            context::write_text(
+                &trace_dir.join("response.json"),
+                &serde_json::to_string_pretty(resp).unwrap_or_default(),
+            )?;
+        }
+        Ok(())
+    })();
+}
+
+// ---------------------------------------------------------------------------
+// Solvability Assessment
+// ---------------------------------------------------------------------------
+
 pub fn assess_solvability(
     snippet_source: &str,
     parse_result: &ParseResult,
     config: &ResolveConfig,
 ) -> Option<SolvabilityAssessment> {
-    let client = LlmClient::new(
-        &config.llm_provider,
-        &config.llm_model,
-        &config.llm_base_url,
-    );
-    if !client.is_available() {
-        return None;
-    }
-
     let benchmark_context =
         context::read_context_tail(config.benchmark_context_log.as_deref(), 24_000)
             .unwrap_or_default();
-    let prompt =
-        prompts::solvability_assessment_prompt(snippet_source, parse_result, &benchmark_context);
-    let _ = persist_llm_trace(
-        config,
-        "solvability-assessment",
-        &prompt,
-        None,
-        &benchmark_context,
-        &[],
-    );
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-prompt",
-        &prompt,
-    );
-    let response = client.complete(&prompt)?;
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-response",
-        &response,
-    );
-    let _ = persist_llm_trace(
-        config,
-        "solvability-assessment",
-        &prompt,
-        Some(&response),
-        &benchmark_context,
-        &[],
-    );
-    parse_solvability_assessment(&response)
+
+    let mut request = build_base_request(config);
+    request["action"] = "solvability".into();
+    request["imports"] = serde_json::json!(parse_result.imports);
+    request["snippet_source"] = snippet_source.into();
+    request["benchmark_context"] = benchmark_context.into();
+
+    persist_trace(config, "solvability-assessment", &request, None);
+
+    let response = call_python(&request)?;
+    persist_trace(config, "solvability-assessment", &request, Some(&response));
+
+    if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
+        if !error.is_empty() {
+            return None;
+        }
+    }
+
+    let decision = response
+        .get("decision")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if decision != "solve" && decision != "skip" {
+        return None;
+    }
+
+    let confidence = response
+        .get("confidence")
+        .and_then(|v| v.as_f64())
+        .map(|v| v.clamp(0.0, 1.0))
+        .unwrap_or(if decision == "skip" { 0.2 } else { 0.6 });
+
+    let reason = response
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("LLM solvability assessment.")
+        .to_string();
+
+    let unsolvable_modules = response
+        .get("unsolvable_modules")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty() && s != "none")
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(SolvabilityAssessment {
+        decision,
+        confidence,
+        reason,
+        source: "llm-preflight".to_string(),
+        unsolvable_modules,
+    })
 }
+
+// ---------------------------------------------------------------------------
+// Main Package Resolution
+// ---------------------------------------------------------------------------
 
 pub fn resolve(
     unresolved_imports: &[String],
@@ -86,133 +364,142 @@ pub fn resolve(
         };
     }
 
-    let client = LlmClient::new(
-        &config.llm_provider,
-        &config.llm_model,
-        &config.llm_base_url,
-    );
-    if !client.is_available() {
-        return StageResult {
-            resolved: Vec::new(),
-            unresolved: unresolved_imports.to_vec(),
-            notes: fallback_notes(unresolved_imports, parse_result, false),
-            prompts_issued: 0,
-        };
-    }
-
-    let context = llm_candidates
-        .iter()
-        .flat_map(|import_name| rag::assemble_context(store, import_name))
-        .collect::<Vec<_>>();
+    // Load failure memory and assemble context (Rust-side)
+    let failures = load_failure_memory(&config.cache_path);
+    let failure_ctx = format_failure_context(&failures, &llm_candidates);
+    let mut context = assemble_batch_context(store, &llm_candidates, &failure_ctx);
     let benchmark_context =
         context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
             .unwrap_or_default();
-    let prompt = prompts::package_resolution_prompt(
-        &llm_candidates,
-        python_version,
-        &context,
-        &benchmark_context,
-    );
-    let _ = persist_llm_trace(
-        config,
-        "package-resolution",
-        &prompt,
-        None,
-        &benchmark_context,
-        &context,
-    );
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-prompt",
-        &prompt,
-    );
-    let response = client.complete(&prompt);
-    let Some(response) = response else {
-        return StageResult {
-            resolved: Vec::new(),
-            unresolved: unresolved_imports.to_vec(),
-            notes: vec!["LLM package-resolution call returned no output.".to_string()],
-            prompts_issued: 1,
-        };
-    };
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-response",
-        &response,
-    );
-    let _ = persist_llm_trace(
-        config,
-        "package-resolution",
-        &prompt,
-        Some(&response),
-        &benchmark_context,
-        &context,
+
+    // Build attribute_usage as JSON
+    let attr_usage: serde_json::Value = serde_json::json!(
+        parse_result.attribute_usage.iter().map(|(k, v)| {
+            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
+        }).collect::<std::collections::BTreeMap<_, _>>()
     );
 
+    // Build tier2 candidates for each import (#3: KGraph-grounded)
+    let tier2_candidates = build_tier2_candidates(store, &llm_candidates, python_version);
+
+    // Inject "Known package: X" for each tier2 candidate so Python PyPI checker
+    // can preload them (avoids N individual HEAD requests to pypi.org)
+    if let Some(cands_map) = tier2_candidates.as_object() {
+        for (_, cands) in cands_map {
+            if let Some(arr) = cands.as_array() {
+                for c in arr {
+                    if let Some(pkg_name) = c.as_str() {
+                        context.push(format!("Known package: {}", pkg_name));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut request = build_base_request(config);
+    request["action"] = "resolve".into();
+    request["imports"] = serde_json::json!(llm_candidates);
+    request["python_version"] = python_version.into();
+    request["context"] = serde_json::json!(context);
+    request["benchmark_context"] = serde_json::Value::String(benchmark_context.clone());
+    request["attribute_usage"] = attr_usage;
+    request["tier2_candidates"] = tier2_candidates;
+
+    persist_trace(config, "package-resolution", &request, None);
+
+    let response = match call_python(&request) {
+        Some(r) => r,
+        None => {
+            return StageResult {
+                resolved: Vec::new(),
+                unresolved: unresolved_imports.to_vec(),
+                notes: vec!["LLM package-resolution call returned no output.".to_string()],
+                prompts_issued: 1,
+            };
+        }
+    };
+
+    persist_trace(config, "package-resolution", &request, Some(&response));
+
+    let prompts_issued = response
+        .get("prompts_issued")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1) as usize;
+
+    let mut notes: Vec<String> = response
+        .get("notes")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Parse mappings from Python response
+    let mappings: Vec<(String, String)> = response
+        .get("mappings")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let imp = m.get("import_name")?.as_str()?;
+                    let pkg = m.get("package_name")?.as_str()?;
+                    Some((imp.to_string(), pkg.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // #8: Read confidence from Python semantic entropy / voting
+    let llm_confidence = response
+        .get("confidence")
+        .and_then(|v| v.as_f64())
+        .map(|v| v.clamp(0.0, 1.0))
+        .unwrap_or(0.73);
+
+    // Post-process: version selection + store integration (stays in Rust)
     let mut resolved = Vec::new();
     let mut still_unresolved = preserved_unresolved;
-    let mut notes = Vec::new();
 
-    for import_name in &llm_candidates {
-        let mapped =
-            parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
-        let versions = pypi_client::compatible_versions(store, &mapped, python_version);
-        // If LLM echoed the import name back unchanged AND the package doesn't
-        // exist on PyPI, skip it — it's almost certainly a local project module.
-        if versions.is_empty() && mapped == *import_name {
+    for (import_name, mapped) in &mappings {
+        let versions = pypi_client::compatible_versions(store, mapped, python_version);
+        if versions.is_empty() && mapped == import_name {
             notes.push(format!(
                 "Skipped LLM mapping {import_name} -> {mapped}: package not found on PyPI (likely a local module)."
             ));
             still_unresolved.push(import_name.clone());
             continue;
         }
+        if has_failed(&failures, import_name, mapped) {
+            notes.push(format!(
+                "Skipped LLM mapping {import_name} -> {mapped}: failed in previous runs (Reflexion)."
+            ));
+            still_unresolved.push(import_name.clone());
+            continue;
+        }
+
+        // Version selection: try LLM first, fallback to sampler
         let version = if versions.is_empty() {
             None
         } else {
-            let version_prompt = prompts::version_inference_prompt(
-                &mapped,
+            let llm_version = pick_version_via_python(
+                config,
+                mapped,
                 &versions,
                 python_version,
                 &benchmark_context,
             );
-            let _ = persist_llm_trace(
-                config,
-                &format!("version-selection-{mapped}"),
-                &version_prompt,
-                None,
-                &benchmark_context,
-                &versions,
-            );
-            let _ = context::append_context_log(
-                config.benchmark_context_log.as_deref(),
-                "apdr-llm-prompt",
-                &version_prompt,
-            );
-            let picked = client.complete(&version_prompt).and_then(|reply| {
-                let _ = context::append_context_log(
-                    config.benchmark_context_log.as_deref(),
-                    "apdr-llm-response",
-                    &reply,
-                );
-                let _ = persist_llm_trace(
-                    config,
-                    &format!("version-selection-{mapped}"),
-                    &version_prompt,
-                    Some(&reply),
-                    &benchmark_context,
-                    &versions,
-                );
-                parse_version_line(&reply, &versions)
-            });
-            picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
+            llm_version.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
         };
-        let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm");
+
+        let _ = store.save_import_mapping(import_name, mapped, version.as_deref(), "llm");
         resolved.push(ResolvedDependency {
             import_name: import_name.clone(),
             package_name: mapped.clone(),
             version,
             strategy: "llm".to_string(),
-            confidence: 0.73,
+            confidence: llm_confidence,
         });
         notes.push(format!("LLM resolved {import_name} -> {mapped}."));
     }
@@ -221,9 +508,13 @@ pub fn resolve(
         resolved,
         unresolved: still_unresolved,
         notes,
-        prompts_issued: 1 + llm_candidates.len(),
+        prompts_issued: prompts_issued + mappings.len(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Resolve with additional context (retry path)
+// ---------------------------------------------------------------------------
 
 pub fn resolve_with_context(
     unresolved_imports: &[String],
@@ -252,32 +543,13 @@ pub fn resolve_with_context(
         };
     }
 
-    let client = LlmClient::new(
-        &config.llm_provider,
-        &config.llm_model,
-        &config.llm_base_url,
-    );
-    if !client.is_available() {
-        return StageResult {
-            resolved: Vec::new(),
-            unresolved: unresolved_imports.to_vec(),
-            notes: fallback_notes(unresolved_imports, parse_result, false),
-            prompts_issued: 0,
-        };
-    }
+    let failures = load_failure_memory(&config.cache_path);
+    let failure_ctx = format_failure_context(&failures, &llm_candidates);
+    let mut context = assemble_batch_context(store, &llm_candidates, &failure_ctx);
 
-    // Assemble RAG context
-    let mut context = llm_candidates
-        .iter()
-        .flat_map(|import_name| rag::assemble_context(store, import_name))
-        .collect::<Vec<_>>();
-
-    // Add additional context about missing metadata
     if let Some(extra) = additional_context {
         context.insert(0, format!("IMPORTANT: {}", extra));
     }
-
-    // Add snippet context to help LLM understand usage
     context.push(format!(
         "Code snippet showing import usage:\n```python\n{}\n```",
         snippet_source
@@ -291,88 +563,107 @@ pub fn resolve_with_context(
         context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
             .unwrap_or_default();
 
-    let prompt = prompts::package_resolution_prompt(
-        &llm_candidates,
-        python_version,
-        &context,
-        &benchmark_context,
+    let attr_usage: serde_json::Value = serde_json::json!(
+        parse_result.attribute_usage.iter().map(|(k, v)| {
+            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
+        }).collect::<std::collections::BTreeMap<_, _>>()
     );
-    let _ = persist_llm_trace(
-        config,
-        "package-resolution-with-context",
-        &prompt,
-        None,
-        &benchmark_context,
-        &context,
-    );
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-prompt-retry",
-        &prompt,
-    );
-    let response = client.complete(&prompt);
-    let Some(response) = response else {
-        return StageResult {
-            resolved: Vec::new(),
-            unresolved: unresolved_imports.to_vec(),
-            notes: vec!["LLM package-resolution call returned no output.".to_string()],
-            prompts_issued: 1,
-        };
+
+    let tier2_candidates = build_tier2_candidates(store, &llm_candidates, python_version);
+
+    let mut request = build_base_request(config);
+    request["action"] = "resolve".into();
+    request["imports"] = serde_json::json!(llm_candidates);
+    request["python_version"] = python_version.into();
+    request["context"] = serde_json::json!(context);
+    request["benchmark_context"] = serde_json::Value::String(benchmark_context.clone());
+    request["attribute_usage"] = attr_usage;
+    request["snippet_source"] = snippet_source.into();
+    request["tier2_candidates"] = tier2_candidates;
+
+    persist_trace(config, "package-resolution-with-context", &request, None);
+
+    let response = match call_python(&request) {
+        Some(r) => r,
+        None => {
+            return StageResult {
+                resolved: Vec::new(),
+                unresolved: unresolved_imports.to_vec(),
+                notes: vec!["LLM package-resolution call returned no output.".to_string()],
+                prompts_issued: 1,
+            };
+        }
     };
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-response-retry",
-        &response,
-    );
-    let _ = persist_llm_trace(
+
+    persist_trace(
         config,
         "package-resolution-with-context",
-        &prompt,
+        &request,
         Some(&response),
-        &benchmark_context,
-        &context,
     );
+
+    let mappings: Vec<(String, String)> = response
+        .get("mappings")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let imp = m.get("import_name")?.as_str()?;
+                    let pkg = m.get("package_name")?.as_str()?;
+                    Some((imp.to_string(), pkg.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let mut resolved = Vec::new();
     let mut still_unresolved = Vec::new();
-    let mut notes = Vec::new();
+    let mut notes: Vec<String> = response
+        .get("notes")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
 
     for import_name in &llm_candidates {
-        let mapped =
-            parse_import_mapping(&response, import_name).unwrap_or_else(|| import_name.clone());
-        let version = if mapped != *import_name {
-            let versions = pypi_client::compatible_versions(store, &mapped, python_version);
-            let picked = (!versions.is_empty())
-                .then(|| {
-                    let version_prompt = prompts::version_inference_prompt(
-                        &mapped,
-                        &versions,
-                        python_version,
-                        &benchmark_context,
-                    );
-                    let reply = client.complete(&version_prompt)?;
-                    let _ = context::append_context_log(
-                        config.benchmark_context_log.as_deref(),
-                        &format!("apdr-llm-version-retry({})", mapped),
-                        &reply,
-                    );
-                    parse_version_line(&reply, &versions)
-                })
-                .flatten();
-            picked.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
-        } else {
-            None
-        };
-        // If LLM echoed the import name back unchanged AND the package doesn't
-        // exist on PyPI, skip it — it's almost certainly a local project module.
-        let has_versions = pypi_client::compatible_versions(store, &mapped, python_version);
-        if has_versions.is_empty() && mapped == *import_name {
+        let mapped = mappings
+            .iter()
+            .find(|(imp, _)| imp == import_name)
+            .map(|(_, pkg)| pkg.clone())
+            .unwrap_or_else(|| import_name.clone());
+
+        let versions = pypi_client::compatible_versions(store, &mapped, python_version);
+        if versions.is_empty() && mapped == *import_name {
             notes.push(format!(
-                "Skipped LLM retry mapping {import_name} -> {mapped}: package not found on PyPI (likely a local module)."
+                "Skipped LLM retry mapping {import_name} -> {mapped}: not found on PyPI."
             ));
             still_unresolved.push(import_name.clone());
             continue;
         }
+        if has_failed(&failures, import_name, &mapped) {
+            notes.push(format!(
+                "Skipped LLM retry {import_name} -> {mapped}: failed in previous runs."
+            ));
+            still_unresolved.push(import_name.clone());
+            continue;
+        }
+
+        let version = if !versions.is_empty() {
+            let llm_v = pick_version_via_python(
+                config,
+                &mapped,
+                &versions,
+                python_version,
+                &benchmark_context,
+            );
+            llm_v.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
+        } else {
+            None
+        };
+
         let _ = store.save_import_mapping(import_name, &mapped, version.as_deref(), "llm-retry");
         resolved.push(ResolvedDependency {
             import_name: import_name.clone(),
@@ -394,6 +685,10 @@ pub fn resolve_with_context(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Single Package Hint
+// ---------------------------------------------------------------------------
+
 pub fn single_package_hint(
     import_name: &str,
     parse_result: &ParseResult,
@@ -404,99 +699,56 @@ pub fn single_package_hint(
     if looks_like_local_helper_import(parse_result, import_name) {
         return None;
     }
-    let client = LlmClient::new(
-        &config.llm_provider,
-        &config.llm_model,
-        &config.llm_base_url,
-    );
-    if !client.is_available() {
-        return None;
-    }
-    let context = rag::assemble_context(store, import_name);
+
+    let context = assemble_context_for_import(store, import_name);
     let benchmark_context =
         context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
             .unwrap_or_default();
-    let prompt = prompts::package_resolution_prompt(
-        &[import_name.to_string()],
-        python_version,
-        &context,
-        &benchmark_context,
+
+    let attr_usage: serde_json::Value = serde_json::json!(
+        parse_result.attribute_usage.iter().map(|(k, v)| {
+            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
+        }).collect::<std::collections::BTreeMap<_, _>>()
     );
-    let _ = persist_llm_trace(
+
+    let tier2_candidates = build_tier2_candidates(store, &[import_name.to_string()], python_version);
+
+    let mut request = build_base_request(config);
+    request["action"] = "single".into();
+    request["imports"] = serde_json::json!([import_name]);
+    request["python_version"] = python_version.into();
+    request["context"] = serde_json::json!(context);
+    request["benchmark_context"] = serde_json::Value::String(benchmark_context.clone());
+    request["attribute_usage"] = attr_usage;
+    request["tier2_candidates"] = tier2_candidates;
+
+    persist_trace(config, &format!("single-package-{import_name}"), &request, None);
+
+    let response = call_python(&request)?;
+    persist_trace(
         config,
         &format!("single-package-{import_name}"),
-        &prompt,
-        None,
-        &benchmark_context,
-        &context,
+        &request,
+        Some(&response),
     );
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-prompt",
-        &prompt,
-    );
-    let mapped = client
-        .complete(&prompt)
-        .and_then(|reply| {
-            let _ = context::append_context_log(
-                config.benchmark_context_log.as_deref(),
-                "apdr-llm-response",
-                &reply,
-            );
-            let _ = persist_llm_trace(
-                config,
-                &format!("single-package-{import_name}"),
-                &prompt,
-                Some(&reply),
-                &benchmark_context,
-                &context,
-            );
-            parse_import_mapping(&reply, import_name)
-        })
-        .unwrap_or_else(|| import_name.to_string());
+
+    let mapped = response
+        .get("mappings")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|m| m.get("package_name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(import_name)
+        .to_string();
+
     let versions = pypi_client::compatible_versions(store, &mapped, python_version);
     let version = if versions.is_empty() {
         None
     } else {
-        let prompt = prompts::version_inference_prompt(
-            &mapped,
-            &versions,
-            python_version,
-            &benchmark_context,
-        );
-        let _ = persist_llm_trace(
-            config,
-            &format!("single-version-{mapped}"),
-            &prompt,
-            None,
-            &benchmark_context,
-            &versions,
-        );
-        let _ = context::append_context_log(
-            config.benchmark_context_log.as_deref(),
-            "apdr-llm-prompt",
-            &prompt,
-        );
-        client
-            .complete(&prompt)
-            .and_then(|reply| {
-                let _ = context::append_context_log(
-                    config.benchmark_context_log.as_deref(),
-                    "apdr-llm-response",
-                    &reply,
-                );
-                let _ = persist_llm_trace(
-                    config,
-                    &format!("single-version-{mapped}"),
-                    &prompt,
-                    Some(&reply),
-                    &benchmark_context,
-                    &versions,
-                );
-                parse_version_line(&reply, &versions)
-            })
-            .or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
+        let llm_v = pick_version_via_python(config, &mapped, &versions, python_version, &benchmark_context);
+        llm_v.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
     };
+
     if parse_result.imports.iter().any(|item| item == import_name) || !mapped.is_empty() {
         Some((mapped, version))
     } else {
@@ -504,11 +756,10 @@ pub fn single_package_hint(
     }
 }
 
-/// LLM-powered recovery: given a failed build/runtime error log and the
-/// currently resolved packages, ask the LLM which package is wrong and what
-/// the correct PyPI name should be.
-///
-/// Returns `Some((wrong_package, correct_package, version))` on success.
+// ---------------------------------------------------------------------------
+// Recovery Package Hint
+// ---------------------------------------------------------------------------
+
 pub fn recovery_package_hint(
     resolved: &[ResolvedDependency],
     error_log: &str,
@@ -517,16 +768,8 @@ pub fn recovery_package_hint(
     config: &ResolveConfig,
     python_version: &str,
     error_type: &str,
+    previous_attempts: &[(String, String, String)],
 ) -> Option<(String, String, Option<String>)> {
-    let client = LlmClient::new(
-        &config.llm_provider,
-        &config.llm_model,
-        &config.llm_base_url,
-    );
-    if !client.is_available() {
-        return None;
-    }
-
     let resolved_desc: Vec<String> = resolved
         .iter()
         .map(|d| {
@@ -538,52 +781,48 @@ pub fn recovery_package_hint(
         })
         .collect();
 
-    let log_excerpt: String = error_log.lines().take(50).collect::<Vec<_>>().join("\n");
-    let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 24_000)
-            .unwrap_or_default();
+    let attempts_json: Vec<Vec<String>> = previous_attempts
+        .iter()
+        .map(|(a, b, c)| vec![a.clone(), b.clone(), c.clone()])
+        .collect();
 
-    let prompt = prompts::recovery_resolution_prompt(
-        &resolved_desc,
-        &log_excerpt,
-        snippet_source,
-        python_version,
-        error_type,
-    );
-    let no_supplemental: Vec<String> = Vec::new();
-    let _ = persist_llm_trace(
-        config,
-        "recovery-fix",
-        &prompt,
-        None,
-        &benchmark_context,
-        &no_supplemental,
-    );
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-prompt",
-        &prompt,
-    );
+    let mut request = build_base_request(config);
+    request["action"] = "recovery".into();
+    request["resolved_packages"] = serde_json::json!(resolved_desc);
+    request["error_log"] = error_log.into();
+    request["snippet_source"] = snippet_source.into();
+    request["python_version"] = python_version.into();
+    request["error_type"] = error_type.into();
+    request["previous_attempts"] = serde_json::json!(attempts_json);
 
-    let reply = client.complete(&prompt)?;
-    let _ = context::append_context_log(
-        config.benchmark_context_log.as_deref(),
-        "apdr-llm-response",
-        &reply,
-    );
-    let _ = persist_llm_trace(
-        config,
-        "recovery-fix",
-        &prompt,
-        Some(&reply),
-        &benchmark_context,
-        &no_supplemental,
-    );
+    persist_trace(config, "recovery-fix", &request, None);
 
-    // Parse: "wrong_package=correct_package" or "fix=NONE"
-    let (wrong_pkg, correct_pkg) = parse_recovery_response(&reply)?;
+    let response = call_python(&request)?;
+    persist_trace(config, "recovery-fix", &request, Some(&response));
 
-    // Verify the suggested package exists on PyPI.
+    let fix_possible = response
+        .get("fix_possible")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !fix_possible {
+        return None;
+    }
+
+    let wrong_pkg = response
+        .get("wrong_package")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let correct_pkg = response
+        .get("correct_package")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if wrong_pkg.is_empty() || correct_pkg.is_empty() || wrong_pkg == correct_pkg {
+        return None;
+    }
+
     let versions = pypi_client::compatible_versions(store, &correct_pkg, python_version);
     if versions.is_empty() {
         return None;
@@ -593,36 +832,109 @@ pub fn recovery_package_hint(
     Some((wrong_pkg, correct_pkg, version))
 }
 
-fn parse_recovery_response(reply: &str) -> Option<(String, String)> {
-    for line in reply.lines() {
-        let trimmed = line.trim();
-        if trimmed.eq_ignore_ascii_case("fix=NONE") {
-            return None;
-        }
-        if let Some((left, right)) = trimmed.split_once('=') {
-            let wrong = left.trim();
-            let correct = right.trim();
-            if !wrong.is_empty()
-                && !correct.is_empty()
-                && !wrong.eq_ignore_ascii_case("fix")
-                && wrong != correct
-            {
-                return Some((wrong.to_string(), correct.to_string()));
+// ---------------------------------------------------------------------------
+// Version selection via Python LLM
+// ---------------------------------------------------------------------------
+
+fn pick_version_via_python(
+    config: &ResolveConfig,
+    package_name: &str,
+    versions: &[String],
+    python_version: &str,
+    benchmark_context: &str,
+) -> Option<String> {
+    let mut request = build_base_request(config);
+    request["action"] = "version".into();
+    request["package_name"] = package_name.into();
+    request["versions"] = serde_json::json!(versions);
+    request["python_version"] = python_version.into();
+    request["benchmark_context"] = benchmark_context.into();
+
+    let response = call_python(&request)?;
+
+    let version = response
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if version.is_empty() || version.eq_ignore_ascii_case("NONE") {
+        return None;
+    }
+    if versions.iter().any(|v| v == &version) {
+        Some(version)
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tier2 candidate lookup for prompt injection
+// ---------------------------------------------------------------------------
+
+fn build_tier2_candidates(
+    store: &CacheStore,
+    imports: &[String],
+    _python_version: &str,
+) -> serde_json::Value {
+    let mut candidates: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for import_name in imports {
+        let mut cands = Vec::new();
+        let normalized = crate::cache::store::normalize(import_name);
+
+        // Source 1: Check known packages from pypi_index for close matches
+        for pkg_name in store.pypi_index.keys() {
+            let norm_pkg = crate::cache::store::normalize(pkg_name);
+            if norm_pkg == normalized {
+                continue; // Skip exact match (identity)
+            }
+            if norm_pkg.contains(normalized.as_str()) || normalized.contains(norm_pkg.as_str()) {
+                if !cands.contains(pkg_name) {
+                    cands.push(pkg_name.clone());
+                }
+            }
+            if cands.len() >= 10 {
+                break;
             }
         }
+
+        // Source 2 (#3): Query KGraph SQLite DB for candidate packages
+        // Finds packages whose name matches patterns like "python-{import}",
+        // "{import}-python", "py{import}", or LIKE %{import}%
+        if cands.len() < 10 {
+            let kgraph_path = store.cache_path.join("smtpip-kgraph.sqlite3");
+            let kgraph_cands =
+                super::kgraph_db::kgraph_candidate_packages(&kgraph_path, import_name, 10);
+            for kc in kgraph_cands {
+                if cands.len() >= 10 {
+                    break;
+                }
+                if !cands.iter().any(|c| c.eq_ignore_ascii_case(&kc)) {
+                    cands.push(kc);
+                }
+            }
+        }
+
+        if !cands.is_empty() {
+            candidates.insert(import_name.clone(), cands);
+        }
     }
-    None
+    serde_json::json!(candidates)
 }
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 pub fn fallback_notes(
     unresolved_imports: &[String],
-    parse_result: &ParseResult,
+    _parse_result: &ParseResult,
     llm_enabled: bool,
 ) -> Vec<String> {
     if unresolved_imports.is_empty() {
         return Vec::new();
     }
-
     let mut notes = Vec::new();
     if llm_enabled {
         notes.push(format!(
@@ -635,51 +947,36 @@ pub fn fallback_notes(
             unresolved_imports.len()
         ));
     }
-    notes.push(prompts::package_resolution_prompt(
-        unresolved_imports,
-        &parse_result.python_version_min,
-        &[],
-        "",
+    notes.push(format!(
+        "Unresolved imports: {}",
+        unresolved_imports.join(", ")
     ));
     notes
 }
 
-fn parse_import_mapping(response: &str, import_name: &str) -> Option<String> {
-    for line in response.lines() {
-        if let Some((left, right)) = line.split_once('=') {
-            if left.trim() == import_name {
-                let value = right.trim().to_string();
-                if !value.is_empty() {
-                    return Some(value);
-                }
-            }
-        }
-    }
-    None
-}
-
-fn parse_version_line(response: &str, versions: &[String]) -> Option<String> {
-    for line in response.lines() {
-        if let Some((left, right)) = line.split_once('=') {
-            if left.trim() == "version" {
-                let candidate = right.trim();
-                if candidate.eq_ignore_ascii_case("none") {
-                    return None;
-                }
-                if versions.iter().any(|version| version == candidate) {
-                    return Some(candidate.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
 fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str) -> bool {
     let normalized = crate::cache::store::normalize(import_name);
-    if normalized == "input-data" {
+    // Expanded local module list matching Python-side local_detector.py (#4)
+    if matches!(
+        normalized.as_str(),
+        "input-data" | "settings" | "config" | "conf" | "constants" | "urls" | "api" | "app" | "apps"
+        | "views" | "models" | "forms" | "admin" | "tests" | "manage" | "wsgi" | "asgi"
+        | "conftest" | "tasks" | "celery-tasks"
+        | "util" | "utils" | "helper" | "helpers" | "common" | "shared" | "base" | "core"
+        | "main" | "run" | "setup" | "version"
+        | "db" | "database" | "middleware" | "serializers" | "permissions" | "signals"
+        | "routers" | "schemas" | "exceptions" | "mixins" | "decorators"
+        | "context-processors" | "templatetags" | "management" | "fixtures" | "migrations"
+        | "factory" | "factories" | "mocks" | "stubs" | "testutils" | "test-helpers"
+        | "local-settings" | "production-settings" | "development-settings"
+        | "celeryconfig" | "gunicorn-config" | "uwsgi"
+        | "input" | "output" | "data" | "result" | "results"
+        | "solution" | "answer" | "submission" | "benchmark" | "train" | "test"
+        | "evaluate" | "predict" | "preprocess" | "postprocess"
+    ) {
         return true;
     }
+    // Also check the non-expanded generic helper heuristic
     let generic_helper = matches!(
         normalized.as_str(),
         "util" | "utils" | "helper" | "helpers" | "common" | "shared"
@@ -689,98 +986,4 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
             .import_paths
             .iter()
             .any(|path| crate::cache::store::normalize(path).starts_with(&format!("{normalized}-")))
-}
-
-fn parse_solvability_assessment(response: &str) -> Option<SolvabilityAssessment> {
-    let mut decision = String::new();
-    let mut confidence = None;
-    let mut reason = String::new();
-    let mut unsolvable_modules: Vec<String> = Vec::new();
-
-    for line in response.lines() {
-        if let Some((left, right)) = line.split_once('=') {
-            match left.trim() {
-                "decision" => decision = right.trim().to_lowercase(),
-                "confidence" => {
-                    confidence = right
-                        .trim()
-                        .parse::<f64>()
-                        .ok()
-                        .map(|value| value.clamp(0.0, 1.0))
-                }
-                "reason" => reason = right.trim().to_string(),
-                "unsolvable_modules" => {
-                    unsolvable_modules = right
-                        .trim()
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty() && s != "none")
-                        .collect();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    if decision.is_empty() {
-        let lowered = response.to_lowercase();
-        if lowered.contains("decision=skip") || lowered.contains(" skip ") {
-            decision = "skip".to_string();
-        } else if lowered.contains("decision=solve") || lowered.contains(" solve ") {
-            decision = "solve".to_string();
-        }
-    }
-    if decision != "solve" && decision != "skip" {
-        return None;
-    }
-    let confidence = confidence.unwrap_or(if decision == "skip" { 0.2 } else { 0.6 });
-    if reason.is_empty() {
-        reason = "LLM solvability assessment did not provide a reason.".to_string();
-    }
-
-    Some(SolvabilityAssessment {
-        decision,
-        confidence,
-        reason,
-        source: "llm-preflight".to_string(),
-        unsolvable_modules,
-    })
-}
-
-fn persist_llm_trace(
-    config: &ResolveConfig,
-    label: &str,
-    prompt: &str,
-    response: Option<&str>,
-    benchmark_context: &str,
-    supplemental_context: &[String],
-) -> std::io::Result<()> {
-    let trace_dir = context::create_llm_trace_dir(&config.output_dir, label)?;
-    let supplemental = if supplemental_context.is_empty() {
-        "- none".to_string()
-    } else {
-        supplemental_context.join("\n")
-    };
-    context::write_text(&trace_dir.join("prompt.txt"), prompt)?;
-    context::write_text(
-        &trace_dir.join("response.txt"),
-        response.unwrap_or("(response pending)"),
-    )?;
-    context::write_text(
-        &trace_dir.join("benchmark-context-tail.txt"),
-        if benchmark_context.trim().is_empty() {
-            "- none"
-        } else {
-            benchmark_context
-        },
-    )?;
-    context::write_text(&trace_dir.join("supplemental-context.txt"), &supplemental)?;
-    context::write_text(
-        &trace_dir.join("metadata.txt"),
-        &format!(
-            "provider: {}\nmodel: {}\nbase_url: {}\nlabel: {}\n",
-            config.llm_provider, config.llm_model, config.llm_base_url, label
-        ),
-    )?;
-    Ok(())
 }

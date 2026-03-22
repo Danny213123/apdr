@@ -829,6 +829,26 @@ pub fn recover_family_knowledge(
                 "Family-aware recovery reapplied the legacy TensorFlow/Keras stack. {note}"
             ));
         }
+
+        // Bundle re-application changed nothing — the pinned versions are
+        // unavailable for the target Python.  Strip ALL version pins from the
+        // legacy TF bundle so pip can resolve freely (e.g. TF 2.x on 3.8+).
+        let mut stripped = false;
+        for dep in resolved.iter_mut() {
+            if dep.strategy.starts_with("family:legacy-tensorflow") && dep.version.is_some() {
+                dep.version = None;
+                dep.strategy = "family:legacy-tensorflow-unpinned".to_string();
+                stripped = true;
+            }
+        }
+        if stripped {
+            return Some(
+                "Family-aware recovery unpinned legacy TensorFlow bundle versions \
+                 (pinned versions unavailable for target Python — letting pip resolve freely)."
+                    .to_string(),
+            );
+        }
+
         let bundle_python =
             preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
         return Some(format!(
@@ -862,9 +882,14 @@ pub fn protects_family_version(
     if uses_legacy_tensorflow_stack(parse_result, resolved) {
         let bundle_python =
             preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
+        // Only protect packages that have a concrete version pin in the bundle.
+        // For Python 3.8+, the bundle leaves versions empty (pip resolves
+        // freely), so there's nothing to protect.
         if legacy_tensorflow_bundle(&bundle_python)
             .iter()
-            .any(|(_, candidate, _)| normalize(candidate) == normalized)
+            .any(|(_, candidate, version)| {
+                normalize(candidate) == normalized && !version.is_empty()
+            })
         {
             return true;
         }
@@ -902,10 +927,12 @@ pub fn validation_candidate_versions(
 
     if uses_legacy_tensorflow_stack(parse_result, resolved) {
         let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
+        // Prefer 3.7 if available (TF 1.15.0 has cp37 wheels), then 2.7,
+        // then 3.8+ (will use unpinned TF 2.x).
         let preferred = if execute_snippet {
-            vec!["2.7", "3.7", "3.8"]
+            vec!["2.7", "3.7", "3.8", "3.9", "3.10"]
         } else {
-            vec!["3.7", "2.7", "3.8"]
+            vec!["3.7", "2.7", "3.8", "3.9", "3.10"]
         };
         let ordered = preferred
             .into_iter()
@@ -1049,15 +1076,26 @@ fn apply_legacy_tensorflow_bundle(
         if !already_resolved {
             continue;
         }
+        // Empty version means "let pip resolve freely" (Python 3.8+ path
+        // where TF 1.x has no wheels).
+        let version_opt = if version.is_empty() {
+            None
+        } else {
+            Some(*version)
+        };
         if pin_dependency(
             resolved,
             import_name,
             package_name,
-            Some(version),
+            version_opt,
             "family:legacy-tensorflow",
             0.96,
         ) {
-            changes.push(format!("{package_name}=={version}"));
+            if version.is_empty() {
+                changes.push(format!("{package_name} (unpinned)"));
+            } else {
+                changes.push(format!("{package_name}=={version}"));
+            }
         }
     }
 
@@ -1220,23 +1258,33 @@ fn preferred_legacy_tensorflow_python(
     python_range: usize,
     execute_snippet: bool,
 ) -> String {
+    // Check which Python versions are actually available (installed).
+    let base_candidates =
+        docker::parallel::candidate_versions(selected_python, python_range, None, None);
+
     if execute_snippet {
         if selected_python.starts_with("2.") {
             return "2.7".to_string();
         }
-        if selected_python.starts_with("3.7") {
+        // Only prefer 3.7 if it's actually available.
+        if base_candidates.iter().any(|v| v == "3.7") {
             return "3.7".to_string();
         }
-        return "3.7".to_string();
+        // Fall through to the general logic below.
     }
 
-    let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
-    if candidates.iter().any(|value| value == "3.7") {
+    // Prefer 3.7 (TF 1.15.0 has cp37 wheels) but only if available.
+    if base_candidates.iter().any(|v| v == "3.7") {
         "3.7".to_string()
-    } else if candidates.iter().any(|value| value == "2.7") {
+    } else if base_candidates.iter().any(|v| v == "2.7") {
         "2.7".to_string()
-    } else if candidates.iter().any(|value| value == "3.8") {
+    } else if base_candidates.iter().any(|v| v == "3.8") {
+        // 3.8+: bundle will use unpinned TF (TF 2.x)
         "3.8".to_string()
+    } else if base_candidates.iter().any(|v| v == "3.9") {
+        "3.9".to_string()
+    } else if base_candidates.iter().any(|v| v == "3.10") {
+        "3.10".to_string()
     } else {
         selected_python.to_string()
     }
@@ -1245,10 +1293,11 @@ fn preferred_legacy_tensorflow_python(
 fn legacy_tensorflow_candidate_versions(selected_python: &str, python_range: usize) -> Vec<String> {
     let mut candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
-    for forced in ["2.7", "3.7", "3.8"] {
-        if !candidates.iter().any(|item| item == forced) {
-            candidates.push(forced.to_string());
-        }
+    // Force 2.7 if not already present (TF 1.15.0 has cp27 wheels).
+    // Do NOT force 3.7: it's EOL and unavailable on ARM64 / Apple Silicon,
+    // so forcing it just wastes a validation attempt.
+    if !candidates.iter().any(|item| item == "2.7") {
+        candidates.push("2.7".to_string());
     }
     candidates
 }
@@ -1290,12 +1339,23 @@ fn legacy_tensorflow_bundle(
             ("numpy", "numpy", "1.16.6"),
             ("tensorflow", "tensorflow", "1.15.0"),
         ]
-    } else {
+    } else if bundle_python.starts_with("3.7") {
         &[
             ("gym", "gym", "0.17.3"),
             ("keras", "keras", "2.3.1"),
             ("numpy", "numpy", "1.16.6"),
             ("tensorflow", "tensorflow", "1.15.0"),
+        ]
+    } else {
+        // Python 3.8+: TF 1.15.0 has no wheels.  Leave versions empty so
+        // pip can resolve freely — the latest compatible TF 2.x, keras, etc.
+        // will be installed.  Empty-string version is treated as None by the
+        // caller (apply_legacy_tensorflow_bundle).
+        &[
+            ("gym", "gym", ""),
+            ("keras", "keras", ""),
+            ("numpy", "numpy", ""),
+            ("tensorflow", "tensorflow", ""),
         ]
     }
 }

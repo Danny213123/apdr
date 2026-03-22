@@ -1,6 +1,7 @@
 pub mod family_knowledge;
 pub mod kgraph_db;
 pub mod pre_solve;
+pub mod pubgrub_solver;
 pub mod pypi_client;
 pub mod tier1_cache;
 pub mod tier2_heuristic;
@@ -49,132 +50,89 @@ pub fn resolve_path(
     // Fast path: detect host-runtime / hardware dependencies from import names alone.
     // This avoids 250-375s of wasted tier1/2/3 + pre-solve work for cases that will
     // inevitably be skipped after resolution anyway.
-    if let Some((status, note)) = detect_skip_reason(&parse_result, &[], &[]) {
-        report.notes.push(note.clone());
-        let mut validation = skipped_validation_summary(
-            status,
-            &note,
-            &selected_python,
-            &config.output_dir,
-            config,
-            &render_requirements(&[]),
-        );
-        validation.solve_duration_ms = started.elapsed().as_millis();
-        report.unresolved = parse_result.imports.clone();
-        report.duration = started.elapsed();
-        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
-        write_state_artifacts(
-            &config.output_dir,
-            "resolved-final.txt",
-            &format_dependency_state(&[], &parse_result.imports),
-        )?;
-        return Ok(ResolveResult {
-            snippet_path: snippet_path.to_path_buf(),
-            python_version: selected_python.clone(),
-            parse_result,
-            solvability: None,
-            resolved: Vec::new(),
-            unresolved: report.unresolved.clone(),
-            requirements_txt: String::new(),
-            lockfile: Some(String::new()),
-            build_image_id: None,
-            validation,
-            resolution_report: report,
-        });
-    }
-
-    // Fast path: check if any import is known-unsolvable from prior LLM assessments.
-    // This avoids all resolution + validation work for cases already seen.
-    if let Some((hit_module, record)) = check_unsolvable_cache(&parse_result, &store) {
-        let reason = format!(
-            "Cached unsolvable module `{}` (confidence {:.2}, seen {} times): {}",
-            hit_module, record.confidence, record.times_seen, record.reason
-        );
-        report.notes.push(reason.clone());
-        let mut validation = skipped_validation_summary(
-            "skipped-unsolvable",
-            &reason,
-            &selected_python,
-            &config.output_dir,
-            config,
-            &render_requirements(&[]),
-        );
-        validation.solve_duration_ms = started.elapsed().as_millis();
-        report.unresolved = parse_result.imports.clone();
-        report.duration = started.elapsed();
-        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
-        write_state_artifacts(
-            &config.output_dir,
-            "resolved-final.txt",
-            &format_dependency_state(&[], &parse_result.imports),
-        )?;
-        // Increment the seen counter for the matched module
-        let _ = store.save_unsolvable_module(
-            &hit_module,
-            &record.category,
-            &record.reason,
-            record.confidence,
-        );
-        return Ok(ResolveResult {
-            snippet_path: snippet_path.to_path_buf(),
-            python_version: selected_python.clone(),
-            parse_result,
-            solvability: Some(SolvabilityAssessment {
-                decision: "skip".to_string(),
-                confidence: record.confidence,
-                reason: record.reason.clone(),
-                source: "cached-unsolvable".to_string(),
-                unsolvable_modules: vec![hit_module],
-            }),
-            resolved: Vec::new(),
-            unresolved: report.unresolved.clone(),
-            requirements_txt: String::new(),
-            lockfile: Some(String::new()),
-            build_image_id: None,
-            validation,
-            resolution_report: report,
-        });
-    }
-
-    // Fast path: reuse a previously validated solution for the exact same import set.
-    if config.validate {
-        let import_key = cache::store::import_set_key(&parse_result.imports);
-        if let Some(cached) = store.load_import_set_solution(&import_key) {
-            let note = format!(
-                "Import-set cache hit: reusing validated solution for {} imports",
-                parse_result.imports.len()
-            );
-            report.notes.push(note);
+    // In LLM-only mode, skip this check — let the LLM decide everything.
+    if !config.llm_only_mode {
+        if let Some((status, note)) = detect_skip_reason(&parse_result, &[], &[]) {
+            report.notes.push(note.clone());
             let mut validation = skipped_validation_summary(
-                "passed-import-set-cache",
-                "Reusing previously validated solution for identical import set",
-                &cached.python_version,
+                status,
+                &note,
+                &selected_python,
                 &config.output_dir,
                 config,
-                &cached.requirements_txt,
+                &render_requirements(&[]),
             );
-            validation.succeeded = true;
             validation.solve_duration_ms = started.elapsed().as_millis();
+            report.unresolved = parse_result.imports.clone();
             report.duration = started.elapsed();
-            write_state_artifacts(
-                &config.output_dir,
-                "requirements-final.txt",
-                &cached.requirements_txt,
-            )?;
+            write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
             write_state_artifacts(
                 &config.output_dir,
                 "resolved-final.txt",
-                &format_dependency_state(&cached.resolved, &[]),
+                &format_dependency_state(&[], &parse_result.imports),
             )?;
             return Ok(ResolveResult {
                 snippet_path: snippet_path.to_path_buf(),
-                python_version: cached.python_version.clone(),
+                python_version: selected_python.clone(),
                 parse_result,
                 solvability: None,
-                resolved: cached.resolved,
-                unresolved: Vec::new(),
-                requirements_txt: cached.requirements_txt.clone(),
-                lockfile: Some(cached.requirements_txt),
+                resolved: Vec::new(),
+                unresolved: report.unresolved.clone(),
+                requirements_txt: String::new(),
+                lockfile: Some(String::new()),
+                build_image_id: None,
+                validation,
+                resolution_report: report,
+            });
+        }
+
+        // Fast path: check if any import is known-unsolvable from prior LLM assessments.
+        // This avoids all resolution + validation work for cases already seen.
+        if let Some((hit_module, record)) = check_unsolvable_cache(&parse_result, &store) {
+            let reason = format!(
+                "Cached unsolvable module `{}` (confidence {:.2}, seen {} times): {}",
+                hit_module, record.confidence, record.times_seen, record.reason
+            );
+            report.notes.push(reason.clone());
+            let mut validation = skipped_validation_summary(
+                "skipped-unsolvable",
+                &reason,
+                &selected_python,
+                &config.output_dir,
+                config,
+                &render_requirements(&[]),
+            );
+            validation.solve_duration_ms = started.elapsed().as_millis();
+            report.unresolved = parse_result.imports.clone();
+            report.duration = started.elapsed();
+            write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
+            write_state_artifacts(
+                &config.output_dir,
+                "resolved-final.txt",
+                &format_dependency_state(&[], &parse_result.imports),
+            )?;
+            // Increment the seen counter for the matched module
+            let _ = store.save_unsolvable_module(
+                &hit_module,
+                &record.category,
+                &record.reason,
+                record.confidence,
+            );
+            return Ok(ResolveResult {
+                snippet_path: snippet_path.to_path_buf(),
+                python_version: selected_python.clone(),
+                parse_result,
+                solvability: Some(SolvabilityAssessment {
+                    decision: "skip".to_string(),
+                    confidence: record.confidence,
+                    reason: record.reason.clone(),
+                    source: "cached-unsolvable".to_string(),
+                    unsolvable_modules: vec![hit_module],
+                }),
+                resolved: Vec::new(),
+                unresolved: report.unresolved.clone(),
+                requirements_txt: String::new(),
+                lockfile: Some(String::new()),
                 build_image_id: None,
                 validation,
                 resolution_report: report,
@@ -183,23 +141,30 @@ pub fn resolve_path(
     }
 
     // Run tier1 (cache) + tier2 (heuristic) first — these are fast (~ms)
-    let mut stage1 = tier1_cache::resolve(&parse_result, &mut store, &selected_python);
-    report.cache_hits += stage1.cache_hits;
-    let mut stage2 = tier2_heuristic::resolve(
-        &stage1.unresolved,
-        &parse_result,
-        &mut store,
-        &selected_python,
-    );
-    report.heuristic_hits += stage2.heuristic_hits;
+    // In LLM-only mode, skip these tiers and go straight to tier3.
     let mut resolved = Vec::new();
-    resolved.append(&mut stage1.resolved);
-    resolved.append(&mut stage2.resolved);
-    let mut unresolved = stage2.unresolved;
+    let mut unresolved = if config.llm_only_mode {
+        report.notes.push("LLM-only mode: skipping tier1 cache and tier2 heuristics.".to_string());
+        parse_result.imports.clone()
+    } else {
+        let mut stage1 = tier1_cache::resolve(&parse_result, &mut store, &selected_python);
+        report.cache_hits += stage1.cache_hits;
+        let mut stage2 = tier2_heuristic::resolve(
+            &stage1.unresolved,
+            &parse_result,
+            &mut store,
+            &selected_python,
+        );
+        report.heuristic_hits += stage2.heuristic_hits;
+        resolved.append(&mut stage1.resolved);
+        resolved.append(&mut stage2.resolved);
+        stage2.unresolved
+    };
 
     // Only invoke the LLM solvability assessment when there are unresolved imports
     // (avoids 3-8s Ollama overhead when tier1/tier2 already resolved everything)
-    let solvability = if !unresolved.is_empty() && config.allow_llm {
+    // In LLM-only mode, skip solvability — we always attempt resolution.
+    let solvability = if !unresolved.is_empty() && config.allow_llm && !config.llm_only_mode {
         let assessment = tier3_llm::assess_solvability(&snippet_source, &parse_result, config);
         if let Some(ref a) = assessment {
             report.notes.push(format!(
@@ -208,27 +173,17 @@ pub fn resolve_path(
             ));
         }
         if should_skip_from_assessment(assessment.as_ref()) {
-            // Learn: persist unsolvable modules for future cache hits
+            // Learn: only persist when the LLM explicitly named specific
+            // unsolvable modules AND confidence is very high.  Never bulk-
+            // cache all imports — that poisons common names like django.
             if let Some(ref a) = assessment {
-                if !a.unsolvable_modules.is_empty() {
+                if !a.unsolvable_modules.is_empty() && a.confidence >= 0.95 {
                     for module in &a.unsolvable_modules {
                         let _ = store.save_unsolvable_module(
                             module,
                             "host-runtime",
                             &a.reason,
                             a.confidence,
-                        );
-                    }
-                } else {
-                    // LLM didn't list specific modules — store all imports
-                    // with halved confidence so a single false positive
-                    // doesn't permanently block a solvable import.
-                    for import in &parse_result.imports {
-                        let _ = store.save_unsolvable_module(
-                            import,
-                            "llm-inferred",
-                            &a.reason,
-                            a.confidence * 0.5,
                         );
                     }
                 }
@@ -288,6 +243,20 @@ pub fn resolve_path(
         unresolved = stage3.unresolved;
 
         assessment
+    } else if !unresolved.is_empty() && config.llm_only_mode {
+        // LLM-only mode: skip solvability assessment, go straight to LLM resolution
+        let mut stage3 = tier3_llm::resolve(
+            &unresolved,
+            &parse_result,
+            &mut store,
+            config,
+            &selected_python,
+        );
+        report.llm_calls += stage3.prompts_issued;
+        report.notes.append(&mut stage3.notes);
+        resolved.append(&mut stage3.resolved);
+        unresolved = stage3.unresolved;
+        None
     } else if !unresolved.is_empty() {
         report.notes.extend(tier3_llm::fallback_notes(
             &unresolved,
@@ -422,52 +391,110 @@ pub fn resolve_path(
                 config,
                 &requirements_txt,
             )
-        } else if can_skip_validation_by_confidence(&resolved, pre_solve.as_ref()) {
-            let note = format!(
-                "Skipped validation: all {} deps have confidence >= {:.2}, pre-solve satisfiable",
-                resolved.len(),
-                CONFIDENCE_SKIP_THRESHOLD
-            );
-            report.notes.push(note.clone());
-            let mut summary = skipped_validation_summary(
-                "passed-high-confidence",
-                &note,
-                &selected_python,
-                &config.output_dir,
-                config,
-                &requirements_txt,
-            );
-            summary.succeeded = true;
-            summary
-        } else if let Some(missing_pkg) = find_nonexistent_package(&resolved, &mut store, &selected_python) {
-            let note = format!(
-                "Package `{}` does not exist on PyPI. Skipping validation.",
-                missing_pkg
-            );
-            report.notes.push(note.clone());
-            ValidationSummary {
-                succeeded: false,
-                status: "package-does-not-exist".to_string(),
-                reason: Some(note),
-                validation_backend: config.validation_backend().to_string(),
-                selected_python_version: Some(selected_python.clone()),
-                lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
-                build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
-                ..Default::default()
+        } else if let Some((missing_pkg, _is_seed)) = find_nonexistent_package(&resolved, &mut store, &selected_python) {
+            // If LLM is available, retry imports whose resolved package does
+            // not exist on PyPI — regardless of whether they came from seed
+            // mappings, heuristics, or other sources.
+            if config.allow_llm {
+                let (new_resolved, new_unresolved) = retry_nonexistent_packages(
+                    &parse_result,
+                    &snippet_source,
+                    &resolved,
+                    &selected_python,
+                    &mut store,
+                    config,
+                    &mut report,
+                );
+                resolved = new_resolved;
+                unresolved.extend(new_unresolved);
+                requirements_txt = render_requirements(&resolved);
+                // Re-check after LLM retry
+                if let Some((still_missing, _)) = find_nonexistent_package(&resolved, &mut store, &selected_python) {
+                    let note = format!(
+                        "Package `{}` does not exist on PyPI. Skipping validation.",
+                        still_missing
+                    );
+                    report.notes.push(note.clone());
+                    ValidationSummary {
+                        succeeded: false,
+                        status: "package-does-not-exist".to_string(),
+                        reason: Some(note),
+                        validation_backend: config.validation_backend().to_string(),
+                        selected_python_version: Some(selected_python.clone()),
+                        lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                        build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                        ..Default::default()
+                    }
+                } else {
+                    // LLM fixed it — proceed to validation
+                    validate_with_retries(
+                        snippet_path,
+                        &snippet_source,
+                        &parse_result,
+                        &selected_python,
+                        &mut resolved,
+                        &mut requirements_txt,
+                        &mut store,
+                        config,
+                        &mut report,
+                    )?
+                }
+            } else {
+                let note = format!(
+                    "Package `{}` does not exist on PyPI. Skipping validation.",
+                    missing_pkg
+                );
+                report.notes.push(note.clone());
+                ValidationSummary {
+                    succeeded: false,
+                    status: "package-does-not-exist".to_string(),
+                    reason: Some(note),
+                    validation_backend: config.validation_backend().to_string(),
+                    selected_python_version: Some(selected_python.clone()),
+                    lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                    build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                    ..Default::default()
+                }
             }
         } else if let Some(pre_solve) = pre_solve
             .as_ref()
             .filter(|result| result.attempted && !result.satisfiable && result.hard_unsat)
+            // For Python 2.7: KGraph lacks python_requires metadata, so
+            // pre-solve reports false UNSATs for packages like django that
+            // DO have Python 2 compatible releases.  Let pip handle it.
+            .filter(|_| !selected_python.starts_with("2."))
         {
-            ValidationSummary {
-                succeeded: false,
-                status: "unsatisfiable".to_string(),
-                reason: pre_solve.reason.clone(),
-                validation_backend: config.validation_backend().to_string(),
-                selected_python_version: Some(pre_solve.selected_python_version.clone()),
-                lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
-                build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
-                ..Default::default()
+            // Pre-solve found a genuine version conflict for Python 3+.
+            // Still proceed to validation when the LLM agent is available
+            // — the Docker+LLM build-retry pipeline (PLLM approach) can
+            // sometimes recover cases the deterministic solver cannot.
+            if config.allow_llm {
+                report.notes.push(format!(
+                    "Pre-solve UNSAT but LLM agent available — proceeding to validation. {}",
+                    pre_solve.reason.as_deref().unwrap_or("")
+                ));
+                validate_with_retries(
+                    snippet_path,
+                    &snippet_source,
+                    &parse_result,
+                    &selected_python,
+                    &mut resolved,
+                    &mut requirements_txt,
+                    &mut store,
+                    config,
+                    &mut report,
+                )?
+            } else {
+                ValidationSummary {
+                    succeeded: false,
+                    status: "unsatisfiable".to_string(),
+                    reason: pre_solve.reason.clone(),
+                    validation_backend: config.validation_backend().to_string(),
+                    selected_python_version: Some(pre_solve.selected_python_version.clone()),
+                    lockfile_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                    build_cache_key: Some(lockfile_cache::key_for(&requirements_txt, &selected_python)),
+                    ..Default::default()
+                }
             }
         } else {
             validate_with_retries(
@@ -517,6 +544,8 @@ pub fn resolve_path(
     if config.validate && !validation.attempts.is_empty() {
         validation.validation_duration_ms = validation_started.elapsed().as_millis();
     }
+    // Count LangGraph agent invocations as LLM calls so the UI reflects them.
+    report.llm_calls += validation.agent_invocations;
 
     if validation.succeeded {
         let lockfile_key = lockfile_cache::key_for(&requirements_txt, &selected_python);
@@ -594,38 +623,18 @@ fn should_skip_from_assessment(assessment: Option<&crate::SolvabilityAssessment>
     assessment.decision == "skip" || assessment.confidence < 0.40
 }
 
-const CONFIDENCE_SKIP_THRESHOLD: f64 = 0.85;
-
-fn can_skip_validation_by_confidence(
-    resolved: &[ResolvedDependency],
-    pre_solve: Option<&pre_solve::PreSolveResult>,
-) -> bool {
-    if resolved.is_empty() {
-        return false;
-    }
-    let Some(ps) = pre_solve else { return false };
-    if !ps.satisfiable {
-        return false;
-    }
-    resolved
-        .iter()
-        .all(|dep| dep.confidence >= CONFIDENCE_SKIP_THRESHOLD)
-}
-
-/// Check if any low-confidence resolved package does not exist on PyPI.
-/// Only LLM-resolved (0.73) and recovery (0.65-0.78) packages are checked;
-/// seed/heuristic packages (confidence >= 0.85) are known to exist.
+/// Check if any resolved package does not exist on PyPI.
+/// Returns the first nonexistent package name and whether it came from a seed source.
 fn find_nonexistent_package(
     resolved: &[ResolvedDependency],
     store: &mut CacheStore,
     python_version: &str,
-) -> Option<String> {
+) -> Option<(String, bool)> {
     for dep in resolved {
-        if dep.confidence >= CONFIDENCE_SKIP_THRESHOLD {
-            continue;
-        }
         if !pypi_client::package_exists(store, &dep.package_name, python_version) {
-            return Some(dep.package_name.clone());
+            let is_seed = dep.strategy.starts_with("cache:seed")
+                || dep.strategy.starts_with("cache:discrepancy");
+            return Some((dep.package_name.clone(), is_seed));
         }
     }
     None
@@ -676,33 +685,46 @@ fn validate_with_retries(
     let mut seen_requirements = BTreeSet::new();
     let mut attempted_versions: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut pending_pattern_learning: Option<(String, String, String, String)> = None;
+    let mut llm_recovery_history: Vec<(String, String, String)> = Vec::new();
+    let mut seed_llm_fallback_attempted = false;
+    let mut consecutive_llm_failures: usize = 0;
+
+    // Overall wall-time budget for the entire retry loop equals validation_timeout.
+    // Each validate_requirements call gets the *remaining* time as its budget.
+    let retry_started = std::time::Instant::now();
+    let total_retry_budget = config.validation_timeout;
+
+    // Cache the benchmark context read once instead of re-reading 48KB per iteration.
+    let cached_benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        48_000,
+    )
+    .ok();
+
+    // Buffered iteration snapshots: accumulate writes and flush at end of each iteration.
+    // This reduces per-iteration I/O from 8-12 writes to 1 batched write.
+    let mut iteration_snapshots: Vec<(usize, String, String)> = Vec::new();
 
     for attempt_index in 0..=config.max_retries {
+        // Check overall wall-time budget before starting another retry iteration
+        let elapsed = retry_started.elapsed();
+        if elapsed >= total_retry_budget {
+            report.notes.push(format!(
+                "Stopped retrying: overall budget exhausted ({:.0}s >= {:.0}s).",
+                elapsed.as_secs_f64(),
+                total_retry_budget.as_secs_f64(),
+            ));
+            break;
+        }
         *requirements_txt = render_requirements(resolved);
         let lockfile_key = lockfile_cache::key_for(requirements_txt, selected_python);
         validation.lockfile_key = Some(lockfile_key.clone());
         validation.build_cache_key = Some(lockfile_key.clone());
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "requirements-before.txt",
-            requirements_txt,
-        )?;
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "resolved-before.txt",
-            &format_dependency_state(resolved, &[]),
-        )?;
-        if let Ok(tail) =
-            context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
-        {
-            write_iteration_snapshot(
-                &config.output_dir,
-                attempt_index + 1,
-                "benchmark-context-before.txt",
-                &tail,
-            )?;
+        let iter_num = attempt_index + 1;
+        iteration_snapshots.push((iter_num, "requirements-before.txt".to_string(), requirements_txt.clone()));
+        iteration_snapshots.push((iter_num, "resolved-before.txt".to_string(), format_dependency_state(resolved, &[])));
+        if let Some(ref ctx) = cached_benchmark_context {
+            iteration_snapshots.push((iter_num, "benchmark-context-before.txt".to_string(), ctx.clone()));
         }
 
         if !seen_requirements.insert(requirements_txt.clone()) {
@@ -731,20 +753,19 @@ fn validate_with_retries(
         } else {
             vec![selected_python.to_string()]
         };
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "candidate-versions.txt",
-            &versions.join("\n"),
-        )?;
+        iteration_snapshots.push((iter_num, "candidate-versions.txt".to_string(), versions.join("\n")));
 
+        // Give this validation call only the remaining budget
+        let remaining = total_retry_budget.saturating_sub(retry_started.elapsed());
+        let mut scoped_config = config.clone();
+        scoped_config.validation_timeout = remaining;
         let attempt_result = docker::builder::validate_requirements(
             snippet_path,
             requirements_txt,
             &parse_result.imports,
             &versions,
             validation.attempts.len(),
-            config,
+            &scoped_config,
             store,
         )?;
         report.env_builds += attempt_result.attempts.len();
@@ -784,31 +805,87 @@ fn validate_with_retries(
             return Ok(validation);
         }
 
-        let last_log = validation
+        // Prefer the log from the first runtime-failed attempt in this
+        // iteration (most preferred Python version that actually ran the smoke
+        // test) over the absolute last attempt, which may be from Python 2.7
+        // with an irrelevant TypeError/SyntaxError.
+        let last_log = attempt_result
             .attempts
-            .last()
-            .map(|attempt| attempt.log_excerpt.clone())
+            .iter()
+            .find(|a| a.status == "runtime-failed")
+            .or_else(|| attempt_result.attempts.last())
+            .map(|a| a.log_excerpt.clone())
             .unwrap_or_default();
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "last-log.txt",
-            &last_log,
-        )?;
+        iteration_snapshots.push((iter_num, "last-log.txt".to_string(), last_log.clone()));
         if last_log.is_empty() {
+            // No error output — try LLM recovery with a synthetic description
+            // before giving up, so every failing case gets at least one LLM attempt.
+            if config.allow_llm && consecutive_llm_failures < 3 {
+                let synthetic_log = "Validation failed with no error output. The environment may have failed to install or the smoke test produced no stderr/stdout.";
+                report.llm_calls += 1;
+                if let Some((wrong_pkg, correct_pkg, version)) =
+                    tier3_llm::recovery_package_hint(
+                        resolved,
+                        synthetic_log,
+                        snippet_source,
+                        store,
+                        config,
+                        selected_python,
+                        "Unknown",
+                        &llm_recovery_history,
+                    )
+                {
+                    let norm_wrong = wrong_pkg.to_ascii_lowercase().replace('_', "-");
+                    if let Some(dep) = resolved.iter_mut().find(|d| {
+                        d.package_name.to_ascii_lowercase().replace('_', "-") == norm_wrong
+                    }) {
+                        let old_pkg = dep.package_name.clone();
+                        let import_name = dep.import_name.clone();
+                        dep.package_name = correct_pkg.clone();
+                        dep.version = version.clone();
+                        dep.strategy = "recovery:llm-fix".to_string();
+                        dep.confidence = 0.65;
+                        llm_recovery_history.push((
+                            old_pkg.clone(),
+                            correct_pkg.clone(),
+                            "retrying".to_string(),
+                        ));
+                        let _ = store.save_import_mapping(
+                            &import_name,
+                            &correct_pkg,
+                            version.as_deref(),
+                            "recovery:llm-fix",
+                        );
+                        let note = format!(
+                            "LLM recovery (empty log): replaced `{old_pkg}` with `{correct_pkg}`."
+                        );
+                        report.retries += 1;
+                        report.notes.push(note.clone());
+                        validation.iteration_history.push(note.clone());
+                        if let Some(last_attempt) = validation.attempts.last_mut() {
+                            last_attempt.fix_applied = Some(note);
+                        }
+                        iteration_snapshots.push((iter_num, "recovery.txt".to_string(), report.notes.last().cloned().unwrap_or_default()));
+                        iteration_snapshots.push((iter_num, "requirements-after-recovery.txt".to_string(), render_requirements(resolved)));
+                        consecutive_llm_failures = 0;
+                        continue;
+                    }
+                }
+            }
             break;
         }
 
         let classified = classifier::classify_log(&last_log, store);
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "classifier.txt",
-            &format_classifier(&classified),
-        )?;
-        if let Some(last_attempt) = validation.attempts.last_mut() {
-            last_attempt.error_type = Some(classified.error_type.clone());
-            last_attempt.conflict_class = Some(classified.conflict_class.clone());
+        iteration_snapshots.push((iter_num, "classifier.txt".to_string(), format_classifier(&classified)));
+        // Classify ALL attempts from this iteration so the resolution report
+        // shows per-attempt error types instead of "--" for earlier versions.
+        let iteration_start = validation.attempts.len().saturating_sub(attempt_result.attempts.len());
+        for attempt in &mut validation.attempts[iteration_start..] {
+            if attempt.error_type.is_none() && !attempt.log_excerpt.is_empty() {
+                let c = classifier::classify_log(&attempt.log_excerpt, store);
+                attempt.error_type = Some(c.error_type);
+                attempt.conflict_class = Some(c.conflict_class);
+            }
         }
         *report
             .error_types
@@ -841,25 +918,38 @@ fn validate_with_retries(
             if let Some(last_attempt) = validation.attempts.last_mut() {
                 last_attempt.fix_applied = Some(note);
             }
-            write_iteration_snapshot(
-                &config.output_dir,
-                attempt_index + 1,
-                "recovery.txt",
-                report.notes.last().map(String::as_str).unwrap_or(""),
-            )?;
-            write_iteration_snapshot(
-                &config.output_dir,
-                attempt_index + 1,
-                "requirements-after-recovery.txt",
-                &render_requirements(resolved),
-            )?;
+            iteration_snapshots.push((iter_num, "recovery.txt".to_string(), report.notes.last().cloned().unwrap_or_default()));
+            iteration_snapshots.push((iter_num, "requirements-after-recovery.txt".to_string(), render_requirements(resolved)));
+            consecutive_llm_failures = 0;
             continue;
+        }
+
+        // Check for system/platform deps BEFORE spending time on LLM recovery.
+        // These are unfixable and should break immediately.
+        if let Some(note) = environment_specific_note(&classified, &last_log, parse_result) {
+            report.notes.push(note.clone());
+            validation.iteration_history.push(note.clone());
+            validation.status = "skipped-host-runtime".to_string();
+            validation.reason = Some(note.clone());
+            if let Some(last_attempt) = validation.attempts.last_mut() {
+                last_attempt.fix_applied = Some(note.clone());
+            }
+            iteration_snapshots.push((iter_num, "recovery.txt".to_string(), note));
+            break;
+        }
+
+        // Update outcome for the most recent LLM recovery attempt.
+        if let Some(last) = llm_recovery_history.last_mut() {
+            if last.2 == "retrying" {
+                last.2 = format!("failed: {}", classified.error_type);
+            }
         }
 
         // LLM-powered recovery as last resort when built-in recovery fails.
         // Ask the LLM which resolved package is wrong and what the correct
-        // PyPI name should be.
-        if config.allow_llm {
+        // PyPI name should be. Stop after 3 consecutive LLM failures.
+        if config.allow_llm && consecutive_llm_failures < 3 {
+            report.llm_calls += 1;
             if let Some((wrong_pkg, correct_pkg, version)) =
                 tier3_llm::recovery_package_hint(
                     resolved,
@@ -869,6 +959,7 @@ fn validate_with_retries(
                     config,
                     selected_python,
                     &classified.error_type,
+                    &llm_recovery_history,
                 )
             {
                 let norm_wrong = wrong_pkg.to_ascii_lowercase().replace('_', "-");
@@ -881,6 +972,11 @@ fn validate_with_retries(
                     dep.version = version.clone();
                     dep.strategy = "recovery:llm-fix".to_string();
                     dep.confidence = 0.65;
+                    llm_recovery_history.push((
+                        old_pkg.clone(),
+                        correct_pkg.clone(),
+                        "retrying".to_string(),
+                    ));
                     let _ = store.save_import_mapping(
                         &import_name,
                         &correct_pkg,
@@ -903,46 +999,121 @@ fn validate_with_retries(
                     if let Some(last_attempt) = validation.attempts.last_mut() {
                         last_attempt.fix_applied = Some(note);
                     }
-                    write_iteration_snapshot(
-                        &config.output_dir,
-                        attempt_index + 1,
-                        "recovery.txt",
-                        report.notes.last().map(String::as_str).unwrap_or(""),
-                    )?;
-                    write_iteration_snapshot(
-                        &config.output_dir,
-                        attempt_index + 1,
-                        "requirements-after-recovery.txt",
-                        &render_requirements(resolved),
-                    )?;
+                    iteration_snapshots.push((iter_num, "recovery.txt".to_string(), report.notes.last().cloned().unwrap_or_default()));
+                    iteration_snapshots.push((iter_num, "requirements-after-recovery.txt".to_string(), render_requirements(resolved)));
+                    consecutive_llm_failures = 0;
+                    continue;
+                }
+            }
+            consecutive_llm_failures += 1;
+        }
+
+        // Seed-aware LLM fallback: when all recovery fails and there are
+        // seed-sourced packages, re-resolve those imports via LLM.
+        if !seed_llm_fallback_attempted && config.allow_llm {
+            let seed_deps: Vec<(String, String)> = resolved
+                .iter()
+                .filter(|d| {
+                    d.strategy.starts_with("cache:seed")
+                        || d.strategy.starts_with("cache:discrepancy")
+                })
+                .map(|d| (d.import_name.clone(), d.package_name.clone()))
+                .collect();
+            if !seed_deps.is_empty() {
+                seed_llm_fallback_attempted = true;
+                let imports_to_retry: Vec<String> =
+                    seed_deps.iter().map(|(imp, _)| imp.clone()).collect();
+                let bad_packages: Vec<String> =
+                    seed_deps.iter().map(|(_, pkg)| pkg.clone()).collect();
+                let error_excerpt = extract_key_error_lines(&last_log);
+                report.notes.push(format!(
+                    "Seed-resolved packages [{}] may be wrong. Retrying {} import(s) with LLM.",
+                    bad_packages.join(", "),
+                    imports_to_retry.len()
+                ));
+                report.llm_calls += 1;
+                let llm_result = tier3_llm::resolve_with_context(
+                    &imports_to_retry,
+                    snippet_source,
+                    parse_result,
+                    store,
+                    config,
+                    selected_python,
+                    Some(format!(
+                        "Previous resolution from seed data failed validation with {} error. Error: {}. \
+                         The following seed mappings may be wrong: {}. \
+                         Please suggest the correct PyPI package names for these imports.",
+                        classified.error_type,
+                        if error_excerpt.is_empty() { "unknown" } else { &error_excerpt },
+                        seed_deps
+                            .iter()
+                            .map(|(imp, pkg)| format!("{} → {}", imp, pkg))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                );
+                report.llm_calls += llm_result.prompts_issued;
+                // Replace seed-sourced deps with LLM results
+                let mut changed = false;
+                for llm_dep in &llm_result.resolved {
+                    if let Some(existing) = resolved.iter_mut().find(|d| {
+                        d.import_name == llm_dep.import_name
+                            && (d.strategy.starts_with("cache:seed")
+                                || d.strategy.starts_with("cache:discrepancy"))
+                    }) {
+                        if existing.package_name != llm_dep.package_name {
+                            let old_pkg = existing.package_name.clone();
+                            existing.package_name = llm_dep.package_name.clone();
+                            existing.version = llm_dep.version.clone();
+                            existing.strategy = "seed-llm-fallback".to_string();
+                            existing.confidence = 0.70;
+                            let _ = store.save_import_mapping(
+                                &existing.import_name,
+                                &llm_dep.package_name,
+                                llm_dep.version.as_deref(),
+                                "seed-llm-fallback",
+                            );
+                            let note = format!(
+                                "Seed LLM fallback: replaced `{}` with `{}` for import `{}`.",
+                                old_pkg, llm_dep.package_name, llm_dep.import_name
+                            );
+                            report.retries += 1;
+                            report.notes.push(note.clone());
+                            validation.iteration_history.push(note.clone());
+                            changed = true;
+                        }
+                    }
+                }
+                if changed {
+                    *requirements_txt = render_requirements(resolved);
+                    iteration_snapshots.push((iter_num, "recovery.txt".to_string(), "seed-llm-fallback applied".to_string()));
+                    iteration_snapshots.push((iter_num, "requirements-after-recovery.txt".to_string(), render_requirements(resolved)));
                     continue;
                 }
             }
         }
 
-        if let Some(note) = environment_specific_note(&classified, &last_log, parse_result) {
-            report.notes.push(note.clone());
-            validation.iteration_history.push(note.clone());
-            validation.status = "skipped-host-runtime".to_string();
-            validation.reason = Some(note.clone());
-            if let Some(last_attempt) = validation.attempts.last_mut() {
-                last_attempt.fix_applied = Some(note.clone());
-            }
-            write_iteration_snapshot(&config.output_dir, attempt_index + 1, "recovery.txt", &note)?;
-            break;
+        // Include key error line(s) so the user can see what went wrong
+        // without having to dig into .apdr-debug/iterations/ logs.
+        let error_excerpt = extract_key_error_lines(&last_log);
+        if error_excerpt.is_empty() {
+            report.notes.push(format!(
+                "No automatic recovery fix found for {}.",
+                classified.error_type
+            ));
+        } else {
+            report.notes.push(format!(
+                "No automatic recovery fix found for {}. Error: {}",
+                classified.error_type, error_excerpt
+            ));
         }
-
-        report.notes.push(format!(
-            "No automatic recovery fix found for {}.",
-            classified.error_type
-        ));
-        write_iteration_snapshot(
-            &config.output_dir,
-            attempt_index + 1,
-            "recovery.txt",
-            report.notes.last().map(String::as_str).unwrap_or(""),
-        )?;
+        iteration_snapshots.push((iter_num, "recovery.txt".to_string(), report.notes.last().cloned().unwrap_or_default()));
         break;
+    }
+
+    // Flush all buffered iteration snapshots to disk in one batch.
+    for (iter_num, filename, content) in &iteration_snapshots {
+        let _ = write_iteration_snapshot(&config.output_dir, *iter_num, filename, content);
     }
 
     if validation.status.is_empty() {
@@ -980,7 +1151,49 @@ fn apply_recovery_fix(
     }
 
     match classified.error_type.as_str() {
-        "VersionNotFound" | "DependencyConflict" | "InvalidVersion" | "NonZeroCode" => {
+        "DependencyConflict" => {
+            // For dependency conflicts, skip version sampling and go straight
+            // to constraint relaxation.  pip's resolver is better at finding
+            // compatible version sets than our version sampler, which wastes
+            // retries trying individual versions that still conflict.
+            let (package_name, _current_version) = extract_package_and_version(log)?;
+            if family_knowledge::protects_family_version(
+                parse_result,
+                resolved,
+                python_version,
+                config.python_version_range,
+                config.execute_snippet,
+                &package_name,
+            ) {
+                if let Some(note) = family_knowledge::recover_family_knowledge(
+                    parse_result,
+                    resolved,
+                    python_version,
+                    config.python_version_range,
+                    config.execute_snippet,
+                    log,
+                ) {
+                    return Some(note);
+                }
+                return Some(format!(
+                    "Kept family-managed package `{package_name}` pinned after DependencyConflict to avoid breaking a curated compatibility bundle.",
+                ));
+            }
+            if let Some(dep) = resolved.iter_mut().find(|d| {
+                d.package_name.eq_ignore_ascii_case(&package_name)
+            }) {
+                if dep.version.is_some() {
+                    dep.version = None;
+                    dep.strategy = "recovery:constraint-relaxation".to_string();
+                    dep.confidence = 0.68;
+                    return Some(format!(
+                        "Stripped version pin from {package_name} after DependencyConflict — letting pip resolve freely."
+                    ));
+                }
+            }
+            None
+        }
+        "VersionNotFound" | "InvalidVersion" | "NonZeroCode" => {
             let (package_name, current_version) = extract_package_and_version(log)?;
             if family_knowledge::protects_family_version(
                 parse_result,
@@ -1016,28 +1229,27 @@ fn apply_recovery_fix(
                 }
             }
             if known_versions.is_empty() {
-                // Package has no versions at all — cache as unsolvable to
-                // prevent future cases from retrying the same ghost package.
-                let _ = store.save_unsolvable_module(
-                    &package_name,
-                    "non-existent-package",
-                    &format!("Package `{package_name}` has no versions on PyPI"),
-                    0.90,
-                );
+                // Package has no versions — skip recovery for this attempt but
+                // do NOT cache as unsolvable.  Empty version lists can happen
+                // transiently (network failures, stale cache, version "0"
+                // filtering) and permanently blocking a real package like
+                // django is far worse than retrying a ghost package.
                 return None;
             }
             let previous = attempted_versions.entry(package_name.clone()).or_default();
             if let Some(current) = current_version.clone() {
                 previous.push(current);
             }
-            let next_version =
-                version_sampler::equally_distanced_sample(&known_versions, previous)?;
-            previous.push(next_version.clone());
-            if update_package_version(resolved, &package_name, Some(next_version.clone())) {
-                return Some(format!(
-                    "Adjusted {package_name} to {next_version} after {}.",
-                    classified.error_type
-                ));
+            if let Some(next_version) =
+                version_sampler::equally_distanced_sample(&known_versions, previous)
+            {
+                previous.push(next_version.clone());
+                if update_package_version(resolved, &package_name, Some(next_version.clone())) {
+                    return Some(format!(
+                        "Adjusted {package_name} to {next_version} after {}.",
+                        classified.error_type
+                    ));
+                }
             }
             None
         }
@@ -1266,9 +1478,42 @@ fn apply_recovery_fix(
             None
         }
         "SystemDependency" | "BuildFailure" => {
-            // System dependencies (missing C libs, build tools) and wheel build
-            // failures can't be fixed by pip — let environment_specific_note()
-            // or the generic fallback handle these after we return None.
+            // Try swapping packages that have pure-Python or headless alternatives
+            // before giving up on system-dep build failures.
+            if let Some(note) = try_build_failure_alternatives(resolved, log, store, python_version)
+            {
+                return Some(note);
+            }
+            // Try downgrading the failing package — older versions may have
+            // pre-built wheels or fewer native dependencies.
+            if let Some((package_name, current_version)) = extract_package_and_version(log) {
+                let mut known_versions =
+                    pypi_client::compatible_versions(store, &package_name, python_version);
+                if python_version.starts_with("2.") {
+                    if let Some(ceiling) = last_python2_version(&package_name) {
+                        let constraint = format!("<={ceiling}");
+                        known_versions.retain(|v| pypi_client::version_satisfies(v, &constraint));
+                    }
+                }
+                if !known_versions.is_empty() {
+                    let previous = attempted_versions.entry(package_name.clone()).or_default();
+                    if let Some(current) = current_version {
+                        previous.push(current);
+                    }
+                    if let Some(next_version) =
+                        version_sampler::equally_distanced_sample(&known_versions, previous)
+                    {
+                        previous.push(next_version.clone());
+                        if update_package_version(resolved, &package_name, Some(next_version.clone()))
+                        {
+                            return Some(format!(
+                                "Downgraded {package_name} to {next_version} after {} (may have pre-built wheel).",
+                                classified.error_type
+                            ));
+                        }
+                    }
+                }
+            }
             None
         }
         "SyntaxError" => {
@@ -1316,6 +1561,32 @@ fn apply_recovery_fix(
             Some("Validation exhausted adjacent Python versions after SyntaxError.".to_string())
         }
         _ => {
+            // Handle deprecated setuptools features (use_2to3) by stripping
+            // the version pin.  Old package versions (e.g. plac==0.9.2) use
+            // use_2to3 which was removed in setuptools 58+.  Newer versions
+            // of the same package typically don't use it.
+            let lowercase = log.to_ascii_lowercase();
+            if lowercase.contains("use_2to3 is invalid")
+                || lowercase.contains("use_2to3 is not supported")
+            {
+                if let Some(pkg) = extract_setup_error_package(log) {
+                    if let Some(dep) = resolved.iter_mut().find(|d| {
+                        d.package_name.eq_ignore_ascii_case(&pkg)
+                    }) {
+                        if dep.version.is_some() {
+                            let old_version = dep.version.clone().unwrap_or_default();
+                            dep.version = None;
+                            dep.strategy = "recovery:deprecated-setup".to_string();
+                            dep.confidence = 0.70;
+                            return Some(format!(
+                                "Stripped version pin from {pkg}=={old_version} after use_2to3 build failure — \
+                                 newer versions use modern setuptools."
+                            ));
+                        }
+                    }
+                }
+            }
+
             // Generic fallback: try to extract a missing dependency from the
             // build/runtime log even when the error type is Unknown or
             // unhandled.  This covers setup.py errors like
@@ -1419,8 +1690,18 @@ fn render_requirements(resolved: &[ResolvedDependency]) -> String {
 }
 
 fn dedupe_dependencies(resolved: &mut Vec<ResolvedDependency>) {
+    // Normalize with lowercase + hyphen-to-underscore so that "Django" and
+    // "django==5.0.8", or "Pillow" and "pillow", collapse to a single entry.
+    // When there are duplicates, keep the first occurrence (which typically
+    // has a version pin from seed/cache).
     let mut seen = BTreeSet::new();
-    resolved.retain(|dependency| seen.insert(dependency.package_name.clone()));
+    resolved.retain(|dependency| {
+        let key = dependency
+            .package_name
+            .to_lowercase()
+            .replace('-', "_");
+        seen.insert(key)
+    });
 }
 
 fn update_package_version(
@@ -1460,6 +1741,64 @@ fn ensure_dependency(
         confidence: 0.69,
     });
     true
+}
+
+/// When a package fails to build due to missing system headers/libraries, try
+/// swapping it for a pure-Python or headless alternative that doesn't need them.
+fn try_build_failure_alternatives(
+    resolved: &mut Vec<ResolvedDependency>,
+    log: &str,
+    store: &mut CacheStore,
+    python_version: &str,
+) -> Option<String> {
+    // Map: (failing_package_normalized, alternative_package, reason)
+    const ALTERNATIVES: &[(&str, &str, &str)] = &[
+        ("opencv-python", "opencv-python-headless", "headless alternative (no GUI/GTK deps)"),
+        ("opencv-contrib-python", "opencv-contrib-python-headless", "headless alternative (no GUI/GTK deps)"),
+        ("mysqlclient", "PyMySQL", "pure-Python MySQL driver (no mysql-dev headers)"),
+        ("mysql-python", "PyMySQL", "pure-Python MySQL driver (no mysql-dev headers)"),
+        ("psycopg2", "psycopg2-binary", "pre-built binary (no libpq-dev headers)"),
+        ("lxml", "lxml", ""),  // placeholder — lxml wheels usually work; skip
+        ("pillow", "Pillow", ""),  // already the right name; skip
+    ];
+
+    let lower = log.to_lowercase();
+    for dep in resolved.iter_mut() {
+        let norm = dep.package_name.to_ascii_lowercase().replace('_', "-");
+        for &(failing, alt, reason) in ALTERNATIVES {
+            if norm == failing.to_ascii_lowercase().replace('_', "-")
+                && !reason.is_empty()
+                && (lower.contains(&format!("failed building wheel for {}", failing.to_lowercase()))
+                    || lower.contains(&format!("error: command 'gcc'"))
+                    || lower.contains("no matching distribution")
+                    || lower.contains("could not build wheels")
+                    || lower.contains("subprocess-exited-with-error")
+                    || lower.contains("command errored out with exit status"))
+            {
+                // Only swap if the alternative exists on PyPI for this Python version
+                let alt_versions = pypi_client::compatible_versions(store, alt, python_version);
+                if alt_versions.is_empty() {
+                    continue;
+                }
+                let version = version_sampler::equally_distanced_sample(&alt_versions, &[]);
+                let old = dep.package_name.clone();
+                dep.package_name = alt.to_string();
+                dep.version = version;
+                dep.strategy = "recovery:build-alt".to_string();
+                dep.confidence = 0.78;
+                let _ = store.save_import_mapping(
+                    &dep.import_name,
+                    alt,
+                    dep.version.as_deref(),
+                    "recovery:build-alt",
+                );
+                return Some(format!(
+                    "Replaced `{old}` with `{alt}` ({reason}) after build failure."
+                ));
+            }
+        }
+    }
+    None
 }
 
 fn upsert_dependency(
@@ -1617,6 +1956,77 @@ fn extract_package_and_version(log: &str) -> Option<(String, Option<String>)> {
     None
 }
 
+/// Extract the package name from "error in {package} setup command" log lines.
+/// e.g. "error in plac setup command: use_2to3 is invalid." → Some("plac")
+fn extract_setup_error_package(log: &str) -> Option<String> {
+    for line in log.lines() {
+        let lower = line.to_ascii_lowercase();
+        if let Some(idx) = lower.find("error in ") {
+            let after = &line[idx + "error in ".len()..];
+            if let Some(pkg_end) = after.find(" setup command") {
+                let pkg = after[..pkg_end].trim();
+                if !pkg.is_empty() && pkg.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+                    return Some(pkg.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract the most informative error line(s) from a build/runtime log.
+/// Returns a compact string (≤200 chars) suitable for embedding in the
+/// resolution-report "notes" section.
+fn extract_key_error_lines(log: &str) -> String {
+    let markers = [
+        "ModuleNotFoundError:",
+        "ImportError:",
+        "AttributeError:",
+        "TypeError:",
+        "SyntaxError:",
+        "RuntimeError:",
+        "OSError:",
+        "FileNotFoundError:",
+        "Double requirement given:",
+        "ERROR: Cannot install",
+        "ERROR: Could not find",
+        "No matching distribution found",
+        "error: subprocess-exited-with-error",
+        "failed building wheel",
+        "pkg-config",
+        "fatal error:",
+    ];
+    for line in log.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for marker in &markers {
+            if trimmed.contains(marker) {
+                let excerpt = if trimmed.len() > 200 {
+                    format!("{}...", &trimmed[..197])
+                } else {
+                    trimmed.to_string()
+                };
+                return excerpt;
+            }
+        }
+    }
+    // Fallback: last non-empty line
+    log.lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .map(|l| {
+            let t = l.trim();
+            if t.len() > 200 {
+                format!("{}...", &t[..197])
+            } else {
+                t.to_string()
+            }
+        })
+        .unwrap_or_default()
+}
+
 fn extract_missing_module(log: &str) -> Option<String> {
     for marker in [
         "No module named ",
@@ -1692,6 +2102,9 @@ fn extract_build_dependency(log: &str) -> Option<String> {
         return Some(module);
     }
 
+    // Names that refer to the interpreter/toolchain, not a pip-installable package.
+    const REJECT: &[&str] = &["python", "python2", "python3", "pip", "pip3"];
+
     let lower = log.to_lowercase();
 
     // Pattern: "(NAME) is not installed" — e.g. "Numerical Python (NumPy) is not installed".
@@ -1702,7 +2115,10 @@ fn extract_build_dependency(log: &str) -> Option<String> {
             if let Some(close) = before[open..].find(')') {
                 let name = before[open + 1..open + close].trim();
                 if !name.is_empty() && name.len() < 40 {
-                    return Some(name.to_string());
+                    let n = name.to_string();
+                    if !REJECT.contains(&n.to_lowercase().as_str()) {
+                        return Some(n);
+                    }
                 }
             }
         }
@@ -1719,6 +2135,7 @@ fn extract_build_dependency(log: &str) -> Option<String> {
                 .next()
                 .map(|c| c.is_alphabetic())
                 .unwrap_or(false)
+            && !REJECT.contains(&word.to_lowercase().as_str())
         {
             return Some(word.to_string());
         }
@@ -1733,7 +2150,62 @@ fn extract_build_dependency(log: &str) -> Option<String> {
                 .next()
                 .unwrap_or("")
                 .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
-            if !name.is_empty() && name.len() < 40 {
+            if !name.is_empty() && name.len() < 40 && !REJECT.contains(&name.to_lowercase().as_str()) {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    // Pattern: "requires X" or "requires package X" — common in setup.py
+    for marker in ["requires ", "requires package "] {
+        if let Some(idx) = lower.find(marker) {
+            let rest = &log[idx + marker.len()..];
+            let name = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+            if !name.is_empty()
+                && name.len() < 40
+                && name.chars().next().map_or(false, |c| c.is_alphabetic())
+                && !REJECT.contains(&name.to_lowercase().as_str())
+            {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    // Pattern: "missing required dependency X" or "Missing dependency: X"
+    for marker in [
+        "missing required dependency ",
+        "missing dependency: ",
+        "missing dependency ",
+    ] {
+        if let Some(idx) = lower.find(marker) {
+            let rest = &log[idx + marker.len()..];
+            let name = rest
+                .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.')
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !name.is_empty() && name.len() < 40 && !REJECT.contains(&name.to_lowercase().as_str()) {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    // Pattern: "Could not import X" or "Cannot import X"
+    for marker in ["could not import ", "cannot import "] {
+        if let Some(idx) = lower.find(marker) {
+            let rest = &log[idx + marker.len()..];
+            let name = rest
+                .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+                .next()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"')
+                .trim();
+            if !name.is_empty() && name.len() < 40 && !REJECT.contains(&name.to_lowercase().as_str()) {
                 return Some(name.to_string());
             }
         }
@@ -1949,6 +2421,52 @@ fn environment_specific_note(
         return Some(
             "Detected hardware dependency (CUDA/cuDNN). APDR cannot validate this snippet without an NVIDIA GPU with CUDA drivers.".to_string(),
         );
+    }
+
+    // Build failures caused by missing system C libraries / headers that pip cannot provide.
+    if matches!(
+        classified.error_type.as_str(),
+        "BuildFailure" | "SystemDependency" | "Unknown"
+    ) {
+        // GTK / GObject / GStreamer desktop stack
+        if lower.contains("pkg-config") && (lower.contains("pygtk") || lower.contains("gtk+-"))
+            || lower.contains("no package 'gtk+-") || lower.contains("no package 'pygtk")
+        {
+            return Some("Detected system dependency (GTK development headers). APDR cannot validate this snippet without libgtk2.0-dev / gtk+-2.0.".to_string());
+        }
+        if lower.contains("no package 'gstreamer") || lower.contains("gst-python") && lower.contains("pkg-config") {
+            return Some("Detected system dependency (GStreamer). APDR cannot validate this snippet without GStreamer development headers.".to_string());
+        }
+        // Qt / PySide
+        if lower.contains("could not find qt") || lower.contains("qmake") && lower.contains("not found")
+            || lower.contains("pyside") && (lower.contains("cmake") || lower.contains("could not find"))
+        {
+            return Some("Detected system dependency (Qt). APDR cannot validate this snippet without Qt development libraries.".to_string());
+        }
+        // D-Bus
+        if lower.contains("dbus/dbus.h") || lower.contains("no package 'dbus-") || lower.contains("dbus-1.pc") {
+            return Some("Detected system dependency (D-Bus). APDR cannot validate this snippet without libdbus-1-dev.".to_string());
+        }
+        // MPI
+        if lower.contains("mpi.h") || lower.contains("mpicc") && lower.contains("not found") {
+            return Some("Detected system dependency (MPI). APDR cannot validate this snippet without an MPI implementation (OpenMPI/MPICH).".to_string());
+        }
+        // Mapnik
+        if lower.contains("mapnik-config") || lower.contains("mapnik/") && lower.contains("no such file") {
+            return Some("Detected system dependency (Mapnik). APDR cannot validate this snippet without libmapnik-dev.".to_string());
+        }
+        // Linux-only evdev / uinput
+        if lower.contains("linux/input.h") || lower.contains("linux/uinput.h") {
+            return Some("Detected platform dependency (Linux kernel headers). APDR cannot validate this snippet on macOS.".to_string());
+        }
+        // BlueZ / Bluetooth
+        if lower.contains("bluetooth/bluetooth.h") || lower.contains("no package 'bluez") {
+            return Some("Detected system dependency (BlueZ). APDR cannot validate this snippet without libbluetooth-dev.".to_string());
+        }
+        // liberasurecode (swift/PyECLib)
+        if lower.contains("liberasurecode") {
+            return Some("Detected system dependency (liberasurecode). APDR cannot validate this snippet without liberasurecode-dev.".to_string());
+        }
     }
 
     // The remaining checks require a missing module name.
@@ -2265,8 +2783,11 @@ fn extract_python_version_mismatch_reason(log: &str) -> Option<String> {
 }
 
 /// Check the persistent unsolvable-modules cache for any import that was
-/// previously identified as unsolvable by the LLM.  Returns the first
-/// matching module name and its cached record.
+/// previously identified as unsolvable.  Only returns a hit when confidence
+/// is very high (>= 0.95) to avoid false positives that block solvable
+/// packages like django.  In practice this means only curated seed entries
+/// (host-runtime / platform-specific APIs with confidence 1.00) trigger the
+/// early exit.
 fn check_unsolvable_cache(
     parse_result: &crate::ParseResult,
     store: &CacheStore,
@@ -2275,17 +2796,16 @@ fn check_unsolvable_cache(
     for import in &parse_result.imports {
         let key = normalize(import);
         if let Some(record) = store.unsolvable_modules.get(&key) {
-            if record.confidence >= 0.70 {
+            if record.confidence >= 0.95 {
                 return Some((key, record.clone()));
             }
         }
     }
     for path in &parse_result.import_paths {
-        // Check the top-level of dotted paths (e.g. "Foundation" from "Foundation.NSDate")
         let top = path.split('.').next().unwrap_or(path);
         let key = normalize(top);
         if let Some(record) = store.unsolvable_modules.get(&key) {
-            if record.confidence >= 0.70 {
+            if record.confidence >= 0.95 {
                 return Some((key, record.clone()));
             }
         }
@@ -2671,6 +3191,62 @@ fn retry_with_llm_for_missing_packages(
                 }
             }
         }
+        final_resolved.push(dep);
+    }
+
+    (final_resolved, llm_result.unresolved)
+}
+
+/// Retry resolution via LLM for seed-resolved packages that don't exist on PyPI.
+fn retry_nonexistent_packages(
+    parse_result: &crate::ParseResult,
+    snippet_source: &str,
+    resolved: &[ResolvedDependency],
+    python_version: &str,
+    store: &mut CacheStore,
+    config: &ResolveConfig,
+    report: &mut crate::ResolutionReport,
+) -> (Vec<ResolvedDependency>, Vec<String>) {
+    // Find ALL resolved packages that don't exist on PyPI (seed or otherwise)
+    let mut kept_resolved = Vec::new();
+    let mut imports_to_retry = Vec::new();
+    let mut bad_packages = Vec::new();
+
+    for dep in resolved {
+        if !pypi_client::package_exists(store, &dep.package_name, python_version) {
+            imports_to_retry.push(dep.import_name.clone());
+            bad_packages.push(dep.package_name.clone());
+            report.notes.push(format!(
+                "Package `{}` for import `{}` does not exist on PyPI (strategy: {}). Retrying with LLM.",
+                dep.package_name, dep.import_name, dep.strategy
+            ));
+        } else {
+            kept_resolved.push(dep.clone());
+        }
+    }
+
+    if imports_to_retry.is_empty() {
+        return (resolved.to_vec(), Vec::new());
+    }
+
+    let llm_result = tier3_llm::resolve_with_context(
+        &imports_to_retry,
+        snippet_source,
+        parse_result,
+        store,
+        config,
+        python_version,
+        Some(format!(
+            "Previous resolution mapped these imports to nonexistent PyPI packages: {}. Please suggest the correct PyPI package names for these imports.",
+            bad_packages.join(", ")
+        )),
+    );
+
+    report.llm_calls += llm_result.prompts_issued;
+    report.notes.append(&mut llm_result.notes.clone());
+
+    let mut final_resolved = kept_resolved;
+    for dep in llm_result.resolved {
         final_resolved.push(dep);
     }
 

@@ -11,7 +11,7 @@ pub fn equally_distanced_sample(
     let previous = previous_versions.iter().cloned().collect::<BTreeSet<_>>();
     let candidates = versions
         .iter()
-        .filter(|version| !previous.contains(*version))
+        .filter(|version| !previous.contains(*version) && version.as_str() != "0")
         .cloned()
         .collect::<Vec<_>>();
 

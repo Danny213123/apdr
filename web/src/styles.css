@@ -423,10 +423,15 @@ code {
 .metrics-line,
 .perf-line,
 .research-line,
+.llm-line,
 .last-llm-line {
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
+}
+
+.llm-line {
+  align-items: center;
 }
 
 .bullet-list {
@@ -457,10 +462,16 @@ code {
   display: none;
 }
 
+.collapsible-summary .section-title {
+  flex: 1;
+  min-width: 0;
+}
+
 .collapsible-summary::after {
   content: "▸";
   color: var(--yellow);
   font-weight: 700;
+  flex-shrink: 0;
   transition: transform 160ms ease;
 }
 
@@ -468,9 +479,16 @@ code {
   transform: rotate(90deg);
 }
 
+.collapsible-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.9em;
+}
+
 .collapsible-meta {
   color: var(--muted);
   font-size: 0.9em;
+  flex-shrink: 0;
 }
 
 .collapsible-body {
@@ -492,7 +510,7 @@ code {
   overflow: hidden;
 }
 
-.cases-section {
+.cases-section > .collapsible-body .collapsible-inner {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -536,10 +554,6 @@ code {
 .case-row {
   min-width: 1290px;
   border-bottom: 1px solid rgba(122, 127, 138, 0.28);
-}
-
-.case-row.is-active {
-  background: rgba(143, 209, 255, 0.05);
 }
 
 .case-row[open] {

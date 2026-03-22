@@ -132,6 +132,10 @@ class BenchmarkCliApp:
             f"Elapsed {run.get('elapsedLabel')} | Pace {run.get('speed')} | ETA {run.get('eta')} | "
             f"Pass rate {run.get('passRate')}"
         )
+        print(
+            f"LLM calls: {run.get('totalLlmCalls', 0)} | Env builds: {run.get('totalEnvBuilds', 0)} | "
+            f"Retries: {run.get('totalRetries', 0)} | Cases w/ retries: {run.get('casesWithLlmRetries', 0)}"
+        )
         print("Recent activity:")
         for line in (run.get("recentActivity") or [])[-8:]:
             print(f"  - {line}")
@@ -904,16 +908,23 @@ class BenchmarkCliApp:
             f"Pass rate: {run.get('passRate')}  Pace: {run.get('speed')}  ETA: {run.get('eta')}"
         )
         self._add_line(stdscr, top + 5, 0, metrics, self._color(curses, "normal"))
+        llm_metrics = (
+            f"LLM calls: {run.get('totalLlmCalls', 0)}  "
+            f"Env builds: {run.get('totalEnvBuilds', 0)}  "
+            f"Retries: {run.get('totalRetries', 0)}  "
+            f"Cases w/ retries: {run.get('casesWithLlmRetries', 0)}"
+        )
+        self._add_line(stdscr, top + 6, 0, llm_metrics, self._color(curses, "dim"))
 
         info_fields = list(run.get("infoFields") or [])
         info_rows = max(4, min(8, math.ceil(len(info_fields) / 2)))
         left_col_width = max(28, width // 2 - 2)
         right_col_x = left_col_width + 3
-        self._draw_section_title(stdscr, top + 7, 0, "Run Info")
+        self._draw_section_title(stdscr, top + 8, 0, "Run Info")
         for row_index in range(info_rows):
             left_index = row_index
             right_index = row_index + info_rows
-            y = top + 8 + row_index
+            y = top + 9 + row_index
             if left_index < len(info_fields):
                 item = info_fields[left_index]
                 self._add_line(
@@ -933,7 +944,7 @@ class BenchmarkCliApp:
                     0,
                 )
 
-        panel_top = top + 9 + info_rows
+        panel_top = top + 10 + info_rows
         panel_height = max(8, height - (panel_top - top) - 1)
         left_panel_width = max(34, width // 2 - 2)
         right_panel_x = left_panel_width + 3
@@ -951,7 +962,7 @@ class BenchmarkCliApp:
         selected_case = cases[selected_index] if cases else None
         case_list_height = max(4, panel_height - 7)
         list_start, visible_cases = self._window_for_selection(cases, selected_index, case_list_height)
-        header = "STAT  CASE ID              PY    SEC     RESULT"
+        header = "STAT  CASE ID              PY    SEC     LLM VAL RET RESULT"
         self._add_line(stdscr, panel_top + 1, right_panel_x, header, self._color(curses, "accent"))
         for row_offset, case in enumerate(visible_cases, start=2):
             absolute_index = list_start + row_offset - 2
@@ -960,15 +971,20 @@ class BenchmarkCliApp:
             case_id = self._truncate(str(case.get("caseId") or "--"), 20).ljust(20)
             py_value = str(case.get("python") or "--").ljust(5)
             sec_value = str(case.get("seconds") or "--").ljust(7)
-            result_value = self._truncate(str(case.get("result") or "--"), width - right_panel_x - 42)
-            line = f"{status_text}  {case_id} {py_value} {sec_value} {result_value}"
+            llm_value = str(case.get("llmCalls") or "0").ljust(3)
+            val_value = str(case.get("envBuilds") or "0").ljust(3)
+            ret_value = str(case.get("retries") or "0").ljust(3)
+            result_value = self._truncate(str(case.get("result") or "--"), width - right_panel_x - 54)
+            line = f"{status_text}  {case_id} {py_value} {sec_value} {llm_value} {val_value} {ret_value} {result_value}"
             self._add_line(stdscr, panel_top + row_offset, right_panel_x, line, marker_attr)
 
         detail_top = panel_top + case_list_height + 2
         detail_lines = ["No completed case selected."]
         if selected_case:
+            retry_tag = " [LLM RETRY]" if selected_case.get("hadLlmRetry") else ""
             detail_lines = [
-                f"Case: {selected_case.get('caseId') or '--'} | Status: {selected_case.get('status') or '--'} | Python: {selected_case.get('python') or '--'}",
+                f"Case: {selected_case.get('caseId') or '--'} | Status: {selected_case.get('status') or '--'} | Python: {selected_case.get('python') or '--'}{retry_tag}",
+                f"LLM calls: {selected_case.get('llmCalls', '0')}  Env builds: {selected_case.get('envBuilds', '0')}  Retries: {selected_case.get('retries', '0')}",
                 f"Result: {selected_case.get('result') or '--'}",
                 f"Dependencies: {selected_case.get('dependencies') or '--'}",
             ]
@@ -976,7 +992,7 @@ class BenchmarkCliApp:
             if tail:
                 detail_lines.append(f"Log: {self._truncate(tail[-1], width - right_panel_x - 4)}")
         self._draw_section_title(stdscr, detail_top - 1, right_panel_x, "Selected Case")
-        for offset, line in enumerate(detail_lines[:4]):
+        for offset, line in enumerate(detail_lines[:5]):
             self._add_line(stdscr, detail_top + offset, right_panel_x, self._truncate(line, width - right_panel_x - 2), 0)
 
     def _draw_configure(self, stdscr: Any, curses: Any, top: int, height: int, width: int) -> None:

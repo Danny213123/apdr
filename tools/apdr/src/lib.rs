@@ -2,7 +2,6 @@ pub mod cache;
 pub mod context;
 pub mod docker;
 pub mod knowledge_cache;
-pub mod llm;
 pub mod parser;
 pub mod recovery;
 pub mod resolver;
@@ -35,6 +34,8 @@ pub struct ParseResult {
     pub confidence: f64,
     pub scanned_files: Vec<String>,
     pub stdlib_modules: std::collections::BTreeSet<String>,
+    /// Maps module name → set of attributes accessed (e.g. {"cv2": {"imread"}}).
+    pub attribute_usage: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +52,7 @@ pub struct ResolveConfig {
     pub parallel_versions: bool,
     pub scan_config_files: bool,
     pub allow_llm: bool,
+    pub llm_only_mode: bool,
     pub llm_provider: String,
     pub llm_model: String,
     pub llm_base_url: String,
@@ -150,6 +152,8 @@ pub struct ValidationSummary {
     pub llm_trace_dir: Option<String>,
     pub context_log_path: Option<String>,
     pub iterations_dir: Option<String>,
+    /// Number of times the LangGraph multi-agent pipeline was invoked.
+    pub agent_invocations: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -201,10 +205,10 @@ impl ResolveConfig {
         Self {
             python_version: None,
             python_version_range: 1,
-            max_retries: 10,
+            max_retries: 5,
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
-            validation_timeout: Duration::from_secs(300),
+            validation_timeout: Duration::from_secs(600),
             validated_env_cache_max_entries: env_usize(
                 "APDR_VALIDATED_ENV_CACHE_MAX_ENTRIES",
                 crate::cache::maintenance::DEFAULT_MAX_VALIDATED_ENVS,
@@ -220,6 +224,7 @@ impl ResolveConfig {
             parallel_versions: true,
             scan_config_files: true,
             allow_llm: false,
+            llm_only_mode: false,
             llm_provider: "ollama".to_string(),
             llm_model: "gemma3:4b".to_string(),
             llm_base_url: "http://localhost:11434".to_string(),
@@ -418,8 +423,15 @@ impl ResolveResult {
                     .attempts
                     .iter()
                     .map(|attempt| {
+                        // Extract a short error hint from the log_excerpt for
+                        // quick scanning without opening combined.log.
+                        let error_hint = if attempt.status == "passed" || attempt.log_excerpt.is_empty() {
+                            String::new()
+                        } else {
+                            extract_error_hint(&attempt.log_excerpt)
+                        };
                         format!(
-                            "- attempt={} py={} backend={} status={} error_type={} conflict_class={} fix={} env_label={} env_dir={} env_create_ms={} cached_env={} env_cache_hit={} cached_lockfile={} artifact_dir={} build_log={} run_log={} combined_log={} metadata={} context_snapshot={}",
+                            "- attempt={} py={} backend={} status={} error_type={} conflict_class={} fix={}{} cached_env={} env_cache_hit={} cached_lockfile={} combined_log={} metadata={}",
                             attempt.attempt_index,
                             attempt.python_version,
                             if attempt.validation_backend.is_empty() { "env" } else { &attempt.validation_backend },
@@ -427,18 +439,12 @@ impl ResolveResult {
                             attempt.error_type.as_deref().unwrap_or("--"),
                             attempt.conflict_class.as_deref().unwrap_or("--"),
                             attempt.fix_applied.as_deref().unwrap_or("--"),
-                            attempt.env_label.as_deref().unwrap_or("--"),
-                            attempt.env_dir.as_deref().unwrap_or("--"),
-                            attempt.env_create_duration_ms,
+                            if error_hint.is_empty() { String::new() } else { format!(" error_hint=\"{}\"", error_hint) },
                             attempt.used_cached_env,
                             attempt.validated_env_cache_hit,
                             attempt.used_cached_lockfile,
-                            attempt.artifact_dir.as_deref().unwrap_or("--"),
-                            attempt.build_log_path.as_deref().unwrap_or("--"),
-                            attempt.run_log_path.as_deref().unwrap_or("--"),
                             attempt.combined_log_path.as_deref().unwrap_or("--"),
-                            attempt.metadata_path.as_deref().unwrap_or("--"),
-                            attempt.context_snapshot_path.as_deref().unwrap_or("--")
+                            attempt.metadata_path.as_deref().unwrap_or("--")
                         )
                     })
                     .collect::<Vec<_>>()
@@ -447,9 +453,48 @@ impl ResolveResult {
         )
     }
 
+}
+
+/// Extract a short error hint (≤120 chars) from a log excerpt.
+/// Used in the resolution report to show at a glance what went wrong.
+fn extract_error_hint(log: &str) -> String {
+    let markers = [
+        "ModuleNotFoundError:",
+        "ImportError:",
+        "AttributeError:",
+        "TypeError:",
+        "SyntaxError:",
+        "RuntimeError:",
+        "Double requirement given:",
+        "ERROR: Cannot install",
+        "No matching distribution found",
+        "error: subprocess-exited-with-error",
+        "pkg-config",
+        "fatal error:",
+    ];
+    for line in log.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for marker in &markers {
+            if trimmed.contains(marker) {
+                let clean = trimmed.replace('"', "'");
+                return if clean.len() > 120 {
+                    format!("{}...", &clean[..117])
+                } else {
+                    clean
+                };
+            }
+        }
+    }
+    String::new()
+}
+
+impl ResolveResult {
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nSMOKE_DURATION_MS={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nSMOKE_DURATION_MS={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -471,6 +516,9 @@ impl ResolveResult {
                 .as_ref()
                 .map(|item| item.source.as_str())
                 .unwrap_or(""),
+            self.resolution_report.llm_calls,
+            self.resolution_report.env_builds,
+            self.resolution_report.retries,
             self.validation.solve_duration_ms,
             self.validation.validation_duration_ms,
             self.validation.env_create_duration_ms,

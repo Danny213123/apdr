@@ -25,6 +25,7 @@ pub fn parse_snippet(
         .unwrap_or_else(|| python_version_min.clone());
     let stdlib_modules = ast::load_stdlib_modules(data_root, &stdlib_version)?;
     let import_scan = imports::scan_imports(&source);
+    let attribute_usage = import_scan.attribute_usage;
     let imports = import_scan
         .top_levels
         .into_iter()
@@ -60,5 +61,6 @@ pub fn parse_snippet(
         confidence: 0.72,
         scanned_files,
         stdlib_modules,
+        attribute_usage,
     })
 }
