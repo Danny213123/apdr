@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from datetime import datetime
 from pathlib import Path
+from queue import Queue
 from typing import Any
 import json
 import os
@@ -423,9 +424,36 @@ class BenchmarkWorker(threading.Thread):
         total: int,
         artifact_dir: Path | None = None,
     ) -> dict[str, Any]:
+        # Get event queue from current run if available
+        event_queue: Queue[dict[str, Any]] | None = None
+        with self._lock:
+            if hasattr(self, '_current_run_event_queue'):
+                event_queue = self._current_run_event_queue
+
+        def emit_event(event_type: str, **kwargs: Any) -> None:
+            """Emit progress event to SSE queue if available."""
+            if event_queue is None:
+                return
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            try:
+                event_queue.put_nowait(event)
+            except Exception:
+                # Best-effort streaming - don't block runner on queue errors
+                pass
+
         started_at = time.time()
         started_iso = self.state.now_iso()
         output_root = artifact_dir if artifact_dir is not None else snippet.parent
+
+        # Extract case_id for event emission
+        case_id = self._case_id_from_snippet(snippet)
+
+        # Emit status_update: case starting
+        emit_event("status_update", caseId=case_id, status="running")
         existing_outputs = {path.resolve() for path in output_root.glob("output_data_*.yml")}
         requirements_path = output_root / "requirements.txt"
         existing_requirements_mtime = requirements_path.stat().st_mtime if requirements_path.exists() else None
@@ -515,6 +543,29 @@ class BenchmarkWorker(threading.Thread):
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
+
+        # Determine result status for event emission
+        if succeeded:
+            result_status = "pass"
+        elif skipped:
+            result_status = "skip"
+        else:
+            result_status = "fail"
+
+        # Emit case_complete event
+        emit_event("case_complete", caseId=case_id, status=result_status)
+
+        # Emit progress event
+        percent = round((index / total * 100), 1) if total > 0 else 0.0
+        emit_event(
+            "progress",
+            progress={
+                "completed": index,
+                "total": total,
+                "percent": percent,
+            },
+        )
+
         return result
 
     def _result_succeeded(self, result: dict[str, Any]) -> bool:

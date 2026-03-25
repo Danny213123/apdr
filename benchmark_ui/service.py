@@ -182,6 +182,9 @@ class BenchmarkService:
             self._run_elapsed_offset = float(historical_run.get("elapsedSeconds") or 0.0)
             self._run_started_at = time.time()
             self.worker = BenchmarkWorker(self.state, config, self.queue)
+            # Attach event queue reference to worker for SSE streaming
+            if "_event_queue" in self._current_run:
+                self.worker._current_run_event_queue = self._current_run["_event_queue"]
             self.worker.start()
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
 
@@ -206,6 +209,9 @@ class BenchmarkService:
             self._run_elapsed_offset = 0.0
             self._run_started_at = time.time()
             self.worker = BenchmarkWorker(self.state, config, self.queue)
+            # Attach event queue reference to worker for SSE streaming
+            if "_event_queue" in self._current_run:
+                self.worker._current_run_event_queue = self._current_run["_event_queue"]
             self.worker.start()
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
 
