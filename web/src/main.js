@@ -1164,7 +1164,101 @@ function updateSSEStatusIndicator() {
 }
 
 function handleSSEEvent(event) {
-  // Placeholder for Task 2 - will queue events for batched DOM updates
+  state.ssePendingUpdates.push(event);
+
+  // Schedule batch update if not already scheduled
+  if (!state.sseUpdateScheduled) {
+    state.sseUpdateScheduled = true;
+    requestAnimationFrame(processPendingSSEUpdates);
+  }
+}
+
+function processPendingSSEUpdates() {
+  const updates = state.ssePendingUpdates.splice(0); // Drain queue
+  state.sseUpdateScheduled = false;
+
+  if (updates.length === 0) return;
+
+  // Batch process all pending events in single frame
+  for (const event of updates) {
+    switch (event.type) {
+      case "init":
+      case "progress":
+        updateProgressBar(event.progress);
+        break;
+      case "status_update":
+        updateCaseStatus(event.caseId, event.status);
+        addActivityItem(event);
+        break;
+      case "case_complete":
+        updateCaseStatus(event.caseId, event.status);
+        addActivityItem(event);
+        break;
+      case "heartbeat":
+        // No UI update needed, just proves connection alive
+        break;
+      case "complete":
+        handleBenchmarkComplete();
+        break;
+    }
+  }
+}
+
+function updateProgressBar(progress) {
+  if (!progress) return;
+  const {completed, total, percent} = progress;
+  ui.progressLabel.textContent = `${completed}/${total}`;
+  ui.progressPercent.textContent = `${percent.toFixed(1)}%`;
+  ui.progressFill.style.width = `${percent}%`;
+}
+
+function updateCaseStatus(caseId, status) {
+  // Find existing case row by data-case-id attribute
+  const row = ui.casesScroll?.querySelector(`[data-case-id="${caseId}"]`);
+  if (row) {
+    // Update status badge color class
+    const badge = row.querySelector(".status-badge");
+    if (badge) {
+      badge.className = `status-badge status-${status}`;
+      badge.textContent = status;
+    }
+  } else if (status !== "running") {
+    // Append new completed case row (clone template, populate, append)
+    appendCaseRow(caseId, status);
+  }
+}
+
+function appendCaseRow(caseId, status) {
+  // This will be implemented when case row template structure is available
+  // For now, just log the event
+  console.log(`Case ${caseId} completed with status: ${status}`);
+}
+
+function addActivityItem(event) {
+  if (!ui.recentActivity) return;
+
+  const time = new Date(event.timestamp).toLocaleTimeString();
+  const action = event.type === "case_complete"
+    ? `${event.caseId}: ${event.status}`
+    : `${event.caseId}: ${event.status}`;
+
+  const item = document.createElement("div");
+  item.className = "activity-item";
+  item.textContent = `• ${time}: ${action}`;
+
+  // Prepend (newest first)
+  ui.recentActivity.insertBefore(item, ui.recentActivity.firstChild);
+
+  // Prune to max 10 items (memory leak prevention)
+  while (ui.recentActivity.children.length > 10) {
+    ui.recentActivity.removeChild(ui.recentActivity.lastChild);
+  }
+}
+
+function handleBenchmarkComplete() {
+  // Update UI to reflect completion
+  // Will be enhanced in Task 3 with full integration
+  teardownSSE();
 }
 
 async function pollStatus() {
