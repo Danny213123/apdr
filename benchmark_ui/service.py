@@ -5,7 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any
+from typing import Any, Generator
 import os
 import platform
 import shutil
@@ -223,6 +223,89 @@ class BenchmarkService:
             worker.join(timeout=join_timeout)
         with self._lock:
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
+
+    def stream_benchmark_progress(self, run_id: str) -> Generator[dict[str, Any], None, None]:
+        """Stream Server-Sent Events for real-time benchmark progress.
+
+        Yields event dicts with heartbeat every 15 seconds to prevent proxy buffering.
+        Event types: init, status_update, case_complete, progress, heartbeat, complete.
+        """
+        run_id = self.state._sanitize_path_component(run_id)
+
+        # Validate run exists
+        with self._lock:
+            if self._current_run.get("runId") == run_id:
+                run_state = self._current_run
+                is_current = True
+            else:
+                summary = self.state.load_run_summary(run_id)
+                if not summary:
+                    raise ValueError(f"Run not found: {run_id}")
+                run_dir = self.state.runs_dir / run_id
+                run_state = self._historical_run_snapshot(run_id, summary, run_dir)
+                is_current = False
+
+        # Initialize event queue if not present on current run
+        if is_current:
+            with self._lock:
+                if "_event_queue" not in self._current_run:
+                    self._current_run["_event_queue"] = Queue()
+                event_queue = self._current_run["_event_queue"]
+        else:
+            event_queue = None
+
+        # Yield initial state event
+        yield {
+            "type": "init",
+            "progress": {
+                "completed": run_state.get("completed", 0),
+                "total": run_state.get("total", 0),
+                "percent": run_state.get("progressPercent", 0.0),
+            },
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # Stream events with heartbeat
+        if is_current and event_queue is not None:
+            while True:
+                try:
+                    event = event_queue.get(timeout=15)
+                    yield event
+
+                    # Check if run is complete
+                    with self._lock:
+                        status = self._current_run.get("status")
+                    if status in ("completed", "stopped", "failed"):
+                        yield {
+                            "type": "complete",
+                            "status": status,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        break
+                except Empty:
+                    # Timeout - send heartbeat
+                    yield {
+                        "type": "heartbeat",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+
+                    # Check if run stopped while we were waiting
+                    with self._lock:
+                        status = self._current_run.get("status")
+                    if status in ("completed", "stopped", "failed"):
+                        yield {
+                            "type": "complete",
+                            "status": status,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        break
+        else:
+            # Historical run - just send complete event
+            yield {
+                "type": "complete",
+                "status": run_state.get("status", "completed"),
+                "timestamp": datetime.now().isoformat(),
+            }
 
     def start_doctor(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
