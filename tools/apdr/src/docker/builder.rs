@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -54,26 +54,6 @@ pub fn validate_requirements(
             store,
         ),
         _ => {
-            // When LLM is enabled, go straight to Docker validation instead
-            // of wasting env attempts.  Docker provides broader Python version
-            // coverage (3.6, 3.7 via images), system deps via apt-get, and the
-            // LangGraph multi-agent retry pipeline.  This matches PLLM's
-            // approach and avoids env failures on old packages (e.g. use_2to3).
-            if config.allow_llm && command_on_path("docker") {
-                eprintln!(
-                    "[validation] LLM enabled — using Docker validation directly"
-                );
-                return validate_requirements_docker(
-                    snippet_path,
-                    requirements_txt,
-                    imports,
-                    candidate_versions,
-                    attempt_offset,
-                    config,
-                    store,
-                );
-            }
-
             let mut summary = validate_requirements_env(
                 snippet_path,
                 requirements_txt,
@@ -86,13 +66,32 @@ pub fn validate_requirements(
             if summary.succeeded {
                 return Ok(summary);
             }
-            // Check if env failure looks like a system-dep build error that
-            // Docker (with apt-get) could fix.  Only fall back when Docker is
-            // available and the build logs contain recognizable C-header /
-            // system-library patterns.
-            if command_on_path("docker") && env_has_system_dep_failure(&summary) {
+            // Fall back to Docker when env validation fails due to:
+            // 1. Missing local Python interpreter (e.g. Python 3.12 not installed)
+            // 2. System-dep build errors (missing C headers / libraries)
+            // 3. Build timeout (packages compiling from source on Windows;
+            //    Docker/Linux has pre-built wheels)
+            // Docker images (python:X.Y-slim) have the right interpreter and
+            // can install system deps via apt-get.
+            let reqs_have_sys_deps =
+                !system_deps::infer_system_deps_from_requirements(requirements_txt).is_empty();
+            if command_on_path("docker")
+                && (env_has_system_dep_failure(&summary)
+                    || env_has_interpreter_failure(&summary)
+                    || env_has_build_timeout(&summary)
+                    || reqs_have_sys_deps)
+            {
+                let reason = if env_has_interpreter_failure(&summary) {
+                    "missing local Python interpreter"
+                } else if env_has_build_timeout(&summary) {
+                    "build timeout (Docker has pre-built wheels)"
+                } else if reqs_have_sys_deps {
+                    "packages require system libraries"
+                } else {
+                    "system-dep build errors"
+                };
                 eprintln!(
-                    "[validation] env build failed with system-dep errors, retrying with Docker"
+                    "[validation] env failed with {reason}, retrying with Docker"
                 );
                 let docker_offset = attempt_offset + summary.attempts.len();
                 let mut docker_summary = validate_requirements_docker(
@@ -145,14 +144,21 @@ fn validate_requirements_env(
     // version attempts since imports and execute_snippet don't change.
     let smoke_test_script = smoke_test::generate(imports, config.execute_snippet);
 
+    // Minimum time each attempt gets — enough for env create + pip install of
+    // moderate packages.  Prevents later attempts from getting a near-zero budget
+    // when earlier attempts consumed most of the total.
+    let min_attempt_budget = Duration::from_secs(120);
+
     for (local_index, python_version) in candidate_versions.iter().enumerate() {
-        // Check total validation budget before starting another attempt
-        let elapsed = validation_started.elapsed();
-        if elapsed >= total_budget {
+        // Check total validation budget before starting another attempt.
+        // Require at least min_attempt_budget remaining so the attempt has a
+        // realistic chance of completing.
+        let remaining = total_budget.saturating_sub(validation_started.elapsed());
+        if remaining < min_attempt_budget {
             eprintln!(
-                "[validation] total budget exhausted ({:.1}s >= {:.1}s), skipping remaining {} version(s)",
-                elapsed.as_secs_f64(),
-                total_budget.as_secs_f64(),
+                "[validation] budget too low for another attempt ({:.1}s remaining < {:.1}s min), skipping remaining {} version(s)",
+                remaining.as_secs_f64(),
+                min_attempt_budget.as_secs_f64(),
                 candidate_versions.len() - local_index
             );
             break;
@@ -165,6 +171,10 @@ fn validate_requirements_env(
         let work_dir = context::attempt_dir(&config.output_dir, attempt_index, python_version);
         fs::create_dir_all(&work_dir)?;
         let env_dir = work_dir.join("env");
+        // Defensive cleanup: remove any stale env left by a previously killed process.
+        if env_dir.exists() {
+            let _ = fs::remove_dir_all(&env_dir);
+        }
 
         fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
         fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
@@ -517,7 +527,7 @@ fn validate_requirements_llm(
 
     // Phase 2: Env validation failed — fall back to the LangGraph multi-agent pipeline
     eprintln!(
-        "[llm-resolver] env validation failed ({} attempt(s)), trying LangGraph agent…",
+        "[llm-resolver] env validation failed ({} attempt(s)), trying LangGraph agent\u{2026}",
         env_summary.attempts.len()
     );
     env_summary.agent_invocations += 1;
@@ -770,13 +780,15 @@ fn validate_requirements_docker(
     let max_build_retries: usize = 2;
     let mut global_attempt = 0usize;
 
+    let min_attempt_budget = Duration::from_secs(120);
+
     for (local_index, python_version) in candidate_versions.iter().enumerate() {
-        let elapsed = validation_started.elapsed();
-        if elapsed >= total_budget {
+        let remaining = total_budget.saturating_sub(validation_started.elapsed());
+        if remaining < min_attempt_budget {
             eprintln!(
-                "[validation] total budget exhausted ({:.1}s >= {:.1}s), skipping remaining {} version(s)",
-                elapsed.as_secs_f64(),
-                total_budget.as_secs_f64(),
+                "[validation] budget too low for another attempt ({:.1}s remaining < {:.1}s min), skipping remaining {} version(s)",
+                remaining.as_secs_f64(),
+                min_attempt_budget.as_secs_f64(),
                 candidate_versions.len() - local_index
             );
             break;
@@ -1025,9 +1037,46 @@ fn validate_requirements_docker(
             summary.attempts.push(attempt);
             break; // try next Python version
         }
+
+        // Clean up the Docker image for this Python version to reclaim disk space.
+        // Each image is ~200-800MB; without cleanup a benchmark run of 2000+ cases
+        // can exhaust disk and crash Docker Engine.
+        cleanup_docker_image(&image_tag);
     }
 
+    // Prune dangling images and build cache left over from failed builds.
+    cleanup_docker_dangling();
+
     Ok(summary)
+}
+
+/// Remove a specific Docker image. Errors are silently ignored.
+fn cleanup_docker_image(image_tag: &str) {
+    let result = Command::new("docker")
+        .args(["rmi", "-f", image_tag])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if let Ok(status) = result {
+        if status.success() {
+            eprintln!("[docker] cleaned up image {image_tag}");
+        }
+    }
+}
+
+/// Prune dangling images and build cache. Runs silently.
+fn cleanup_docker_dangling() {
+    let _ = Command::new("docker")
+        .args(["image", "prune", "-f"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    // Also trim build cache — keep last 2GB to avoid re-downloading base images
+    let _ = Command::new("docker")
+        .args(["builder", "prune", "-f", "--keep-storage", "2g"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 fn docker_backend_unavailable(
@@ -1356,56 +1405,48 @@ fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
 }
 
 fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Result<CommandResult> {
+    // Redirect stdout+stderr to a temp file instead of piping.
+    // On Windows, docker.exe (BuildKit) can deadlock when its output is piped
+    // because docker-buildx.exe inherits the pipe handles and keeps them open
+    // even after docker.exe is done writing.  File redirection avoids this.
+    let tmp_out = tempfile::NamedTempFile::new()?;
+    let out_file = fs::File::create(tmp_out.path())?;
+    let err_file = out_file.try_clone()?;
+
     let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(out_file)
+        .stderr(err_file)
         .spawn()?;
     let started = Instant::now();
+
     // Adaptive polling: start fast (50ms) for short commands, back off
     // exponentially (cap 1000ms) to reduce CPU wake-ups for long installs.
     let mut poll_interval_ms: u64 = 50;
-
-    loop {
-        if child.try_wait()?.is_some() {
-            let output = child.wait_with_output()?;
-            let success = output.status.success();
-            return Ok(command_result(
-                success,
-                output,
-                false,
-                started.elapsed().as_millis(),
-            ));
+    let (timed_out, status) = loop {
+        match child.try_wait()? {
+            Some(status) => break (false, status),
+            None if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let status = child.wait()?;
+                break (true, status);
+            }
+            None => {
+                thread::sleep(Duration::from_millis(poll_interval_ms));
+                poll_interval_ms = (poll_interval_ms * 3 / 2).min(1000);
+            }
         }
+    };
 
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let output = child.wait_with_output()?;
-            return Ok(command_result(
-                false,
-                output,
-                true,
-                started.elapsed().as_millis(),
-            ));
-        }
+    let combined = fs::read_to_string(tmp_out.path()).unwrap_or_default();
+    let success = !timed_out && status.success();
 
-        thread::sleep(Duration::from_millis(poll_interval_ms));
-        poll_interval_ms = (poll_interval_ms * 3 / 2).min(1000);
-    }
-}
-
-fn command_result(
-    success: bool,
-    output: Output,
-    timed_out: bool,
-    duration_ms: u128,
-) -> CommandResult {
-    CommandResult {
+    Ok(CommandResult {
         success,
-        combined_output: combined_output(&output.stdout, &output.stderr),
+        combined_output: combined,
         timed_out,
-        exit_code: output.status.code(),
-        duration_ms,
-    }
+        exit_code: status.code(),
+        duration_ms: started.elapsed().as_millis(),
+    })
 }
 
 fn truncate_log(log: &str) -> String {
@@ -1567,46 +1608,83 @@ fn auto_install_enabled() -> bool {
             let lowered = value.trim().to_ascii_lowercase();
             !matches!(lowered.as_str(), "0" | "false" | "no" | "off")
         })
-        .unwrap_or(true)
+        // Default OFF on Windows (org policies often block winget/scoop;
+        // uv is fast but the others are slow and noisy).
+        // On Unix, auto-install via uv/miniforge is fast and reliable.
+        .unwrap_or(!cfg!(windows))
 }
 
 fn attempt_python_auto_install(python_version: &str) -> String {
+    // Track managers that failed in ANY previous attempt so we don't retry
+    // slow/broken managers (e.g. winget blocked by org policy) for every version.
+    use std::collections::BTreeSet;
+    static FAILED_MANAGERS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    let failed = FAILED_MANAGERS.get_or_init(|| Mutex::new(BTreeSet::new()));
+    let is_failed = |name: &str| -> bool {
+        failed
+            .lock()
+            .map(|set| set.contains(name))
+            .unwrap_or(false)
+    };
+    let mark_failed = |name: &str| {
+        if let Ok(mut set) = failed.lock() {
+            set.insert(name.to_string());
+        }
+    };
+
     let mut managers = Vec::new();
     let mut last_output = String::new();
 
-    if !python_version.starts_with("2.") && command_on_path("uv") {
+    if !python_version.starts_with("2.") && command_on_path("uv") && !is_failed("uv") {
         managers.push("uv".to_string());
         let (success, output) = run_install_command("uv", &["python", "install", python_version]);
         if success && find_python_interpreter(python_version).is_some() {
             return format!("Installed Python {python_version} with uv.");
         }
+        if !success {
+            mark_failed("uv");
+        }
         last_output = output;
     }
 
-    if command_on_path("mise") {
+    if command_on_path("mise") && !is_failed("mise") {
         managers.push("mise".to_string());
+        let mut mise_ok = false;
         for spec in python_install_specs(python_version) {
             let request = format!("python@{spec}");
             let (success, output) = run_install_command("mise", &["install", &request]);
             if success && find_python_interpreter(python_version).is_some() {
                 return format!("Installed Python {python_version} with mise ({spec}).");
             }
+            if success {
+                mise_ok = true;
+            }
             last_output = output;
+        }
+        if !mise_ok {
+            mark_failed("mise");
         }
     }
 
-    if command_on_path("pyenv") {
+    if command_on_path("pyenv") && !is_failed("pyenv") {
         managers.push("pyenv".to_string());
+        let mut pyenv_ok = false;
         for spec in python_install_specs(python_version) {
             let (success, output) = run_install_command("pyenv", &["install", "-s", &spec]);
             if success && find_python_interpreter(python_version).is_some() {
                 return format!("Installed Python {python_version} with pyenv ({spec}).");
             }
+            if success {
+                pyenv_ok = true;
+            }
             last_output = output;
+        }
+        if !pyenv_ok {
+            mark_failed("pyenv");
         }
     }
 
-    if command_on_path("asdf") {
+    if command_on_path("asdf") && !is_failed("asdf") {
         managers.push("asdf".to_string());
         let (_plugin_ok, plugin_output) = run_install_command("asdf", &["plugin", "list"]);
         if !plugin_output
@@ -1615,16 +1693,23 @@ fn attempt_python_auto_install(python_version: &str) -> String {
         {
             let _ = run_install_command("asdf", &["plugin", "add", "python"]);
         }
+        let mut asdf_ok = false;
         for spec in python_install_specs(python_version) {
             let (success, output) = run_install_command("asdf", &["install", "python", &spec]);
             if success && find_python_interpreter(python_version).is_some() {
                 return format!("Installed Python {python_version} with asdf ({spec}).");
             }
+            if success {
+                asdf_ok = true;
+            }
             last_output = output;
+        }
+        if !asdf_ok {
+            mark_failed("asdf");
         }
     }
 
-    if !cfg!(windows) && !python_version.starts_with("2.") {
+    if !cfg!(windows) && !python_version.starts_with("2.") && !is_failed("miniforge") {
         managers.push("miniforge".to_string());
         match install_with_miniforge(python_version) {
             Ok(detail) => {
@@ -1633,13 +1718,16 @@ fn attempt_python_auto_install(python_version: &str) -> String {
                 }
                 last_output = detail;
             }
-            Err(detail) => last_output = detail,
+            Err(detail) => {
+                mark_failed("miniforge");
+                last_output = detail;
+            }
         }
     }
 
     if cfg!(windows) {
         if let Some(package_id) = windows_winget_python_package(python_version) {
-            if command_on_path("winget") {
+            if command_on_path("winget") && !is_failed("winget") {
                 managers.push("winget".to_string());
                 let (success, output) = run_install_command(
                     "winget",
@@ -1657,18 +1745,24 @@ fn attempt_python_auto_install(python_version: &str) -> String {
                         "Installed Python {python_version} with winget ({package_id})."
                     );
                 }
+                if !success {
+                    mark_failed("winget");
+                }
                 last_output = output;
             }
         }
 
         if let Some(package_name) = windows_scoop_python_package(python_version) {
-            if command_on_path("scoop") {
+            if command_on_path("scoop") && !is_failed("scoop") {
                 managers.push("scoop".to_string());
                 let (success, output) = run_install_command("scoop", &["install", package_name]);
                 if success && find_python_interpreter(python_version).is_some() {
                     return format!(
                         "Installed Python {python_version} with scoop ({package_name})."
                     );
+                }
+                if !success {
+                    mark_failed("scoop");
                 }
                 last_output = output;
             }
@@ -1679,12 +1773,16 @@ fn attempt_python_auto_install(python_version: &str) -> String {
         && !python_version.starts_with("2.")
         && !matches!(python_version, "3.7" | "3.8")
         && command_on_path("brew")
+        && !is_failed("brew")
     {
         managers.push("brew".to_string());
         let formula = format!("python@{python_version}");
         let (success, output) = run_install_command("brew", &["install", &formula]);
         if success && find_python_interpreter(python_version).is_some() {
             return format!("Installed Python {python_version} with Homebrew ({formula}).");
+        }
+        if !success {
+            mark_failed("brew");
         }
         last_output = output;
     }
@@ -1769,6 +1867,40 @@ fn env_has_system_dep_failure(summary: &ValidationSummary) -> bool {
         }
     }
     false
+}
+
+/// Returns true when any env-backend attempt failed because the local Python
+/// interpreter was not found or could not be auto-installed.  Docker images
+/// ship their own interpreter so this class of failure is always recoverable.
+fn env_has_interpreter_failure(summary: &ValidationSummary) -> bool {
+    if summary.attempts.is_empty() {
+        return false;
+    }
+    summary.attempts.iter().any(|attempt| {
+        attempt.status == "build-failed"
+            && (attempt
+                .log_excerpt
+                .contains("No local interpreter found for Python")
+                || attempt
+                    .log_excerpt
+                    .contains("Organization policies are preventing installation")
+                || attempt
+                    .log_excerpt
+                    .contains("python unavailable")
+                || attempt
+                    .log_excerpt
+                    .contains("Installer failed with exit code"))
+    })
+}
+
+/// Returns true when any env-backend attempt failed due to a build timeout.
+/// Docker/Linux typically has pre-built wheels available, avoiding lengthy
+/// from-source compilation that causes timeouts on Windows.
+fn env_has_build_timeout(summary: &ValidationSummary) -> bool {
+    summary
+        .attempts
+        .iter()
+        .any(|a| a.status == "build-timeout")
 }
 
 fn command_on_path(command: &str) -> bool {
@@ -2023,6 +2155,19 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
             "/opt/homebrew/opt/python@{python_version}/bin/python{python_version}"
         )),
     ];
+
+    // ~/.local/bin/ — common on both Unix and Windows (uv, pipx, etc.)
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+    {
+        let home = PathBuf::from(home);
+        let local_bin = home.join(".local").join("bin");
+        paths.push(local_bin.join(format!("python{python_version}")));
+        if cfg!(windows) {
+            paths.push(local_bin.join(format!("python{python_version}.exe")));
+            paths.push(local_bin.join("python.exe"));
+        }
+    }
 
     if cfg!(windows) {
         let compact = python_version.replace('.', "");
@@ -2292,12 +2437,16 @@ fn create_env(
     }
 
     // Python 3.x: try uv first (10-100x faster), then stdlib venv, then virtualenv.
+    // Pass the version string (e.g. "3.9") instead of the interpreter path — uv's
+    // managed Pythons fail inspection when given a raw path but work fine with a
+    // version request.
     if uv_available() {
         let mut uv_cmd = Command::new("uv");
         uv_cmd
             .arg("venv")
+            .arg("--seed")          // install pip+setuptools so fallback `python -m pip` works
             .arg("--python")
-            .arg(interpreter)
+            .arg(python_version)
             .arg(env_dir);
         let uv_result = run_command_with_timeout(&mut uv_cmd, timeout)?;
         if uv_result.success {

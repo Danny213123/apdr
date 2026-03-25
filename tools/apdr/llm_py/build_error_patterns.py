@@ -100,6 +100,19 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         fix_type="system_dep",
         suggested_fix="Package requires Java. Cannot fix via pip alone.",
     ),
+    # Protobuf descriptor incompatibility (TF 1.x + protobuf 4+)
+    ErrorPattern(
+        pattern="Descriptors cannot not be created directly",
+        diagnosis="protobuf version incompatibility with TensorFlow 1.x",
+        fix_type="add_dep",
+        suggested_fix="Add protobuf==3.20.3 as an explicit dependency. TensorFlow 1.x requires protobuf<4.",
+    ),
+    ErrorPattern(
+        pattern="_CheckCalledFromGeneratedFile",
+        diagnosis="protobuf version incompatibility with generated _pb2.py files",
+        fix_type="add_dep",
+        suggested_fix="Add protobuf==3.20.3. Generated protobuf code is incompatible with protobuf>=4.",
+    ),
     # Rust-based packages
     ErrorPattern(
         pattern="error: can't find Rust compiler",

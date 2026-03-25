@@ -18,7 +18,7 @@ import sys
 import traceback
 
 from .models import ResolutionRequest, ResolutionResponse
-from .actions import resolve, solvability, recovery, version, single
+from .actions import resolve, solvability, recovery, version, single, batch_version
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -28,24 +28,25 @@ logging.basicConfig(
 logger = logging.getLogger("apdr_llm")
 
 
+_DISPATCH = {
+    "resolve": lambda req: resolve.handle(req),
+    "solvability": lambda req: solvability.handle(req),
+    "recovery": lambda req: recovery.handle(req),
+    "version": lambda req: version.handle(req),
+    "batch_version": lambda req: batch_version.handle(req),
+    "single": lambda req: single.handle(req),
+}
+
+
 def dispatch(req: ResolutionRequest) -> ResolutionResponse:
     """Route a request to the appropriate action handler."""
-    match req.action:
-        case "resolve":
-            return resolve.handle(req)
-        case "solvability":
-            return solvability.handle(req)
-        case "recovery":
-            return recovery.handle(req)
-        case "version":
-            return version.handle(req)
-        case "single":
-            return single.handle(req)
-        case "react":
-            from .actions import react_agent
-            return react_agent.handle(req)
-        case _:
-            return ResolutionResponse(error=f"Unknown action: {req.action}")
+    handler = _DISPATCH.get(req.action)
+    if handler is not None:
+        return handler(req)
+    if req.action == "react":
+        from .actions import react_agent
+        return react_agent.handle(req)
+    return ResolutionResponse(error=f"Unknown action: {req.action}")
 
 
 def main() -> None:
@@ -54,12 +55,14 @@ def main() -> None:
     sys.stdout.write('{"ready":true}\n')
     sys.stdout.flush()
 
-    for line in sys.stdin:
+    # Ensure stdin handles non-ASCII (e.g. Japanese in error logs) gracefully.
+    stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', errors='replace', closefd=False)
+    for line in stdin:
         line = line.strip()
         if not line:
             continue
         try:
-            req = ResolutionRequest.model_validate_json(line)
+            req = ResolutionRequest.model_validate(json.loads(line))
             response = dispatch(req)
         except Exception as e:
             logger.error("Error processing request: %s\n%s", e, traceback.format_exc())

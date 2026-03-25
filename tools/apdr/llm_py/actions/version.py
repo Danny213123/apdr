@@ -37,6 +37,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         user_prompt=user_prompt,
         response_model=VersionResult,
         max_tokens=256,
+        num_ctx=4096,  # #11: version selection is simple — small context saves VRAM/time
     )
 
     if result is None:

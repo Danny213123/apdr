@@ -209,13 +209,19 @@ class BenchmarkService:
             self.worker.start()
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
 
-    def stop_benchmark(self) -> dict[str, Any]:
+    def stop_benchmark(self, join_timeout: float = 20) -> dict[str, Any]:
+        worker = None
         with self._lock:
             if self.worker and self.worker.is_alive():
                 self.worker.stop()
+                worker = self.worker
                 self._current_run["status"] = "stopping"
                 self._current_run["statusText"] = "Stopping the active benchmark..."
                 self._append_activity("Stopping the active benchmark...")
+        # Join outside the lock so the worker can still emit final messages
+        if worker is not None:
+            worker.join(timeout=join_timeout)
+        with self._lock:
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
 
     def start_doctor(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -424,6 +430,12 @@ class BenchmarkService:
             "successes": 0,
             "failures": 0,
             "skipped": 0,
+            "regularSuccesses": 0,
+            "regularFailures": 0,
+            "regularSkipped": 0,
+            "llmSuccesses": 0,
+            "llmFailures": 0,
+            "llmSkipped": 0,
             "elapsedSeconds": 0.0,
             "elapsedLabel": "0m 00s",
             "passRate": "0.0%",
@@ -539,14 +551,35 @@ class BenchmarkService:
                 self._accumulate_phase_metrics(self._current_run, result)
                 case_succeeded = self._result_succeeded(result)
                 case_skipped = self._result_skipped(result)
+                is_llm_case = self._result_int_metric(result, "llm_calls") > 0
                 self._current_run["completed"] = int(message["completed"])
                 self._current_run["total"] = int(message["total"])
                 if case_succeeded:
                     self._current_run["successes"] += 1
+                    if is_llm_case:
+                        self._current_run["llmSuccesses"] += 1
+                    else:
+                        self._current_run["regularSuccesses"] += 1
                 elif case_skipped:
                     self._current_run["skipped"] += 1
+                    if is_llm_case:
+                        self._current_run["llmSkipped"] += 1
+                    else:
+                        self._current_run["regularSkipped"] += 1
                 else:
                     self._current_run["failures"] += 1
+                    if is_llm_case:
+                        self._current_run["llmFailures"] += 1
+                    else:
+                        self._current_run["regularFailures"] += 1
+                # Ensure completed stays consistent with actual counter totals
+                actual_counted = (
+                    self._current_run["successes"]
+                    + self._current_run["failures"]
+                    + self._current_run["skipped"]
+                )
+                if self._current_run["completed"] != actual_counted:
+                    self._current_run["completed"] = actual_counted
                 self._current_run["passRate"] = self._format_pass_rate(
                     self._current_run["successes"],
                     self._current_run["failures"],
@@ -570,9 +603,10 @@ class BenchmarkService:
                 )
                 self._refresh_live_run_metrics_locked(force=True)
                 self._current_run["subtitle"] = (
-                    f"warning: {self._current_run['successes']} passes, "
-                    f"{self._current_run['failures']} failures, "
-                    f"{self._current_run['skipped']} skips, {self._current_run['speed']} pace."
+                    f"warning: regular {self._current_run['regularSuccesses']}P/{self._current_run['regularFailures']}F/{self._current_run['regularSkipped']}S "
+                    f"| llm {self._current_run['llmSuccesses']}P/{self._current_run['llmFailures']}F/{self._current_run['llmSkipped']}S "
+                    f"| total {self._current_run['successes']}P/{self._current_run['failures']}F/{self._current_run['skipped']}S "
+                    f"| {self._current_run['speed']} pace."
                 )
                 case_row = self._build_case_row(result)
                 self._current_run["completedCases"].insert(0, case_row)
@@ -750,6 +784,15 @@ class BenchmarkService:
         successes = sum(1 for item in results if self._result_succeeded(item))
         skipped = sum(1 for item in results if self._result_skipped(item))
         failures = completed - successes - skipped
+        # Split by regular vs LLM cases
+        llm_results = [r for r in results if self._result_int_metric(r, "llm_calls") > 0]
+        regular_results = [r for r in results if self._result_int_metric(r, "llm_calls") <= 0]
+        regular_successes = sum(1 for r in regular_results if self._result_succeeded(r))
+        regular_skipped = sum(1 for r in regular_results if self._result_skipped(r))
+        regular_failures = len(regular_results) - regular_successes - regular_skipped
+        llm_successes = sum(1 for r in llm_results if self._result_succeeded(r))
+        llm_skipped = sum(1 for r in llm_results if self._result_skipped(r))
+        llm_failures = len(llm_results) - llm_successes - llm_skipped
         phase_totals = self._phase_totals(results)
         llm_val_totals = self._llm_validation_totals(results)
         llm_cases = self._llm_case_rows(results, config)
@@ -788,6 +831,12 @@ class BenchmarkService:
                 "successes": successes,
                 "failures": failures,
                 "skipped": skipped,
+                "regularSuccesses": regular_successes,
+                "regularFailures": regular_failures,
+                "regularSkipped": regular_skipped,
+                "llmSuccesses": llm_successes,
+                "llmFailures": llm_failures,
+                "llmSkipped": llm_skipped,
                 "elapsedSeconds": round(elapsed, 2),
                 "elapsedLabel": self._format_duration(elapsed) if elapsed > 0 else "0m 00s",
                 "passRate": f"{pass_rate:0.1f}%",
@@ -1451,10 +1500,9 @@ class BenchmarkService:
             return preview[:110]
         if not self._result_succeeded(result):
             return "--"
-        output_files = [os.path.basename(str(item)) for item in result.get("output_files", []) if item]
-        if output_files:
-            return ", ".join(output_files[:2])[:110]
-        return "--"
+        # Case succeeded but no requirements — show "(no deps)" instead of
+        # falling back to the output filename which is confusing.
+        return "(no deps)"
 
     def _result_requirements(self, snippet: str, result: dict[str, Any]) -> list[str]:
         inline = [str(item).strip() for item in result.get("requirements", []) if str(item).strip()]

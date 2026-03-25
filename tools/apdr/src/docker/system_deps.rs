@@ -11,6 +11,7 @@ pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
     match normalized.as_str() {
         "lxml" => &["libxml2-dev", "libxslt1-dev"],
         "pillow" | "pil" => &["libjpeg-dev", "zlib1g-dev", "libfreetype6-dev"],
+        "freetype-py" | "freetype" => &["libfreetype6-dev"],
         "psycopg2" | "psycopg2-binary" => &["libpq-dev"],
         "mysqlclient" | "mysql-python" => &["default-libmysqlclient-dev"],
         "cryptography" => &["libssl-dev", "libffi-dev"],
@@ -53,7 +54,7 @@ pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
         "dbus-python" => &["libdbus-1-dev", "libdbus-glib-1-dev", "pkg-config"],
         "dlib" => &["cmake", "libopenblas-dev"],
         "pylibmc" => &["libmemcached-dev"],
-        "mecab" | "mecab-python3" => &["mecab", "libmecab-dev", "mecab-ipadic-utf8"],
+        "mecab" | "mecab-python" | "mecab-python3" => &["mecab", "libmecab-dev", "mecab-ipadic-utf8"],
         "evdev" => &["linux-headers-generic"],
         "imposm" => &[
             "libgeos-dev",
@@ -166,6 +167,12 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     if lower.contains("cmake") && (lower.contains("not found") || lower.contains("is required")) {
         deps.insert("cmake".to_string());
     }
+    if lower.contains("gdal-config") || lower.contains("gdal_config") || lower.contains("gdal api version") {
+        deps.insert("libgdal-dev".to_string());
+    }
+    if lower.contains("geos-config") || lower.contains("geos_config") || lower.contains("geos_c") {
+        deps.insert("libgeos-dev".to_string());
+    }
 
     deps.into_iter().collect()
 }
@@ -234,5 +241,27 @@ mod tests {
         let log = "fatal error: openssl/ssl.h: No such file or directory";
         let deps = extract_system_deps_from_log(log);
         assert!(deps.contains(&"libssl-dev".to_string()));
+    }
+
+    #[test]
+    fn extract_gdal_config_error() {
+        let log = "A GDAL API version must be specified. Provide a path to gdal-config using a GDAL_CONFIG environment variable";
+        let deps = extract_system_deps_from_log(log);
+        assert!(deps.contains(&"libgdal-dev".to_string()));
+    }
+
+    #[test]
+    fn extract_geos_config_error() {
+        let log = "OSError: Could not find lib geos_c or load any of its variants ['libgeos_c.so']";
+        let deps = extract_system_deps_from_log(log);
+        assert!(deps.contains(&"libgeos-dev".to_string()));
+    }
+
+    #[test]
+    fn infer_system_deps_for_geospatial() {
+        let reqs = "Fiona==1.8.22\ngeopandas==0.12.2\nshapely==2.0.1\n";
+        let deps = infer_system_deps_from_requirements(reqs);
+        assert!(deps.contains(&"libgdal-dev".to_string()));
+        assert!(deps.contains(&"libgeos-dev".to_string()));
     }
 }

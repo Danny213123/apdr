@@ -37,6 +37,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         user_prompt=user_prompt,
         response_model=SolvabilityResult,
         max_tokens=512,
+        num_ctx=8192,  # #11: solvability is a triage task — half context is enough
     )
 
     if result is None:

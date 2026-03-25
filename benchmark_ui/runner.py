@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -18,6 +19,28 @@ except ImportError:
     fcntl = None  # type: ignore[assignment]
 
 from .state import AppState
+
+# WSL mount prefix pattern: /mnt/<drive>/...
+_WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
+
+
+def _normalize_path_for_native(p: Path) -> Path:
+    """Translate WSL /mnt/X/... paths to Windows X:\\ paths when running on Windows.
+
+    When the benchmark UI is launched from WSL but the APDR binary is a native
+    Windows executable, dataset paths like /mnt/d/apdr/hard-gists need to become
+    D:\\apdr\\hard-gists so the Windows binary can find them.
+    """
+    if os.name != "nt":
+        return p
+    s = str(p)
+    # Also handle forward-slash paths that sneak through on Windows
+    m = _WSL_MNT_RE.match(s) or _WSL_MNT_RE.match(s.replace("\\", "/"))
+    if m:
+        drive = m.group(1).upper()
+        rest = (m.group(2) or "").replace("/", "\\")
+        return Path(f"{drive}:{rest}")
+    return p
 
 
 class BenchmarkWorker(threading.Thread):
@@ -42,12 +65,29 @@ class BenchmarkWorker(threading.Thread):
     def current_process(self, value: subprocess.Popen[str] | None) -> None:
         pass  # no-op; managed via _active_processes
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 15) -> None:
+        """Signal all active processes to stop and wait until they're dead.
+
+        Sets the stop flag first so the worker loop won't spawn new work,
+        then kills every active subprocess tree in parallel.
+        """
         self.stop_requested.set()
         with self._active_lock:
-            for process in list(self._active_processes):
-                if process.poll() is None:
-                    self._terminate_process(process)
+            procs = [p for p in self._active_processes if p.poll() is None]
+        # Kill in parallel threads so we don't wait sequentially per process
+        kill_threads = []
+        for proc in procs:
+            t = threading.Thread(target=self._terminate_process, args=(proc,), daemon=True)
+            t.start()
+            kill_threads.append(t)
+        deadline = time.monotonic() + timeout
+        for t in kill_threads:
+            remaining = max(0, deadline - time.monotonic())
+            t.join(timeout=remaining)
+        # Kill orphaned processes that escape the process tree.
+        # docker-buildx.exe is spawned by Docker Desktop, not as a child of
+        # docker.exe, so taskkill /T doesn't reach it.
+        self._kill_orphaned_processes()
 
     def run(self) -> None:
         summary: dict[str, Any] = {}
@@ -61,6 +101,7 @@ class BenchmarkWorker(threading.Thread):
                 raise FileNotFoundError(f"Tool directory not found: {tool_dir}")
 
             runner = self.state.choose_runner(tool, str(self.run_config.get("python_command", "")))
+            self._emit("status", text="Validating tool runtime...")
             runtime_ok, runtime_detail, runtime_runner = self.state.validate_tool_runtime(
                 tool,
                 str(self.run_config.get("python_command", "")),
@@ -79,9 +120,14 @@ class BenchmarkWorker(threading.Thread):
             selected_model = str(self.run_config.get("model") or model_config.model)
             selected_base_url = str(self.run_config.get("base_url") or model_config.base_url)
             selected_temperature = float(self.run_config.get("temperature") or model_config.temperature)
-            dataset_tar = Path(str(self.run_config["dataset_tar"])).expanduser().resolve()
+            dataset_tar = _normalize_path_for_native(
+                Path(str(self.run_config["dataset_tar"])).expanduser().resolve()
+            )
             self._emit("status", text=f"Preparing dataset from {self.state.relative_path(dataset_tar)}")
-            dataset_dir = self.state.ensure_dataset_extracted(dataset_tar)
+            dataset_dir = _normalize_path_for_native(
+                self.state.ensure_dataset_extracted(dataset_tar)
+            )
+            self._emit("status", text="Discovering snippets...")
             snippets = self.state.snippet_files(dataset_dir)
 
             snippet_limit = self._parse_limit(self.run_config.get("snippet_limit", ""))
@@ -162,7 +208,10 @@ class BenchmarkWorker(threading.Thread):
             if case_artifacts_root is not None:
                 case_artifacts_root.mkdir(parents=True, exist_ok=True)
 
-            # Determine worker count: 0 = auto (cpu_count - 2), 1 = sequential
+            # Determine worker count: 0 = auto, 1 = sequential.
+            # Most cases resolve via Tier1/2 without LLM, so CPU-bound env
+            # validation benefits from high parallelism.  The few LLM cases
+            # serialize on the Ollama GPU anyway.
             workers = int(self.run_config.get("workers", 0))
             if workers <= 0:
                 workers = max(1, (os.cpu_count() or 4) - 2)
@@ -201,6 +250,12 @@ class BenchmarkWorker(threading.Thread):
                     )
                     if is_llm_only:
                         command.append("--llm-only")
+                    vt = self.run_config.get("validation_timeout")
+                    if vt and int(vt) > 0:
+                        command.extend(["--validation-timeout", str(int(vt))])
+                    # Always force venv validation for non-LLM cases in benchmark mode
+                    if not is_llm_only:
+                        command.append("--force-validate")
                 if self.run_config["verbose"]:
                     command.append("-v")
                 command.extend(["--benchmark-context-log", str(context_log)])
@@ -256,7 +311,8 @@ class BenchmarkWorker(threading.Thread):
             else:
                 # Parallel mode: use ThreadPoolExecutor
                 self._emit("status", text=f"Running {len(case_tasks)} cases with {workers} parallel workers")
-                with ThreadPoolExecutor(max_workers=workers) as pool:
+                pool = ThreadPoolExecutor(max_workers=workers)
+                try:
                     future_to_task: dict[Future[dict[str, Any]], dict[str, Any]] = {}
                     for task in case_tasks:
                         if self.stop_requested.is_set():
@@ -323,6 +379,11 @@ class BenchmarkWorker(threading.Thread):
                             duration=result["duration_seconds"],
                             result=result,
                         )
+                finally:
+                    # cancel_futures=True (Python 3.9+) prevents queued work
+                    # from starting; running workers finish after _terminate_process
+                    # kills their subprocesses via the stop_requested check.
+                    pool.shutdown(wait=True, cancel_futures=True)
 
             if self.stop_requested.is_set():
                 summary["status"] = "stopped"
@@ -603,30 +664,75 @@ class BenchmarkWorker(threading.Thread):
         return parsed
 
     def _terminate_process(self, process: subprocess.Popen[str]) -> None:
+        """Kill a subprocess and all its children. Returns when the process is dead."""
         if process.poll() is not None:
             return
+        pid = process.pid
         try:
             if os.name == "nt":
-                ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
-                if ctrl_break is not None:
-                    process.send_signal(ctrl_break)
-                else:
-                    process.terminate()
+                # taskkill /T /F kills the entire process tree reliably on Windows.
+                # CTRL_BREAK_EVENT only reaches the immediate process, not child
+                # processes (e.g. the Python LLM service or Docker containers).
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
             elif hasattr(os, "killpg"):
-                os.killpg(process.pid, signal.SIGTERM)
+                os.killpg(pid, signal.SIGTERM)
             else:
                 process.terminate()
             process.wait(timeout=5)
         except (OSError, subprocess.TimeoutExpired):
+            # Escalate to SIGKILL / hard kill
             try:
                 if os.name == "nt":
                     process.kill()
                 elif hasattr(os, "killpg"):
-                    os.killpg(process.pid, signal.SIGKILL)
+                    os.killpg(pid, signal.SIGKILL)
                 else:
                     process.kill()
-            except OSError:
+                process.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
                 pass
+
+    @staticmethod
+    def _kill_orphaned_processes() -> None:
+        """Kill orphaned apdr/docker processes that survive process-tree kills.
+
+        On Windows, docker-buildx.exe is spawned by Docker Desktop's daemon,
+        not as a child of the docker.exe CLI we spawned.  taskkill /T on our
+        process tree therefore misses it.  We also kill any leftover apdr.exe
+        and stop Docker containers with the apdr-validate prefix.
+        """
+        for proc_name in ("apdr.exe", "docker-buildx.exe"):
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", proc_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        # Stop any running apdr-validate Docker containers
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "-q", "--filter", "name=apdr-validate"],
+                capture_output=True, text=True, timeout=10,
+            )
+            container_ids = result.stdout.strip().split()
+            for cid in container_ids:
+                if cid:
+                    subprocess.run(
+                        ["docker", "rm", "-f", cid],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=10,
+                    )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
     def _case_id_from_snippet(self, snippet: Path) -> str:
         if snippet.parent.name:

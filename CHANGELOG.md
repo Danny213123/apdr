@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14 - 2026-03-25
+
+- Added a fast validated import-set cache path plus broader resolver recovery logic in [`tools/apdr/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr), including docstring-aware import scanning, expanded alias/heuristic mappings, equally distanced version sampling, stronger Python 2 ceilings, guarded-import/runtime-config handling, protobuf/TensorFlow fixes, and new Rust/Python regression coverage for the latest edge cases.
+- Improved APDR validation routing and cleanup by falling back from local env validation to Docker when interpreters are missing, builds time out, or system libraries are required, while also tightening smoke-test execution, system-dependency detection, Windows/`uv` interpreter discovery, auto-install behavior, and Docker image/build-cache cleanup so long benchmark runs are more reliable.
+- Updated the benchmark control plane and LLM service with regular-vs-LLM run metrics, WSL-to-Windows dataset path normalization, stronger stop/shutdown handling, forced validation controls for benchmark mode, the new default `qwen3.5:9b` model, Ollama keep-alive/prewarm settings, richer recovery prompts, and batched LLM version selection to cut repeated round trips.
+
 ## 0.2.13 - 2026-03-22
 
 - Reworked APDR's resolution core around a new PubGrub-backed pre-solver, expanded version-range/PyPI plumbing, and a Python-side `llm_py` service that now handles solvability, package resolution, recovery, version selection, and ReAct-style fallback actions.

@@ -33,6 +33,9 @@ class ResolutionRequest(BaseModel):
     package_name: str = ""
     versions: list[str] = Field(default_factory=list)
 
+    # For batch_version (#12)
+    batch_packages: dict[str, list[str]] = Field(default_factory=dict)
+
     # For resolve — tier2 candidates per import
     tier2_candidates: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -40,6 +43,8 @@ class ResolutionRequest(BaseModel):
     provider: str = "ollama"
     model: str = "gemma3:12b"
     base_url: str = "http://localhost:11434"
+    model_override: str = ""   # per-action model override (e.g. smaller model for version)
+    num_ctx_override: int = 0  # per-action context window override (0 = use default)
 
     # Paths for persistence
     cache_path: str = ""
@@ -64,9 +69,14 @@ class ResolutionResponse(BaseModel):
     fix_possible: bool = False
     wrong_package: str = ""
     correct_package: str = ""
+    add_package: str = ""       # new transitive dep to add (e.g. "protobuf==3.20.3")
+    remove_package: str = ""    # package to remove entirely (local module / wrong package)
 
     # For version
     version: str = ""
+
+    # For batch_version (#12)
+    batch_versions: dict[str, str] = Field(default_factory=dict)
 
     # Metadata
     notes: list[str] = Field(default_factory=list)

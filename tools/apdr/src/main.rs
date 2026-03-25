@@ -145,6 +145,9 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
             "--no-execute-snippet" => {
                 config.execute_snippet = false;
             }
+            "--force-validate" => {
+                config.force_validate = true;
+            }
             "--no-parallel-versions" => {
                 config.parallel_versions = false;
             }
@@ -493,7 +496,7 @@ fn print_help() {
     println!();
     println!("Usage:");
     println!("  apdr resolve <snippet.py>|--stdin [--output DIR] [--python 3.11] [--range 1] [--max-retries 10]");
-    println!("              [--cache-path DIR] [--allow-llm --llm-only --llm-provider ollama --llm-model gemma3:4b]");
+    println!("              [--cache-path DIR] [--allow-llm --llm-only --llm-provider ollama --llm-model qwen3.5:9b]");
     println!(
         "              [--llm-base-url http://localhost:11434] [--benchmark-context-log trace.log]"
     );

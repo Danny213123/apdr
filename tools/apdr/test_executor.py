@@ -27,12 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-f", "--file", required=True, help="Snippet file to resolve")
     parser.add_argument("--output-dir", default="", help="Directory for APDR benchmark artifacts")
     parser.add_argument("-b", "--base", default="http://localhost:11434", help="LLM base URL for optional Ollama fallback")
-    parser.add_argument("-m", "--model", default="phi3:medium", help="LLM model used when APDR's LLM fallback is enabled")
+    parser.add_argument("-m", "--model", default="qwen3.5:9b", help="LLM model used when APDR's LLM fallback is enabled")
     parser.add_argument("-t", "--temp", default="0.7", help="Compatibility flag retained for benchmark parity")
     parser.add_argument("-l", "--loop", type=int, default=5, help="Maximum APDR recovery retries")
     parser.add_argument("-r", "--range", type=int, default=1, help="Python version search range")
     parser.add_argument("-ra", "--rag", default="true", help="Enable APDR's optional LLM-assisted resolution tier")
-    parser.add_argument("--docker-timeout", type=int, default=300, help="Validation install/import timeout in seconds")
+    parser.add_argument("--docker-timeout", type=int, default=900, help="Validation install/import timeout in seconds")
     parser.add_argument(
         "--validation-backend",
         choices=("env", "docker", "llm"),
@@ -43,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
     parser.add_argument("--benchmark-context-log", default="", help="Append benchmark build/run/LLM trace to this file")
+    parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers)")
+    parser.add_argument("--force-validate", action="store_true", help="Force venv validation even for cached/pre-solved results")
+    parser.add_argument("--validation-timeout", type=int, default=0, help="Per-attempt validation timeout in seconds")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print the raw CLI output")
     return parser.parse_args()
 
@@ -167,6 +170,12 @@ def main() -> int:
         command.append("--no-execute-snippet")
     if args.no_parallel_versions:
         command.append("--no-parallel-versions")
+    if args.llm_only:
+        command.append("--llm-only")
+    if args.force_validate:
+        command.append("--force-validate")
+    if args.validation_timeout and args.validation_timeout > 0:
+        command.extend(["--validation-timeout", str(args.validation_timeout)])
     if args.benchmark_context_log.strip():
         command.extend(["--benchmark-context-log", args.benchmark_context_log.strip()])
         append_context_log(

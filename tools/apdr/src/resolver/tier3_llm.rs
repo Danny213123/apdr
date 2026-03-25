@@ -29,9 +29,46 @@ struct LlmProcess {
 static LLM_PROCESS: OnceLock<Mutex<LlmProcess>> = OnceLock::new();
 
 fn find_python() -> String {
-    for cmd in &["python3", "python"] {
-        if Command::new(cmd)
-            .arg("--version")
+    // Honour explicit override first.
+    if let Ok(py) = std::env::var("APDR_PYTHON") {
+        if !py.is_empty() {
+            return py;
+        }
+    }
+    // Build a candidate list: prefer interpreters that are likely to have
+    // pydantic/instructor installed (conda, venv, then generic python3).
+    let mut candidates: Vec<String> = Vec::new();
+    // Conda/mamba Python (usually has scientific packages pre-installed)
+    if let Ok(prefix) = std::env::var("CONDA_PREFIX") {
+        let sep = if cfg!(windows) { "\\" } else { "/" };
+        if cfg!(windows) {
+            candidates.push(format!("{prefix}{sep}python.exe"));
+        } else {
+            candidates.push(format!("{prefix}{sep}bin{sep}python"));
+        }
+    }
+    candidates.extend(["python3".to_string(), "python".to_string()]);
+    // On Windows, also try the `py` launcher with descending version flags
+    // and common install paths, since `python` often resolves to the oldest.
+    if cfg!(windows) {
+        for ver in &["3.12", "3.11", "3.10", "3.9"] {
+            candidates.push(format!("py -{ver}"));
+        }
+        // Common Windows install locations (newest first)
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            for ver in &["312", "311", "310", "39"] {
+                candidates.push(format!("{local}\\Programs\\Python\\Python{ver}\\python.exe"));
+            }
+        }
+    }
+    for cmd in &candidates {
+        // Check the interpreter can import pydantic (required by llm_py).
+        // Some candidates (e.g. "py -3.11") have space-separated args.
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        let (program, extra_args) = (parts[0], &parts[1..]);
+        if Command::new(program)
+            .args(extra_args)
+            .args(&["-c", "import pydantic"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -41,6 +78,7 @@ fn find_python() -> String {
             return cmd.to_string();
         }
     }
+    // Last resort — hope that python3 is adequate.
     "python3".to_string()
 }
 
@@ -78,7 +116,10 @@ fn spawn_python_process() -> Mutex<LlmProcess> {
     let py_dir = llm_py_dir();
     let parent = py_dir.parent().unwrap_or_else(|| Path::new("."));
 
-    let mut child = Command::new(&python)
+    let parts: Vec<&str> = python.split_whitespace().collect();
+    let (program, extra_args) = (parts[0], &parts[1..]);
+    let mut child = Command::new(program)
+        .args(extra_args)
         .arg("-m")
         .arg("llm_py")
         .current_dir(parent)
@@ -273,7 +314,7 @@ pub fn assess_solvability(
     config: &ResolveConfig,
 ) -> Option<SolvabilityAssessment> {
     let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 24_000)
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
     let mut request = build_base_request(config);
@@ -369,7 +410,7 @@ pub fn resolve(
     let failure_ctx = format_failure_context(&failures, &llm_candidates);
     let mut context = assemble_batch_context(store, &llm_candidates, &failure_ctx);
     let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
     // Build attribute_usage as JSON
@@ -462,6 +503,14 @@ pub fn resolve(
     let mut resolved = Vec::new();
     let mut still_unresolved = preserved_unresolved;
 
+    // #12: Collect all packages needing version selection, then batch them
+    struct PendingMapping {
+        import_name: String,
+        package_name: String,
+        versions: Vec<String>,
+    }
+    let mut pending: Vec<PendingMapping> = Vec::new();
+
     for (import_name, mapped) in &mappings {
         let versions = pypi_client::compatible_versions(store, mapped, python_version);
         if versions.is_empty() && mapped == import_name {
@@ -478,30 +527,45 @@ pub fn resolve(
             still_unresolved.push(import_name.clone());
             continue;
         }
-
-        // Version selection: try LLM first, fallback to sampler
-        let version = if versions.is_empty() {
-            None
-        } else {
-            let llm_version = pick_version_via_python(
-                config,
-                mapped,
-                &versions,
-                python_version,
-                &benchmark_context,
-            );
-            llm_version.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
-        };
-
-        let _ = store.save_import_mapping(import_name, mapped, version.as_deref(), "llm");
-        resolved.push(ResolvedDependency {
+        pending.push(PendingMapping {
             import_name: import_name.clone(),
             package_name: mapped.clone(),
+            versions,
+        });
+    }
+
+    // Batch version selection: one LLM call for all packages
+    let packages_needing_versions: Vec<(String, Vec<String>)> = pending
+        .iter()
+        .filter(|p| !p.versions.is_empty())
+        .map(|p| (p.package_name.clone(), p.versions.clone()))
+        .collect();
+
+    let batch_versions = if !packages_needing_versions.is_empty() {
+        batch_pick_versions(config, &packages_needing_versions, python_version, &benchmark_context)
+    } else {
+        HashMap::new()
+    };
+
+    for entry in &pending {
+        let version = if entry.versions.is_empty() {
+            None
+        } else {
+            batch_versions
+                .get(&entry.package_name)
+                .cloned()
+                .or_else(|| version_sampler::equally_distanced_sample(&entry.versions, &[]))
+        };
+
+        let _ = store.save_import_mapping(&entry.import_name, &entry.package_name, version.as_deref(), "llm");
+        resolved.push(ResolvedDependency {
+            import_name: entry.import_name.clone(),
+            package_name: entry.package_name.clone(),
             version,
             strategy: "llm".to_string(),
             confidence: llm_confidence,
         });
-        notes.push(format!("LLM resolved {import_name} -> {mapped}."));
+        notes.push(format!("LLM resolved {} -> {}.", entry.import_name, entry.package_name));
     }
 
     StageResult {
@@ -560,7 +624,7 @@ pub fn resolve_with_context(
     ));
 
     let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
     let attr_usage: serde_json::Value = serde_json::json!(
@@ -702,7 +766,7 @@ pub fn single_package_hint(
 
     let context = assemble_context_for_import(store, import_name);
     let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
+        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
     let attr_usage: serde_json::Value = serde_json::json!(
@@ -760,6 +824,17 @@ pub fn single_package_hint(
 // Recovery Package Hint
 // ---------------------------------------------------------------------------
 
+/// Recovery hint from LLM: swap a package and/or add a new transitive dep.
+pub struct RecoveryHint {
+    pub wrong_pkg: String,
+    pub correct_pkg: String,
+    pub version: Option<String>,
+    /// Optional new dependency to add (package_name, version).
+    pub add_package: Option<(String, Option<String>)>,
+    /// Optional package to remove entirely (local module / wrong package).
+    pub remove_pkg: Option<String>,
+}
+
 pub fn recovery_package_hint(
     resolved: &[ResolvedDependency],
     error_log: &str,
@@ -769,7 +844,7 @@ pub fn recovery_package_hint(
     python_version: &str,
     error_type: &str,
     previous_attempts: &[(String, String, String)],
-) -> Option<(String, String, Option<String>)> {
+) -> Option<RecoveryHint> {
     let resolved_desc: Vec<String> = resolved
         .iter()
         .map(|d| {
@@ -819,17 +894,68 @@ pub fn recovery_package_hint(
         .unwrap_or("")
         .to_string();
 
-    if wrong_pkg.is_empty() || correct_pkg.is_empty() || wrong_pkg == correct_pkg {
+    // Parse optional version field (LLM-suggested version pin)
+    let llm_version = response
+        .get("version")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim().to_string());
+
+    // Parse optional add_package field (e.g. "protobuf==3.20.3")
+    let add_package = response
+        .get("add_package")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            if let Some((name, ver)) = s.split_once("==") {
+                (name.trim().to_string(), Some(ver.trim().to_string()))
+            } else {
+                (s.trim().to_string(), None)
+            }
+        });
+
+    // Parse optional remove_package field (package to remove entirely)
+    let remove_pkg = response
+        .get("remove_package")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim().to_string());
+
+    let has_swap = !wrong_pkg.is_empty() && !correct_pkg.is_empty() && wrong_pkg != correct_pkg;
+    let has_version_pin = !wrong_pkg.is_empty()
+        && !correct_pkg.is_empty()
+        && wrong_pkg == correct_pkg
+        && llm_version.is_some();
+
+    if !has_swap && !has_version_pin && add_package.is_none() && remove_pkg.is_none() {
         return None;
     }
 
-    let versions = pypi_client::compatible_versions(store, &correct_pkg, python_version);
-    if versions.is_empty() {
-        return None;
-    }
+    let version = if has_swap {
+        // For package swaps, verify the new package exists on PyPI and pick a version
+        let versions = pypi_client::compatible_versions(store, &correct_pkg, python_version);
+        if versions.is_empty() && add_package.is_none() {
+            return None;
+        }
+        if !versions.is_empty() {
+            version_sampler::equally_distanced_sample(&versions, &[])
+        } else {
+            None
+        }
+    } else if has_version_pin {
+        // LLM suggested pinning the same package to a specific version
+        llm_version
+    } else {
+        None
+    };
 
-    let version = version_sampler::equally_distanced_sample(&versions, &[]);
-    Some((wrong_pkg, correct_pkg, version))
+    Some(RecoveryHint {
+        wrong_pkg,
+        correct_pkg,
+        version,
+        add_package,
+        remove_pkg,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -866,6 +992,64 @@ fn pick_version_via_python(
     } else {
         None
     }
+}
+
+// ---------------------------------------------------------------------------
+// #12: Batch version selection — one LLM call for N packages
+// ---------------------------------------------------------------------------
+
+fn batch_pick_versions(
+    config: &ResolveConfig,
+    packages: &[(String, Vec<String>)],
+    python_version: &str,
+    benchmark_context: &str,
+) -> HashMap<String, String> {
+    if packages.is_empty() {
+        return HashMap::new();
+    }
+    // For single package, fall back to single-package call
+    if packages.len() == 1 {
+        let (pkg, versions) = &packages[0];
+        if let Some(v) = pick_version_via_python(config, pkg, versions, python_version, benchmark_context) {
+            let mut map = HashMap::new();
+            map.insert(pkg.clone(), v);
+            return map;
+        }
+        return HashMap::new();
+    }
+
+    let mut batch_map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    for (pkg, versions) in packages {
+        batch_map.insert(pkg.clone(), serde_json::json!(versions));
+    }
+
+    let mut request = build_base_request(config);
+    request["action"] = "batch_version".into();
+    request["python_version"] = python_version.into();
+    request["benchmark_context"] = benchmark_context.into();
+    request["batch_packages"] = serde_json::Value::Object(batch_map);
+
+    let response = match call_python(&request) {
+        Some(r) => r,
+        None => return HashMap::new(),
+    };
+
+    let mut result = HashMap::new();
+    if let Some(batch_versions) = response.get("batch_versions").and_then(|v| v.as_object()) {
+        for (pkg, version_val) in batch_versions {
+            if let Some(version) = version_val.as_str() {
+                if !version.is_empty() && !version.eq_ignore_ascii_case("NONE") {
+                    // Validate version is in the allowed list
+                    if let Some((_, versions)) = packages.iter().find(|(p, _)| p == pkg) {
+                        if versions.iter().any(|v| v == version) {
+                            result.insert(pkg.clone(), version.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------

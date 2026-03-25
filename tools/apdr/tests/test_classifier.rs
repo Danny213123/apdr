@@ -97,3 +97,18 @@ fn classifier_recognizes_disk_full() {
     assert_eq!(result.error_type, "DiskFull");
     assert_eq!(result.conflict_class, "TPL-OS");
 }
+
+#[test]
+fn classifier_recognizes_msvc_build_failure() {
+    // Case 00056d4: lxml build failure due to missing MSVC on Py2.7 Windows
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let store =
+        apdr::cache::store::CacheStore::load(&tool_root, tool_root.join(".apdr-cache")).unwrap();
+    let log = "building 'lxml.etree' extension\n\
+               error: Microsoft Visual C++ 9.0 is required.\n\
+               Failed to build lxml\n\
+               ERROR: Command errored out with exit status 1";
+    let result = apdr::recovery::classifier::classify_log(log, &store);
+
+    assert_eq!(result.error_type, "BuildFailure");
+}

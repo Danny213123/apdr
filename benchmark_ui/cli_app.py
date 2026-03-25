@@ -867,9 +867,9 @@ class BenchmarkCliApp:
             f"Run ID: {effective_run.get('runId') or 'standby'}",
             f"Progress: {effective_run.get('completed', 0)}/{effective_run.get('total', 0)}",
             (
-                f"Pass {effective_run.get('successes', 0)}  "
-                f"Fail {effective_run.get('failures', 0)}  "
-                f"Skip {effective_run.get('skipped', 0)}"
+                f"Regular: {effective_run.get('regularSuccesses', 0)}P {effective_run.get('regularFailures', 0)}F {effective_run.get('regularSkipped', 0)}S  |  "
+                f"LLM: {effective_run.get('llmSuccesses', 0)}P {effective_run.get('llmFailures', 0)}F {effective_run.get('llmSkipped', 0)}S  |  "
+                f"Total: {effective_run.get('successes', 0)}P {effective_run.get('failures', 0)}F {effective_run.get('skipped', 0)}S"
             ),
             f"Elapsed: {effective_run.get('elapsedLabel')}    Pace: {effective_run.get('speed')}    ETA: {effective_run.get('eta')}",
             f"Active case: {effective_run.get('activeCase') or '--'}",
@@ -903,28 +903,33 @@ class BenchmarkCliApp:
         self._add_line(stdscr, top + 3, 0, run.get("statusText") or "--", 0)
         self._add_line(stdscr, top + 4, 0, run.get("progressBar") or "--", self._color(curses, "accent"))
         metrics = (
-            f"Successes: {run.get('successes', 0)}  Failures: {run.get('failures', 0)}  "
-            f"Skips: {run.get('skipped', 0)}  Elapsed: {run.get('elapsedLabel')}  "
-            f"Pass rate: {run.get('passRate')}  Pace: {run.get('speed')}  ETA: {run.get('eta')}"
+            f"Regular: {run.get('regularSuccesses', 0)}P {run.get('regularFailures', 0)}F {run.get('regularSkipped', 0)}S  |  "
+            f"LLM: {run.get('llmSuccesses', 0)}P {run.get('llmFailures', 0)}F {run.get('llmSkipped', 0)}S  |  "
+            f"Total: {run.get('successes', 0)}P {run.get('failures', 0)}F {run.get('skipped', 0)}S"
         )
         self._add_line(stdscr, top + 5, 0, metrics, self._color(curses, "normal"))
+        pace_metrics = (
+            f"Elapsed: {run.get('elapsedLabel')}  "
+            f"Pass rate: {run.get('passRate')}  Pace: {run.get('speed')}  ETA: {run.get('eta')}"
+        )
+        self._add_line(stdscr, top + 6, 0, pace_metrics, self._color(curses, "normal"))
         llm_metrics = (
             f"LLM calls: {run.get('totalLlmCalls', 0)}  "
             f"Env builds: {run.get('totalEnvBuilds', 0)}  "
             f"Retries: {run.get('totalRetries', 0)}  "
             f"Cases w/ retries: {run.get('casesWithLlmRetries', 0)}"
         )
-        self._add_line(stdscr, top + 6, 0, llm_metrics, self._color(curses, "dim"))
+        self._add_line(stdscr, top + 7, 0, llm_metrics, self._color(curses, "dim"))
 
         info_fields = list(run.get("infoFields") or [])
         info_rows = max(4, min(8, math.ceil(len(info_fields) / 2)))
         left_col_width = max(28, width // 2 - 2)
         right_col_x = left_col_width + 3
-        self._draw_section_title(stdscr, top + 8, 0, "Run Info")
+        self._draw_section_title(stdscr, top + 9, 0, "Run Info")
         for row_index in range(info_rows):
             left_index = row_index
             right_index = row_index + info_rows
-            y = top + 9 + row_index
+            y = top + 10 + row_index
             if left_index < len(info_fields):
                 item = info_fields[left_index]
                 self._add_line(
@@ -1119,7 +1124,7 @@ class BenchmarkCliApp:
             f"Status: {selected.get('status') or '--'}",
             f"Tool: {selected.get('tool') or '--'}",
             f"Completed: {selected.get('completed') or 0}/{selected.get('total') or 0}",
-            f"Pass: {selected.get('successes') or 0}  Fail: {selected.get('failures') or 0}  Skip: {selected.get('skipped') or 0}",
+            f"Total: {selected.get('successes') or 0}P {selected.get('failures') or 0}F {selected.get('skipped') or 0}S",
             f"Remaining: {selected.get('remaining') or 0}",
             f"Resumable: {'yes' if selected.get('resumable') else 'no'}",
             f"Started: {selected.get('startedAt') or '--'}",

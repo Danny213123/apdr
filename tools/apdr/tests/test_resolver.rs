@@ -240,7 +240,7 @@ fn resolver_normalizes_legacy_pymc3_stack_to_compatible_versions() {
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
     assert!(result.requirements_txt.contains("pymc3==3.11.5"));
-    assert!(result.requirements_txt.contains("Theano-PyMC==1.1.2"));
+    assert!(result.requirements_txt.contains("theano-pymc==1.1.2"));
     assert!(result.requirements_txt.contains("arviz==0.12.1"));
     assert!(result.requirements_txt.contains("numpy==1.21.6"));
     assert!(result.requirements_txt.contains("pandas==1.5.3"));
@@ -262,9 +262,9 @@ fn resolver_uses_family_bundle_for_py2_style_pymc3_benchmarks() {
 
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
-    assert_eq!(result.python_version, "2.7");
+    assert_eq!(result.python_version, "3.10");
     assert!(result.requirements_txt.contains("pymc3==3.11.5"));
-    assert!(result.requirements_txt.contains("Theano-PyMC==1.1.2"));
+    assert!(result.requirements_txt.contains("theano-pymc==1.1.2"));
     assert!(result.requirements_txt.contains("arviz==0.12.1"));
     assert!(result.requirements_txt.contains("numpy==1.21.6"));
     assert!(result.requirements_txt.contains("pandas==1.5.3"));
@@ -630,4 +630,404 @@ fn pre_solver_reports_unsat_without_validation_attempts() {
     assert!(result.reason.is_some());
 
     std::fs::remove_dir_all(cache_path).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// New fixture-based tests for recent bugfix scenarios
+// ---------------------------------------------------------------------------
+
+#[test]
+fn py2_memcache_maps_to_python_memcached_with_version_cap() {
+    // Case 005bbad: `import memcache` must map to python-memcached,
+    // and on Py 2.7 the version must be capped to <=1.59.
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/py2_memcache_redis_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-py2-memcache-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.python_version, "2.7");
+    // memcache import must resolve to python-memcached (not left unresolved)
+    assert!(
+        result.requirements_txt.to_lowercase().contains("python-memcached"),
+        "Expected python-memcached in requirements, got: {}",
+        result.requirements_txt,
+    );
+    // Version must be capped for Py2 (<=1.59)
+    let has_capped_version = result.requirements_txt.contains("python-memcached==1.59")
+        || result.requirements_txt.contains("python-memcached==1.58")
+        || result.requirements_txt.contains("python-memcached==1.57");
+    assert!(
+        has_capped_version,
+        "Expected python-memcached with Py2-compatible version cap, got: {}",
+        result.requirements_txt,
+    );
+    // redis should also be capped
+    assert!(
+        result.requirements_txt.contains("redis=="),
+        "Expected pinned redis version for Py2, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn scrapy_peewee_resolves_both_packages() {
+    // Case 00056d4: scrapy + peewee snippet (Py 2.7 due to iteritems)
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/scrapy_peewee_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-scrapy-peewee-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.python_version, "2.7");
+    assert!(
+        result.requirements_txt.to_lowercase().contains("scrapy"),
+        "Expected scrapy in requirements, got: {}",
+        result.requirements_txt,
+    );
+    // scrapy should have a Py2-compatible version
+    assert!(
+        result.requirements_txt.contains("scrapy=="),
+        "Expected pinned scrapy version for Py2, got: {}",
+        result.requirements_txt,
+    );
+    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+}
+
+#[test]
+fn protobuf_tensorflow_includes_protobuf_dep() {
+    // Case 00e9638: TF + protobuf descriptor import. The protobuf package
+    // must appear in resolved deps (either from explicit import or as a
+    // transitive essential in the TF family bundle).
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/protobuf_tensorflow_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-protobuf-tf-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 5;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert!(
+        result.requirements_txt.to_lowercase().contains("tensorflow"),
+        "Expected tensorflow in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        result.requirements_txt.to_lowercase().contains("protobuf"),
+        "Expected protobuf in requirements (explicit import or TF transitive), got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        result.requirements_txt.to_lowercase().contains("numpy"),
+        "Expected numpy in requirements, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn flask_extensions_resolve_with_flask_prefix() {
+    // Flask extensions use the Flask-* PyPI naming convention
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/flask_extensions_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-flask-extensions-output");
+    config.validate = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("flask-sqlalchemy") || req_lower.contains("flask_sqlalchemy"),
+        "Expected Flask-SQLAlchemy, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("flask-login") || req_lower.contains("flask_login"),
+        "Expected Flask-Login, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("flask-cors") || req_lower.contains("flask_cors"),
+        "Expected Flask-Cors, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("redis"),
+        "Expected redis, got: {}",
+        result.requirements_txt,
+    );
+    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+}
+
+#[test]
+fn cv2_serial_maps_to_correct_pypi_packages() {
+    // C-extension wrappers: cv2 -> opencv-python, serial -> pyserial,
+    // PIL -> Pillow (Pattern A and E)
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/cv2_serial_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-cv2-serial-output");
+    config.validate = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("opencv-python") || req_lower.contains("opencv_python"),
+        "Expected opencv-python for cv2, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("pyserial"),
+        "Expected pyserial for serial, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("pillow"),
+        "Expected Pillow for PIL, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("numpy"),
+        "Expected numpy, got: {}",
+        result.requirements_txt,
+    );
+    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+}
+
+#[test]
+fn freetype_import_maps_to_freetype_py() {
+    // Pattern F: freetype -> freetype-py (completely different name)
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/freetype_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-freetype-output");
+    config.validate = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("freetype-py"),
+        "Expected freetype-py for freetype import, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn domain_is_treated_as_local_module() {
+    // 'domain' is a project-local module, not a PyPI package.
+    // Only jsonpickle should be resolved.
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/domain_jsonpickle_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-domain-output");
+    config.validate = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("jsonpickle"),
+        "Expected jsonpickle, got: {}",
+        result.requirements_txt,
+    );
+    // 'domain' should either be unresolved or not appear in requirements
+    // (it's a local project module, not a PyPI package)
+    assert!(
+        !req_lower.contains("\ndomain==") && !req_lower.contains("\ndomain\n"),
+        "domain should NOT be in requirements (it's a local module), got: {}",
+        result.requirements_txt,
+    );
+}
+
+// ==========================================================================
+// Regression tests for PLLM-passing cases (cases 1329319, 125559, 1254809, 1202066)
+// ==========================================================================
+
+#[test]
+fn pylibmc_redis_resolves_both_packages() {
+    // Case 1329319: redis + pylibmc (Py 2.7 due to `print` statement)
+    // PLLM solves with: redis, pylibmc
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/pylibmc_redis_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-pylibmc-redis-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.python_version, "2.7");
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("redis"),
+        "Expected redis in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("pylibmc"),
+        "Expected pylibmc in requirements, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn daemon_django_resolves_without_docstring_imports() {
+    // Case 125559: django + python-daemon (Py 2.7)
+    // The snippet has `from daemonextension import DaemonCommand` and
+    // `from flopsy import Connection` in docstrings — these should NOT
+    // be resolved as real dependencies.
+    // PLLM solves with: django, python-daemon
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/daemon_django_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-daemon-django-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("django"),
+        "Expected django in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("python-daemon"),
+        "Expected python-daemon in requirements, got: {}",
+        result.requirements_txt,
+    );
+    // daemonextension and flopsy are from docstrings — should NOT be resolved
+    assert!(
+        !req_lower.contains("extensionclass"),
+        "extensionclass should NOT be in requirements (daemonextension is from a docstring), got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        !req_lower.contains("flopsy"),
+        "flopsy should NOT be in requirements (it's from a docstring example), got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn levenshtein_resolves_to_python_levenshtein() {
+    // Case 1254809: Levenshtein (Py 2.7 due to `print` statement)
+    // PLLM solves with: levenshtein
+    // READPY solves with: python-levenshtein
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/levenshtein_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-levenshtein-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.python_version, "2.7");
+    let req_lower = result.requirements_txt.to_lowercase();
+    // Either python-levenshtein or levenshtein is acceptable
+    assert!(
+        req_lower.contains("levenshtein"),
+        "Expected Levenshtein package in requirements, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn redis_webpy_resolves_to_web_py() {
+    // Case 1202066: redis + web.py (Py 2.7)
+    // PLLM solves with: redis, web-py (i.e. web.py framework)
+    // The snippet imports `web` which maps to the `web.py` package.
+    // `rediswebpy` in the docstring is the snippet's own module, not a dep.
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/redis_webpy_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-redis-webpy-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 1;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("redis"),
+        "Expected redis in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("web.py") || req_lower.contains("web-py"),
+        "Expected web.py in requirements (not web3), got: {}",
+        result.requirements_txt,
+    );
+    // web3 is the WRONG package — it's the Ethereum library
+    assert!(
+        !req_lower.contains("web3"),
+        "web3 should NOT be in requirements (web.py is the correct package), got: {}",
+        result.requirements_txt,
+    );
+    // rediswebpy from docstring should not be in requirements
+    assert!(
+        !req_lower.contains("rediswebpy"),
+        "rediswebpy should NOT be in requirements (it's the snippet's own module), got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn geospatial_fiona_resolves_key_packages() {
+    // Case 0306734d: KMZ/KML parser using pandas, numpy, shapely, fiona, geopandas
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/geospatial_fiona_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-geospatial-fiona-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 5;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("pandas"),
+        "Expected pandas in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("numpy"),
+        "Expected numpy in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("shapely"),
+        "Expected shapely in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("fiona"),
+        "Expected fiona in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("geopandas"),
+        "Expected geopandas in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
 }

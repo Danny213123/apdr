@@ -97,6 +97,15 @@ pub fn built_in_patterns() -> Vec<FailurePattern> {
             times_applied: 1,
         },
         FailurePattern {
+            pattern: "microsoft visual c++".to_string(),
+            error_type: "BuildFailure".to_string(),
+            conflict_class: "TPL-OS".to_string(),
+            fix: "Pin the package to a version with pre-built wheels, or use a pure-Python alternative."
+                .to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
             pattern: "python.h: no such file or directory".to_string(),
             error_type: "BuildFailure".to_string(),
             conflict_class: "TPL-OS".to_string(),
@@ -137,6 +146,48 @@ pub fn built_in_patterns() -> Vec<FailurePattern> {
             conflict_class: "TPL-OS".to_string(),
             fix: "Free disk space or move APDR/virtualenv caches to a volume with more space."
                 .to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
+            pattern: "missing module `pip`".to_string(),
+            error_type: "ModuleNotFound".to_string(),
+            conflict_class: "TPL-TPL".to_string(),
+            fix: "Add pip as an explicit dependency to ensure it is importable at runtime."
+                .to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
+            pattern: "Command errored out with exit status".to_string(),
+            error_type: "BuildFailure".to_string(),
+            conflict_class: "TPL-OS".to_string(),
+            fix: "Add the missing system headers/toolchain or choose a version with prebuilt wheels."
+                .to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
+            pattern: "Descriptors cannot not be created directly".to_string(),
+            error_type: "VersionIncompatibility".to_string(),
+            conflict_class: "TPL-TPL".to_string(),
+            fix: "Pin protobuf==3.20.3. TensorFlow 1.x requires protobuf<4.".to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
+            pattern: "_CheckCalledFromGeneratedFile".to_string(),
+            error_type: "VersionIncompatibility".to_string(),
+            conflict_class: "TPL-TPL".to_string(),
+            fix: "Pin protobuf to 3.20.x. Generated protobuf code is incompatible with protobuf>=4.".to_string(),
+            success_rate: 1.0,
+            times_applied: 1,
+        },
+        FailurePattern {
+            pattern: "No matching distribution found for".to_string(),
+            error_type: "VersionNotFound".to_string(),
+            conflict_class: "TPL-TPL".to_string(),
+            fix: "The pinned version does not exist for the target Python. Try a different version or remove the pin.".to_string(),
             success_rate: 1.0,
             times_applied: 1,
         },

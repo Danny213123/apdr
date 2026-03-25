@@ -37,7 +37,7 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
     def handle_one_request(self) -> None:
         try:
             super().handle_one_request()
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
     def do_GET(self) -> None:
@@ -106,7 +106,10 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/server/shutdown":
                 self._send_json(HTTPStatus.OK, {"ok": True, "message": "Server is shutting down."})
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                def _shutdown_sequence() -> None:
+                    self.server.service.stop_benchmark()
+                    self.server.shutdown()
+                threading.Thread(target=_shutdown_sequence, daemon=True).start()
                 return
         except ValueError as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
@@ -153,7 +156,7 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
     def _serve_static(self, request_path: str) -> None:
@@ -195,7 +198,7 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
 
@@ -221,4 +224,12 @@ def run_server(
     except KeyboardInterrupt:
         pass
     finally:
+        print("\nShutting down...")
+        try:
+            service.stop_benchmark(join_timeout=10)
+        except KeyboardInterrupt:
+            # Second Ctrl-C during cleanup — force-kill and exit immediately
+            if service.worker:
+                service.worker.stop(timeout=3)
+        print("All processes stopped.")
         server.server_close()

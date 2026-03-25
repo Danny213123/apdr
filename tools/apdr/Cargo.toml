@@ -1,6 +1,6 @@
 [package]
 name = "apdr"
-version = "0.2.13"
+version = "0.2.14"
 edition = "2021"
 default-run = "apdr"
 
@@ -24,6 +24,7 @@ ureq = "3"
 pubgrub = "0.3"
 version-ranges = "0.1"
 rustc-hash = "2"
+tempfile = "3.27.0"
 
 [profile.release]
 lto = "fat"

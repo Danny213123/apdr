@@ -546,7 +546,7 @@ flask_security	Flask-Security		seed
 flickrapi	flickrapi		seed
 fontTools	fonttools		seed
 foxhound	foxhound		seed
-freetype	Freetype		seed
+freetype	freetype-py		seed
 functional	functional		seed
 fuse	fuse		seed
 fuzzywuzzy	fuzzywuzzy		seed
@@ -781,6 +781,7 @@ visa	visa		seed
 vtk	vtk		seed
 wagtail	wagtail		seed
 wand	Wand		seed
+web	web.py		seed
 web3	web3		seed
 webapp2	webapp2		seed
 webtest	WebTest		seed

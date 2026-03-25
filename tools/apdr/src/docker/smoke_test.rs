@@ -35,8 +35,15 @@ pub fn generate(imports: &[String], execute_snippet: bool) -> String {
     if execute_snippet {
         lines.push("".to_string());
         lines.push("globals_dict = {'__name__': '__main__'}".to_string());
-        lines.push("with io.open('snippet.py', 'r', encoding='utf-8') as handle:".to_string());
-        lines.push("    code = compile(handle.read(), 'snippet.py', 'exec')".to_string());
+        // Python 2: read as bytes to avoid 'encoding declaration in Unicode string'
+        // error when the snippet has # -*- coding: utf-8 -*-.
+        // Python 3: read as text with utf-8 encoding.
+        lines.push("if sys.version_info[0] >= 3:".to_string());
+        lines.push("    with io.open('snippet.py', 'r', encoding='utf-8') as handle:".to_string());
+        lines.push("        code = compile(handle.read(), 'snippet.py', 'exec')".to_string());
+        lines.push("else:".to_string());
+        lines.push("    with open('snippet.py', 'rb') as handle:".to_string());
+        lines.push("        code = compile(handle.read(), 'snippet.py', 'exec')".to_string());
         lines.push("exec(code, globals_dict)".to_string());
     } else {
         lines.push("print('smoke-ok')".to_string());

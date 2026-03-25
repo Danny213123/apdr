@@ -23,7 +23,7 @@ from . import APP_NAME, APP_VERSION
 
 
 DEFAULT_BASE_URL = "http://localhost:11434"
-DEFAULT_MODEL = "phi3:medium"
+DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_TEMPERATURE = 0.7
 APDR_PYTHON_VERSIONS = ["2.7", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
 APDR_PYTHON_INSTALL_CANDIDATES: dict[str, list[str]] = {
@@ -440,6 +440,11 @@ class AppState:
 
     def dataset_root_from_archive(self, archive_path: str | Path) -> Path:
         archive = Path(archive_path)
+        # Fast path: infer from filename (avoids opening the tar)
+        inferred = self.repo_root / archive.stem.replace(".tar", "")
+        if inferred.is_dir():
+            return inferred
+        # Slow path: scan archive members for the real top-level directory
         with tarfile.open(archive, "r:gz") as handle:
             for member in handle.getmembers():
                 name = member.name.strip("/")
@@ -448,14 +453,16 @@ class AppState:
                     if self._is_metadata_archive_path(top_level):
                         continue
                     return self.repo_root / top_level
-        return self.repo_root / archive.stem.replace(".tar", "")
+        return inferred
 
     def ensure_dataset_extracted(self, archive_path: str | Path) -> Path:
         archive = Path(archive_path)
         if not archive.exists():
             raise FileNotFoundError(f"Dataset archive not found: {archive}")
         dataset_root = self.dataset_root_from_archive(archive)
-        if dataset_root.exists() and self.count_snippets(dataset_root) > 0:
+        # Quick existence check: just see if the directory has at least one
+        # snippet.py, avoiding a full rglob over thousands of directories.
+        if dataset_root.exists() and any(dataset_root.rglob("snippet.py")):
             return dataset_root
 
         with tarfile.open(archive, "r:gz") as handle:
@@ -472,6 +479,26 @@ class AppState:
         path = Path(dataset_dir)
         if not path.exists():
             return []
+        # Fast path: most datasets use a flat <case_id>/snippet.py layout.
+        # os.scandir is ~15x faster than rglob on Windows for large directories.
+        results: list[Path] = []
+        try:
+            for entry in os.scandir(path):
+                if entry.is_dir(follow_symlinks=False):
+                    name = entry.name
+                    if name.startswith(".") or name in (
+                        "__pycache__", "__MACOSX", "node_modules", "venv",
+                    ):
+                        continue
+                    snippet = path / name / "snippet.py"
+                    if snippet.exists():
+                        results.append(snippet)
+        except OSError:
+            pass
+        if results:
+            results.sort()
+            return results
+        # Slow fallback for nested layouts
         return sorted(
             snippet
             for snippet in path.rglob("snippet.py")

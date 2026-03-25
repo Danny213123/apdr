@@ -1069,11 +1069,14 @@ fn apply_legacy_tensorflow_bundle(
         // Only pin bundle packages that already appear in the resolved list
         // (i.e. the snippet actually imports them). Don't add unrelated packages
         // like gym or keras when the snippet only uses tensorflow.
+        // Exception: protobuf is a critical transitive dep of TF that must be
+        // pinned to avoid descriptor breakage — always include it.
+        let is_transitive_essential = *package_name == "protobuf";
         let already_resolved = resolved.iter().any(|dep| {
             dep.import_name.eq_ignore_ascii_case(import_name)
                 || normalize(&dep.package_name) == normalize(package_name)
         });
-        if !already_resolved {
+        if !already_resolved && !is_transitive_essential {
             continue;
         }
         // Empty version means "let pip resolve freely" (Python 3.8+ path
@@ -1333,17 +1336,21 @@ fn legacy_tensorflow_bundle(
     bundle_python: &str,
 ) -> &'static [(&'static str, &'static str, &'static str)] {
     if bundle_python.starts_with("2.") {
+        // gym 0.17+ dropped Python 2 support; protobuf must be <4 for TF 1.x
         &[
-            ("gym", "gym", "0.17.3"),
+            ("gym", "gym", "0.16.0"),
             ("keras", "keras", "2.3.1"),
             ("numpy", "numpy", "1.16.6"),
+            ("protobuf", "protobuf", "3.20.3"),
             ("tensorflow", "tensorflow", "1.15.0"),
         ]
     } else if bundle_python.starts_with("3.7") {
+        // protobuf >=4 breaks TF 1.x descriptor generation
         &[
             ("gym", "gym", "0.17.3"),
             ("keras", "keras", "2.3.1"),
             ("numpy", "numpy", "1.16.6"),
+            ("protobuf", "protobuf", "3.20.3"),
             ("tensorflow", "tensorflow", "1.15.0"),
         ]
     } else {

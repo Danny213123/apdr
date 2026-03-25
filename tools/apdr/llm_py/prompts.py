@@ -120,7 +120,7 @@ If you see "from django.conf import settings", the package is "django", not "dja
 """
 
 
-def compress_benchmark_context(context: str, max_chars: int = 4096) -> str:
+def compress_benchmark_context(context: str, max_chars: int = 8192) -> str:
     if not context.strip():
         return "- none"
     if len(context) <= max_chars:
@@ -228,19 +228,45 @@ Return a JSON object with:
 RECOVERY_SYSTEM = f"""\
 You are fixing a Python dependency installation failure.
 
-{IMPORT_PATTERN_TAXONOMY}
 {FAILURE_PAIR_EXAMPLES}
 Think step by step:
 1. Read the error log carefully to identify which package caused the failure.
-2. Check if the package name is wrong (needs a prefix like `django-` or `python-`).
-3. Check if the package needs system C libraries and a pure-Python alternative exists.
-4. Check if the wrong package was installed (same name on PyPI but unrelated project).
+2. Check if a package should be REMOVED entirely — it may be a local/project module \
+(like "domain", "settings", "utils") that was incorrectly resolved to a PyPI package. \
+If a package with a common English word name fails to build/install, it's likely NOT \
+the right package. Set remove_package to the package name to remove it.
+3. Check if the package name is wrong (needs a prefix like `django-` or `python-`).
+4. Check if the package needs system C libraries and a pure-Python alternative exists \
+(e.g. use `Pillow` instead of `PIL`, `pylibmc` instead of `python-memcached`, \
+`cffi`-based packages instead of C-extension packages).
+5. Check if the wrong package was installed (same name on PyPI but unrelated project).
+6. Check if a transitive dependency needs to be version-pinned (e.g. protobuf<4 for TF 1.x, \
+numpy version caps, etc.). If so, use add_package.
+7. For Python 2.7 targets: many packages dropped Py2 support. Pin to the LAST Py2-compatible \
+version (e.g. numpy==1.16.6, pandas==0.24.2, scipy==1.2.3, Flask==1.1.4, Django==1.11.29, \
+Jinja2==2.11.3, MarkupSafe==1.1.1, itsdangerous==1.1.0, Werkzeug==1.0.1, cryptography==3.3.2, \
+PyYAML==5.4.1, attrs==21.4.0, six==1.16.0, futures==3.3.0, enum34==1.1.10, typing==3.10.0.0). \
+SyntaxError in setup.py with f-strings or walrus operators means the package is Py3-only.
+8. For build failures ("failed building wheel", "command errored out", "subprocess-exited-with-error"): \
+try pinning to an older version that has pre-built wheels, or suggest a pure-Python alternative.
 
 Return a JSON object with:
 - fix_possible: true or false
 - wrong_package: the package that caused the error (exact name from resolved list)
-- correct_package: the correct PyPI package name
+- correct_package: the correct PyPI package name (can be the SAME name if only a version pin is needed)
+- version: (optional) specific version to pin, e.g. "1.8.3". Use this when the package itself is \
+correct but needs an older version (e.g. for Python 2.7 compatibility, or to get pre-built wheels).
+- add_package: (optional) a NEW dependency to add, with version pin, e.g. "protobuf==3.20.3"
+- remove_package: (optional) a package to REMOVE from the resolved list because it's a local module \
+or wrong package that should not be installed at all
 - reasoning: brief explanation
+
+You can:
+1. Swap a package: set wrong_package + correct_package (different names)
+2. Pin a version: set wrong_package + correct_package (SAME name) + version
+3. Add a transitive dep: set add_package
+4. Remove a wrong package: set remove_package (for local modules or wrong PyPI packages)
+5. Any combination of the above.
 If no fix is possible, set fix_possible=false.
 """
 
@@ -285,7 +311,7 @@ def package_resolution_user(
     tier2_candidates: dict[str, list[str]] | None = None,
 ) -> str:
     ctx_str = "\n".join(context) if context else "- none"
-    bm_str = compress_benchmark_context(benchmark_context, 6144)
+    bm_str = compress_benchmark_context(benchmark_context, 12288)
     attr_sec = _attribute_section(attribute_usage, unresolved_imports)
     cand_sec = _candidates_section(tier2_candidates or {})
     return (
@@ -306,7 +332,7 @@ def solvability_user(
 ) -> str:
     imp_str = ", ".join(imports) if imports else "- none"
     path_str = ", ".join(import_paths) if import_paths else "- none"
-    bm_str = compress_benchmark_context(benchmark_context, 4096)
+    bm_str = compress_benchmark_context(benchmark_context, 8192)
     return (
         f"Imports: {imp_str}\n"
         f"Import paths: {path_str}\n"
@@ -328,6 +354,226 @@ def self_refine_user(
     )
 
 
+def _extract_failing_package(error_log: str) -> str:
+    """Extract the failing package name from pip error output."""
+    import re
+    # Pattern: "Collecting X==Y" or "Building wheel for X" or "error in X setup"
+    patterns = [
+        r'(?:ERROR:.*?Command errored out.*?|error:.*?)(?:cwd:|File).*/([a-zA-Z0-9_-]+)/',
+        r'(?:Collecting|Downloading|Building wheel for)\s+([a-zA-Z0-9_.-]+)',
+        r'(?:Failed building wheel for|Could not build wheels for)\s+([a-zA-Z0-9_.-]+)',
+        r'(?:No matching distribution found for)\s+([a-zA-Z0-9_.-]+)',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, error_log, re.IGNORECASE)
+        if m:
+            return m.group(1).split("==")[0].split(">=")[0].split("<=")[0]
+    return ""
+
+
+def _build_error_specific_hint(
+    error_type: str,
+    error_log: str,
+    python_version: str,
+    failing_pkg: str,
+) -> str:
+    """Build targeted hints based on the specific error type.
+
+    Different error types have very different root causes and fix strategies.
+    Giving the LLM focused guidance per error type improves accuracy.
+    """
+    parts: list[str] = []
+
+    if failing_pkg:
+        parts.append(f"Failing package: {failing_pkg}")
+
+    is_py2 = python_version.startswith("2")
+
+    if error_type == "BuildFailure":
+        parts.append(
+            "ERROR TYPE: Build/compilation failure during pip install.\n"
+            "STRATEGY (try in order):\n"
+            "1. CHECK if the package name is WRONG — common English words like 'domain', "
+            "'core', 'base', 'api', 'utils' are often local modules incorrectly resolved "
+            "to unrelated PyPI packages. Use remove_package to remove them.\n"
+            "2. CHECK if a pure-Python alternative exists (e.g. Pillow instead of PIL, "
+            "pylibmc instead of python-memcached, cffi-based alternatives).\n"
+            "3. TRY pinning to an older version that ships pre-built wheels.\n"
+            "4. CHECK if the package is Py3-only being installed on Py2 — use remove_package "
+            "or pin to the last Py2-compatible version."
+        )
+        if is_py2:
+            parts.append(
+                "PY2 NOTE: SyntaxError with f-strings/walrus/type hints in setup.py means "
+                "the package dropped Python 2 support. Either pin to the last Py2 version "
+                "or use remove_package if it's a local module."
+            )
+
+    elif error_type in ("ModuleNotFound", "ImportError"):
+        parts.append(
+            "ERROR TYPE: A module could not be imported at runtime.\n"
+            "STRATEGY (try in order):\n"
+            "1. CHECK if the import-to-package mapping is wrong — the installed package "
+            "may not provide this import. Look at known patterns (cv2→opencv-python, "
+            "PIL→Pillow, yaml→PyYAML, serial→pyserial, etc.).\n"
+            "2. CHECK if it's a local project module that shouldn't be in requirements "
+            "at all — use remove_package.\n"
+            "3. CHECK if a transitive dependency is needed — use add_package.\n"
+            "4. CHECK if the package was installed but the wrong version — some versions "
+            "don't export the same modules."
+        )
+
+    elif error_type == "VersionConflict":
+        parts.append(
+            "ERROR TYPE: Version conflict between packages.\n"
+            "STRATEGY:\n"
+            "1. IDENTIFY which two packages conflict from the error message.\n"
+            "2. PIN the less critical package to a compatible version using "
+            "wrong_package + correct_package (same name) + version.\n"
+            "3. For common conflicts: protobuf<4 for TensorFlow 1.x, numpy<1.24 for "
+            "older scipy, setuptools<58 for packages using use_2to3."
+        )
+
+    elif error_type == "Oscillation":
+        parts.append(
+            "ERROR TYPE: Requirements keep oscillating between different versions.\n"
+            "STRATEGY:\n"
+            "1. One or more packages may be fundamentally wrong. Consider removing them "
+            "with remove_package if they look like local modules.\n"
+            "2. Try a completely DIFFERENT package that provides the same functionality "
+            "(e.g. pylibmc instead of python-memcached).\n"
+            "3. Do NOT suggest the same fix that was already tried — check previous attempts."
+        )
+
+    elif error_type == "SyntaxError":
+        if is_py2:
+            parts.append(
+                "ERROR TYPE: SyntaxError during package installation (Python 2.7 target).\n"
+                "STRATEGY:\n"
+                "1. The package likely uses Python 3 syntax. Pin to the LAST Py2-compatible "
+                "version.\n"
+                "2. If the package name is a common English word (domain, core, base), it's "
+                "probably a local module — use remove_package.\n"
+                "3. Common last-Py2 versions: numpy==1.16.6, pandas==0.24.2, scipy==1.2.3, "
+                "Flask==1.1.4, Django==1.11.29, Jinja2==2.11.3, MarkupSafe==1.1.1, "
+                "cryptography==3.3.2, PyYAML==5.4.1."
+            )
+        else:
+            parts.append(
+                "ERROR TYPE: SyntaxError in package installation.\n"
+                "STRATEGY: The package source has a syntax error. Try an older stable version, "
+                "or check if the package name is wrong."
+            )
+
+    elif error_type == "RuntimeConfig":
+        parts.append(
+            "ERROR TYPE: Runtime configuration error (e.g. missing DJANGO_SETTINGS_MODULE).\n"
+            "This usually means dependencies are correct but the app needs runtime config. "
+            "No fix needed — set fix_possible=false."
+        )
+
+    elif error_type == "Unknown":
+        parts.append(
+            "ERROR TYPE: Unknown/unclassified error.\n"
+            "STRATEGY: Read the error log carefully. Look for:\n"
+            "1. 'No matching distribution found' → wrong package name or version\n"
+            "2. 'command errored out' → build failure, try older version or alternative\n"
+            "3. 'ModuleNotFoundError' → wrong import mapping\n"
+            "4. If no useful error info, check if any package name looks like a local module."
+        )
+
+    return "\n".join(parts) + "\n" if parts else ""
+
+
+def _extract_diagnostic_lines(error_log: str, error_type: str) -> str:
+    """Extract only the most diagnostic lines from an error log based on error type.
+
+    Research shows LLM accuracy *improves* with shorter, more focused input.
+    Instead of sending the last 50 lines, extract the signal-rich section.
+    """
+    import re
+
+    lines = error_log.splitlines()
+    if len(lines) <= 20:
+        return error_log
+
+    if error_type in ("ModuleNotFound", "ImportError"):
+        # For import errors, the traceback is the signal — find it
+        diagnostic = []
+        in_traceback = False
+        for line in reversed(lines):
+            if "ModuleNotFoundError" in line or "ImportError" in line:
+                diagnostic.insert(0, line)
+                in_traceback = True
+            elif in_traceback and (line.strip().startswith("File ") or
+                                   line.strip().startswith("from ") or
+                                   line.strip().startswith("import ") or
+                                   line.strip().startswith("Traceback")):
+                diagnostic.insert(0, line)
+            elif in_traceback and not line.strip():
+                break
+        if len(diagnostic) >= 3:
+            return "\n".join(diagnostic[-20:])
+
+    elif error_type == "BuildFailure":
+        # For build failures, extract the error section (usually at the end)
+        diagnostic = []
+        for line in reversed(lines):
+            diagnostic.insert(0, line)
+            if any(marker in line.lower() for marker in [
+                "error:", "failed", "command errored out",
+                "subprocess-exited-with-error", "syntaxerror",
+                "no matching distribution", "could not find",
+            ]):
+                # Include 5 lines before the error marker for context
+                idx = lines.index(line) if line in lines else len(lines) - len(diagnostic)
+                start = max(0, idx - 5)
+                return "\n".join(lines[start:idx + 15])
+            if len(diagnostic) > 30:
+                break
+
+    elif error_type == "VersionConflict":
+        # Version conflicts have specific pip error messages
+        diagnostic = []
+        for line in lines:
+            if any(marker in line.lower() for marker in [
+                "incompatible", "conflict", "requires", "but you have",
+                "not satisfied", "no matching distribution",
+            ]):
+                diagnostic.append(line)
+        if diagnostic:
+            return "\n".join(diagnostic[-15:])
+
+    # Fallback: last 30 lines (not 50) to keep context tight
+    return "\n".join(lines[-30:])
+
+
+def _extract_import_section(snippet_source: str) -> str:
+    """Extract only the import section + a few lines of context from a snippet.
+
+    The full snippet is often irrelevant to recovery — the imports are the signal.
+    """
+    lines = snippet_source.splitlines()
+    if len(lines) <= 30:
+        return snippet_source
+
+    import_lines = []
+    last_import_idx = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")) and not stripped.startswith("#"):
+            import_lines.append(i)
+            last_import_idx = i
+
+    if not import_lines:
+        return "\n".join(lines[:30])
+
+    # Include all import lines + 5 lines of surrounding context
+    start = max(0, import_lines[0] - 2)
+    end = min(len(lines), last_import_idx + 6)
+    return "\n".join(lines[start:end])
+
+
 def recovery_user(
     resolved_packages: list[str],
     error_log: str,
@@ -337,27 +583,39 @@ def recovery_user(
     previous_attempts: list[list[str]],
 ) -> str:
     pkg_list = "\n".join(resolved_packages)
-    log_excerpt = "\n".join(error_log.splitlines()[:50])
-    snippet_excerpt = "\n".join(snippet_source.splitlines()[:50])
+
+    # Extract focused diagnostic lines instead of raw tail (improves accuracy)
+    log_excerpt = _extract_diagnostic_lines(error_log, error_type)
+    # Extract only the import section from the snippet (reduces noise)
+    snippet_excerpt = _extract_import_section(snippet_source)
+
+    # Extract structured error info for better LLM reasoning
+    failing_pkg = _extract_failing_package(error_log)
+    structured_hint = _build_error_specific_hint(
+        error_type, error_log, python_version, failing_pkg
+    )
+
+    # Structured iteration summaries (compact JSON-like format)
     history = ""
     if previous_attempts:
         lines = []
         for attempt in previous_attempts:
             if len(attempt) >= 3:
                 lines.append(
-                    f"- Tried replacing `{attempt[0]}` with `{attempt[1]}`: {attempt[2]}"
+                    f"  {{pkg: \"{attempt[0]}\", fix: \"{attempt[1]}\", result: \"{attempt[2]}\"}}"
                 )
         if lines:
             history = (
-                "\nPrevious recovery attempts (DO NOT repeat these):\n"
+                "\nPrevious attempts (DO NOT repeat — try something different):\n"
                 + "\n".join(lines) + "\n"
             )
     return (
         f"Target Python version: {python_version}\n"
-        f"Error type: {error_type}\n\n"
+        f"Error type: {error_type}\n"
+        f"{structured_hint}\n"
         f"Currently resolved packages:\n{pkg_list}\n\n"
         f"Installation/import error:\n```\n{log_excerpt}\n```\n\n"
-        f"Python snippet being resolved:\n```python\n{snippet_excerpt}\n```\n"
+        f"Python snippet imports:\n```python\n{snippet_excerpt}\n```\n"
         f"{history}"
     )
 
@@ -368,7 +626,7 @@ def version_user(
     python_version: str,
     benchmark_context: str,
 ) -> str:
-    bm_str = compress_benchmark_context(benchmark_context, 2048)
+    bm_str = compress_benchmark_context(benchmark_context, 4096)
     return (
         f"Choose one installable version for the Python package '{package_name}'.\n"
         f"Target Python version: {python_version}\n"

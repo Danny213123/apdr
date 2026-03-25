@@ -24,6 +24,7 @@ from typing import Any, TypeVar
 
 import instructor
 import litellm
+import requests as _requests_lib
 from pydantic import BaseModel
 
 logger = logging.getLogger("apdr_llm")
@@ -34,6 +35,10 @@ logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 T = TypeVar("T", bound=BaseModel)
+
+# --- #8/#13: OLLAMA_KEEP_ALIVE — keep model loaded in GPU memory ---
+# Set at import time so it applies to all Ollama requests.
+os.environ.setdefault("OLLAMA_KEEP_ALIVE", "-1")
 
 # --- #7: Enable LiteLLM disk caching ---
 _cache_initialized = False
@@ -52,6 +57,34 @@ def _init_cache(cache_dir: str = "") -> None:
         logger.info("LiteLLM disk cache enabled at %s", disk_dir)
     except Exception as e:
         logger.warning("Failed to enable LiteLLM cache: %s", e)
+
+
+_prewarm_done = False
+
+
+def prewarm_ollama(base_url: str = "http://localhost:11434", model: str = "") -> None:
+    """Send a tiny request to load the model into GPU memory (eliminates cold-start)."""
+    global _prewarm_done
+    if _prewarm_done:
+        return
+    _prewarm_done = True
+    if not model:
+        return
+    try:
+        _requests_lib.post(
+            f"{base_url.rstrip('/')}/api/chat",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "options": {"num_predict": 1, "num_ctx": 256},
+                "keep_alive": "-1",
+            },
+            timeout=30,
+        )
+        logger.info("Ollama pre-warm complete for %s", model)
+    except Exception as e:
+        logger.debug("Ollama pre-warm failed (non-fatal): %s", e)
 
 
 def _extract_json_from_text(text: str) -> dict | list | None:
@@ -147,6 +180,9 @@ class LlmClient:
         self._fallback_models = self._detect_fallback_models()
         # --- #7: Init cache ---
         _init_cache()
+        # --- #13: Pre-warm Ollama to load model into GPU memory ---
+        if self.provider == "ollama":
+            prewarm_ollama(self.base_url, self.model)
 
     def _detect_fallback_models(self) -> list[str]:
         """Detect additional Ollama models available for fallback."""
@@ -187,17 +223,19 @@ class LlmClient:
         temperature: float = 0.0,
         max_tokens: int = 1024,
         model_override: str | None = None,
+        num_ctx: int = 0,
     ) -> dict[str, Any]:
         """Build common kwargs for litellm calls."""
         kwargs: dict[str, Any] = {
             "model": self._litellm_model(model_override),
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "timeout": 90,
+            "timeout": 120,
         }
         if self.provider == "ollama":
             kwargs["api_base"] = self.base_url
-            kwargs["num_ctx"] = 8192
+            ctx = num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384"))
+            kwargs["num_ctx"] = ctx
         elif self.base_url and self.base_url != "http://localhost:11434":
             kwargs["api_base"] = self.base_url
         return kwargs
@@ -213,6 +251,8 @@ class LlmClient:
         response_model: type[T],
         temperature: float = 0.0,
         max_tokens: int = 1024,
+        num_ctx: int = 0,
+        model_override: str | None = None,
     ) -> T | None:
         """Use Ollama's native format= parameter for schema-constrained decoding.
 
@@ -225,27 +265,34 @@ class LlmClient:
                 system_prompt, user_prompt, response_model,
                 temperature=temperature, max_tokens=max_tokens,
             )
+        effective_model = model_override or self.model
         try:
             import requests as req_lib
             schema = response_model.model_json_schema()
             payload = {
-                "model": self.model,
+                "model": effective_model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 "format": schema,
                 "stream": False,
+                "keep_alive": "-1",
                 "options": {
                     "temperature": temperature,
-                    "num_ctx": 8192,
+                    "num_ctx": num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384")),
                     "num_predict": max_tokens,
+                    "num_gpu": 99,
+                    "num_batch": 1024,
                 },
             }
+            # Enable thinking mode for Qwen3.5 models
+            if "qwen3" in effective_model.lower():
+                payload["think"] = True
             resp = req_lib.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=90,
+                timeout=120,
             )
             if resp.ok:
                 data = resp.json()
@@ -258,6 +305,7 @@ class LlmClient:
         return self.complete_json(
             system_prompt, user_prompt, response_model,
             temperature=temperature, max_tokens=max_tokens,
+            num_ctx=num_ctx,
         )
 
     def complete(
@@ -293,6 +341,7 @@ class LlmClient:
         temperature: float = 0.0,
         max_tokens: int = 1024,
         max_retries: int = 2,
+        num_ctx: int = 0,
     ) -> T | None:
         """JSON completion with tolerant parsing — works with small models.
 
@@ -306,6 +355,7 @@ class LlmClient:
         for attempt in range(1 + max_retries):
             content = self._complete_json_raw(
                 system_prompt, augmented_prompt, temperature, max_tokens,
+                num_ctx=num_ctx,
             )
             if not content:
                 logger.debug("complete_json attempt %d: empty response", attempt + 1)
@@ -344,11 +394,13 @@ class LlmClient:
         user_prompt: str,
         temperature: float,
         max_tokens: int,
+        num_ctx: int = 0,
     ) -> str | None:
         """Get raw JSON text from the LLM, using format=json for Ollama."""
         if self.provider == "ollama":
             try:
                 import requests as req_lib
+                effective_ctx = num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384"))
                 payload = {
                     "model": self.model,
                     "messages": [
@@ -357,16 +409,23 @@ class LlmClient:
                     ],
                     "format": "json",
                     "stream": False,
+                    "keep_alive": "-1",
                     "options": {
                         "temperature": temperature,
-                        "num_ctx": 8192,
+                        "num_ctx": effective_ctx,
                         "num_predict": max_tokens,
+                        "num_gpu": 99,
+                        "num_batch": 1024,
                     },
                 }
+                # Enable thinking mode for Qwen3.5 models — gives free
+                # internal chain-of-thought before producing the JSON answer.
+                if "qwen3" in self.model.lower():
+                    payload["think"] = True
                 resp = req_lib.post(
                     f"{self.base_url}/api/chat",
                     json=payload,
-                    timeout=90,
+                    timeout=120,
                 )
                 if resp.ok:
                     data = resp.json()

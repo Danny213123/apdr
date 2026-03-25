@@ -60,6 +60,7 @@ pub struct ResolveConfig {
     pub validate: bool,
     pub validation_backend: String,
     pub execute_snippet: bool,
+    pub force_validate: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -208,7 +209,9 @@ impl ResolveConfig {
             max_retries: 5,
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
-            validation_timeout: Duration::from_secs(600),
+            validation_timeout: Duration::from_secs(
+                env_usize("APDR_VALIDATION_TIMEOUT_SECS", 900) as u64
+            ),
             validated_env_cache_max_entries: env_usize(
                 "APDR_VALIDATED_ENV_CACHE_MAX_ENTRIES",
                 crate::cache::maintenance::DEFAULT_MAX_VALIDATED_ENVS,
@@ -226,12 +229,13 @@ impl ResolveConfig {
             allow_llm: false,
             llm_only_mode: false,
             llm_provider: "ollama".to_string(),
-            llm_model: "gemma3:4b".to_string(),
+            llm_model: "qwen3.5:9b".to_string(),
             llm_base_url: "http://localhost:11434".to_string(),
             benchmark_context_log: None,
             validate: true,
             validation_backend: VALIDATION_BACKEND_ENV.to_string(),
             execute_snippet: true,
+            force_validate: false,
         }
     }
 

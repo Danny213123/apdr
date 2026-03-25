@@ -46,8 +46,13 @@ pub fn classify_log(log: &str, store: &CacheStore) -> ClassifierResult {
         "SystemDependency"
     } else if lowercase.contains("failed building wheel")
         || lowercase.contains("error: subprocess-exited-with-error")
+        || lowercase.contains("command errored out")
     {
         "BuildFailure"
+    } else if lowercase.contains("improperlyconfigured")
+        || lowercase.contains("django_settings_module")
+    {
+        "RuntimeConfig"
     } else {
         "Unknown"
     };

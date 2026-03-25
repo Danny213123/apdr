@@ -15,7 +15,11 @@ pub fn scan_imports(source: &str) -> ImportScan {
     // Collect non-import lines for attribute scanning in a single pass.
     let mut code_lines: Vec<&str> = Vec::new();
 
-    for raw_line in source.lines() {
+    // Strip multi-line string literals (triple-quoted) so we don't extract
+    // imports from docstrings or string constants.
+    let cleaned = strip_triple_quoted_strings(source);
+
+    for raw_line in cleaned.lines() {
         let trimmed = raw_line.trim();
         if trimmed.starts_with('#') || trimmed.is_empty() {
             continue;
@@ -170,6 +174,41 @@ fn top_level(path: &str) -> &str {
     path.split('.').next().unwrap_or(path)
 }
 
+/// Remove content inside triple-quoted strings (""" or ''') so the import
+/// scanner doesn't pick up import statements from docstrings or string literals.
+fn strip_triple_quoted_strings(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let bytes = source.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i < len {
+        // Check for triple quote start
+        if i + 2 < len
+            && ((bytes[i] == b'"' && bytes[i + 1] == b'"' && bytes[i + 2] == b'"')
+                || (bytes[i] == b'\'' && bytes[i + 1] == b'\'' && bytes[i + 2] == b'\''))
+        {
+            let quote = bytes[i];
+            i += 3;
+            // Skip until matching closing triple quote
+            while i + 2 < len {
+                if bytes[i] == quote && bytes[i + 1] == quote && bytes[i + 2] == quote {
+                    i += 3;
+                    break;
+                }
+                // Preserve newlines so line numbers stay correct
+                if bytes[i] == b'\n' {
+                    result.push('\n');
+                }
+                i += 1;
+            }
+            continue;
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
 fn strip_comment(line: &str) -> &str {
     if !line.contains('#') {
         return line;
@@ -232,5 +271,33 @@ mod tests {
         let scan = scan_imports("from . import local\nfrom ..pkg import util\n");
         assert!(scan.top_levels.is_empty());
         assert!(scan.full_paths.is_empty());
+    }
+
+    #[test]
+    fn scan_skips_imports_inside_docstrings() {
+        let source = r#""""
+Example usage:
+    from flopsy import Connection, Consumer
+    consumer = Consumer(connection=Connection())
+"""
+
+from django.core.management.base import BaseCommand
+import daemon
+"#;
+        let scan = scan_imports(source);
+        assert!(
+            !scan.top_levels.contains(&"flopsy".to_string()),
+            "flopsy should not be extracted from a docstring"
+        );
+        assert!(scan.top_levels.contains(&"django".to_string()));
+        assert!(scan.top_levels.contains(&"daemon".to_string()));
+    }
+
+    #[test]
+    fn scan_skips_imports_inside_single_quoted_docstrings() {
+        let source = "'''\nfrom fake_module import Foo\n'''\nimport real_module\n";
+        let scan = scan_imports(source);
+        assert!(!scan.top_levels.contains(&"fake_module".to_string()));
+        assert!(scan.top_levels.contains(&"real_module".to_string()));
     }
 }
