@@ -755,6 +755,56 @@ code {
   color: var(--muted);
 }
 
+.sse-status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.sse-status-indicator.connected {
+  background-color: var(--green);
+}
+
+.sse-status-indicator.connecting {
+  background-color: var(--yellow);
+  animation: pulse-dot 1500ms ease-in-out infinite;
+}
+
+.sse-status-indicator.disconnected {
+  background-color: var(--red);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.streaming-badge {
+  display: inline-block;
+  background-color: rgba(255, 217, 94, 0.15);
+  color: var(--yellow);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.activity-item {
+  padding: 4px 0;
+  color: var(--text);
+  font-size: 13px;
+  animation: fade-in-activity 200ms ease-in;
+}
+
+@keyframes fade-in-activity {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 .cases-scroll,
 .terminal-frame,
 .preview-panel,
