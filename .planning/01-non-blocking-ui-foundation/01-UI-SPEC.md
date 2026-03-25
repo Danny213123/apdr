@@ -38,7 +38,7 @@ Declared values (multiples of 4, extracted from existing CSS):
 | xs | 4px | Grid gaps, inline padding (`gap: 4px`) |
 | sm | 8px | Vertical rhythm (`gap: 8px`, `padding: 8px 12px`) |
 | md | 12px | Horizontal spacing (`gap: 12px`, `padding: 12px`) |
-| lg | 18px | Section margins (`padding: 18px`) |
+| lg | 20px | Section margins (`padding: 20px`) |
 | xl | 24px | Tab spacing (`gap: 24px`), scroll padding |
 
 Exceptions:
