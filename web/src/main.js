@@ -18,6 +18,12 @@ const state = {
   pollTimer: null,
   previewTimer: null,
   serverStopping: false,
+  sseConnection: null,
+  sseReconnectAttempts: 0,
+  sseReconnectTimer: null,
+  sseConnectionState: "disconnected", // "connecting" | "connected" | "disconnected"
+  ssePendingUpdates: [],
+  sseUpdateScheduled: false,
 };
 
 const ui = {
@@ -1094,6 +1100,73 @@ function requestPreview() {
   }, 160);
 }
 
+function setupSSE(runId) {
+  // Close existing connection if any
+  teardownSSE();
+
+  state.sseConnectionState = "connecting";
+  updateSSEStatusIndicator();
+
+  const url = `/api/stream/benchmark/${runId}`;
+  const eventSource = new EventSource(url);
+  state.sseConnection = eventSource;
+
+  eventSource.onopen = () => {
+    state.sseConnectionState = "connected";
+    state.sseReconnectAttempts = 0;
+    updateSSEStatusIndicator();
+  };
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleSSEEvent(data);
+    } catch (err) {
+      console.error("SSE parse error:", err);
+    }
+  };
+
+  eventSource.onerror = () => {
+    state.sseConnectionState = "disconnected";
+    updateSSEStatusIndicator();
+    eventSource.close();
+    state.sseConnection = null;
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+    const delay = Math.min(1000 * Math.pow(2, state.sseReconnectAttempts), 30000);
+    state.sseReconnectAttempts++;
+
+    state.sseReconnectTimer = setTimeout(() => {
+      if (state.currentRun?.id === runId) {
+        setupSSE(runId);
+      }
+    }, delay);
+  };
+}
+
+function teardownSSE() {
+  if (state.sseReconnectTimer) {
+    clearTimeout(state.sseReconnectTimer);
+    state.sseReconnectTimer = null;
+  }
+  if (state.sseConnection) {
+    state.sseConnection.close();
+    state.sseConnection = null;
+  }
+  state.sseConnectionState = "disconnected";
+  state.sseReconnectAttempts = 0;
+  updateSSEStatusIndicator();
+}
+
+function updateSSEStatusIndicator() {
+  // Placeholder for UI indicator update - will be implemented in Task 3
+  // This function will update the DOM element with class .sse-status-indicator
+}
+
+function handleSSEEvent(event) {
+  // Placeholder for Task 2 - will queue events for batched DOM updates
+}
+
 async function pollStatus() {
   if (state.serverStopping) {
     return;
@@ -1179,12 +1252,20 @@ function wireHomeControls() {
       renderHome();
       renderRunPage();
       switchPage("run");
+
+      // Setup SSE connection for real-time updates
+      if (state.currentRun?.runId) {
+        setupSSE(state.currentRun.runId);
+      }
     } catch (error) {
       alert(error.message);
     }
   });
   ui.stopButton.addEventListener("click", async () => {
     try {
+      // Teardown SSE connection before stopping
+      teardownSSE();
+
       const payload = await sendJson("/api/benchmark/stop");
       state.currentRun = payload.currentRun;
       state.runs = payload.runs || state.runs;
@@ -1230,6 +1311,9 @@ function wireHomeControls() {
   });
   ui.runStopButton.addEventListener("click", async () => {
     try {
+      // Teardown SSE connection before stopping
+      teardownSSE();
+
       const payload = await sendJson("/api/benchmark/stop");
       state.currentRun = payload.currentRun;
       state.runs = payload.runs || state.runs;
