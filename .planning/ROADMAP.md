@@ -29,7 +29,12 @@
 4. User observes smooth animations at 60fps during result updates (no jank)
 5. User runs 30-minute benchmarks without memory growth >50MB (stable performance)
 
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
+
+Plans:
+- [ ] 01-01-PLAN.md — Backend SSE infrastructure (Wave 1, autonomous)
+- [ ] 01-02-PLAN.md — Frontend real-time client (Wave 1, autonomous)
+- [ ] 01-03-PLAN.md — UI component integration with verification checkpoint (Wave 2)
 
 **UI hint**: yes
 
@@ -133,7 +138,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Non-blocking UI Foundation | 0/TBD | Not started | - |
+| 1. Non-blocking UI Foundation | 0/3 | Planned | - |
 | 2. Result Categorization & Insights | 0/TBD | Not started | - |
 | 3. LLM Recovery Accuracy | 0/TBD | Not started | - |
 | 4. LLM Performance Optimization | 0/TBD | Not started | - |
@@ -162,4 +167,4 @@ Phase 1: Non-blocking UI Foundation (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-25*
-*Last updated: 2026-03-25*
+*Last updated: 2026-03-25 (Phase 1 planned)*
