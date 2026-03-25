@@ -57,6 +57,22 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
             run_id = path.rsplit("/", 1)[-1]
             self._send_json(HTTPStatus.OK, self.server.service.load_run(run_id))
             return
+        if path.startswith("/api/stream/benchmark/"):
+            run_id = path.rsplit("/", 1)[-1]
+            try:
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                for event in self.server.service.stream_benchmark_progress(run_id):
+                    data = f"data: {json.dumps(event)}\n\n"
+                    self.wfile.write(data.encode("utf-8"))
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
+            return
         if path == "/api/loadouts":
             self._send_json(HTTPStatus.OK, {"loadouts": self.server.service.loadouts()})
             return
