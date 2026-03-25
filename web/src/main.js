@@ -104,6 +104,11 @@ const ui = {
   fixDoctorButton: document.querySelector("#fix-doctor-button"),
   doctorBody: document.querySelector("#doctor-body"),
   doctorLog: document.querySelector("#doctor-log"),
+
+  sseStatusDot: document.querySelector("#sse-status-dot"),
+  sseStatusText: document.querySelector("#sse-status-text"),
+  sseStatusRegion: document.querySelector("#sse-status-region"),
+  streamingBadge: document.querySelector("#streaming-badge"),
 };
 
 const PAGE_PATHS = {
@@ -1159,8 +1164,23 @@ function teardownSSE() {
 }
 
 function updateSSEStatusIndicator() {
-  // Placeholder for UI indicator update - will be implemented in Task 3
-  // This function will update the DOM element with class .sse-status-indicator
+  if (!ui.sseStatusDot || !ui.sseStatusText) return;
+
+  const state_class = state.sseConnectionState; // "connected" | "connecting" | "disconnected"
+
+  // Update visual indicator
+  ui.sseStatusDot.className = `sse-status-indicator ${state_class}`;
+  ui.sseStatusText.textContent = state_class;
+
+  // Update ARIA live region for screen readers
+  if (ui.sseStatusRegion) {
+    ui.sseStatusRegion.textContent = `Stream status: ${state_class}`;
+  }
+
+  // Show/hide streaming badge
+  if (ui.streamingBadge) {
+    ui.streamingBadge.style.display = (state_class === "connected") ? "inline-block" : "none";
+  }
 }
 
 function handleSSEEvent(event) {
@@ -1600,6 +1620,9 @@ function wireDoctor() {
 }
 
 async function initialize() {
+  // Start performance timer
+  console.time("ui-interactive");
+
   setupDropdowns();
   wireTabs();
   wireHomeControls();
@@ -1607,29 +1630,49 @@ async function initialize() {
   wireLoadouts();
   wireDoctor();
 
+  // FAST PATH: Essential data only for <500ms interactive
   const payload = await fetchJson("/api/bootstrap");
   state.app = payload.app;
   state.form = payload.defaultConfig;
   state.preview = payload.homePreview;
   state.currentRun = payload.currentRun;
   state.modelConfigs = payload.modelConfigs || {};
-  state.loadouts = payload.loadouts || [];
-  state.runs = payload.runs || [];
   state.doctor = payload.doctor;
-  state.selectedLoadoutSlug = state.loadouts[0]?.slug || "";
-  state.selectedHistoryRunId = state.runs[0]?.runId || "";
 
+  // Populate essential UI immediately
   populateToolSelect();
   syncControlsFromForm();
-  populateRunHistorySelect();
   renderHome();
   renderRunPage();
   renderConfigure();
-  renderLoadouts();
   renderDoctor();
   switchPage(pathToPage(window.location.pathname), { pushHistory: false, replaceHistory: true });
 
+  // Initialize SSE status indicator
+  updateSSEStatusIndicator();
+
+  // Mark UI as interactive
+  console.timeEnd("ui-interactive");
+
   state.pollTimer = window.setInterval(pollStatus, 1000);
+
+  // DEFERRED PATH: Load heavy data in background (doesn't block interaction)
+  setTimeout(async () => {
+    try {
+      // Load loadouts
+      state.loadouts = payload.loadouts || [];
+      state.selectedLoadoutSlug = state.loadouts[0]?.slug || "";
+      renderLoadouts();
+
+      // Load run history (potentially large dataset)
+      state.runs = payload.runs || [];
+      state.selectedHistoryRunId = state.runs[0]?.runId || "";
+      populateRunHistorySelect();
+    } catch (err) {
+      console.error("Deferred load failed:", err);
+      // Non-fatal: UI still functional, just missing history/loadouts
+    }
+  }, 100); // Defer 100ms to ensure UI renders first
 }
 
 initialize().catch((error) => {

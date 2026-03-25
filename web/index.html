@@ -111,6 +111,14 @@
               <button class="toolbar-button danger" id="run-stop-button" type="button">Stop Benchmark</button>
             </div>
             <div class="toolbar-line">
+              <span class="toolbar-label">Stream</span>
+              <div style="display: flex; align-items: center;">
+                <span class="sse-status-indicator disconnected" id="sse-status-dot" aria-label="Connection status"></span>
+                <span class="toolbar-value" id="sse-status-text">disconnected</span>
+              </div>
+              <span class="streaming-badge" id="streaming-badge" style="display: none;">LIVE</span>
+            </div>
+            <div class="toolbar-line">
               <span class="toolbar-label">Saved runs</span>
               <div class="custom-select custom-select-wide" id="run-history-select" data-placeholder="Select saved run">
                 <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Saved runs">
@@ -164,10 +172,11 @@
             </summary>
             <div class="collapsible-body">
               <div class="collapsible-inner">
-                <div class="bullet-list" id="recent-activity"></div>
+                <div class="bullet-list" id="recent-activity" aria-live="polite" aria-atomic="false"></div>
               </div>
             </div>
           </details>
+          <div id="sse-status-region" role="status" aria-live="polite" class="visually-hidden"></div>
 
           <details class="terminal-section cases-section collapsible-panel" id="cases-panel" open>
             <summary class="collapsible-summary">
