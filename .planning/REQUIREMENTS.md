@@ -9,11 +9,11 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 
 ### UI Responsiveness
 
-- [ ] **UI-01**: UI becomes interactive within 500ms of page load (not 3+ seconds)
-- [ ] **UI-02**: Results stream to UI within 50ms of worker completion (no batching delay)
+- [x] **UI-01**: UI becomes interactive within 500ms of page load (not 3+ seconds)
+- [x] **UI-02**: Results stream to UI within 50ms of worker completion (no batching delay)
 - [ ] **UI-03**: Browser stays responsive during 100+ concurrent case runs (no freeze)
-- [ ] **UI-04**: Frame rate sustains 60fps during result updates (no jank)
-- [ ] **UI-05**: Memory usage remains stable in long-running benchmarks (no leaks)
+- [x] **UI-04**: Frame rate sustains 60fps during result updates (no jank)
+- [x] **UI-05**: Memory usage remains stable in long-running benchmarks (no leaks)
 
 ### Real-time Updates
 
@@ -110,11 +110,11 @@ Each v1 requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UI-01 | Phase 1 | Pending |
-| UI-02 | Phase 1 | Pending |
+| UI-01 | Phase 1 | Complete |
+| UI-02 | Phase 1 | Complete |
 | UI-03 | Phase 1 | Pending |
-| UI-04 | Phase 1 | Pending |
-| UI-05 | Phase 1 | Pending |
+| UI-04 | Phase 1 | Complete |
+| UI-05 | Phase 1 | Complete |
 | RT-01 | Phase 1 | Complete |
 | RT-02 | Phase 1 | Complete |
 | RT-03 | Phase 1 | Complete |
