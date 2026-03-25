@@ -36,14 +36,14 @@ Declared values (multiples of 4, extracted from existing CSS):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Grid gaps, inline padding (`gap: 4px`) |
-| sm | 8px | Vertical rhythm (`gap: 8px`, `padding: 8px 10px`) |
+| sm | 8px | Vertical rhythm (`gap: 8px`, `padding: 8px 12px`) |
 | md | 12px | Horizontal spacing (`gap: 12px`, `padding: 12px`) |
 | lg | 18px | Section margins (`padding: 18px`) |
 | xl | 24px | Tab spacing (`gap: 24px`), scroll padding |
 
 Exceptions:
-- 10px for tab labels and dropdowns (maintains terminal button alignment)
-- 14px for section title margins (visual hierarchy)
+- 12px for tab labels and dropdowns (maintains terminal button alignment, compliant with 4px grid)
+- 12px for section title margins (visual hierarchy, compliant with 4px grid)
 - 16px for progress bar height (visual prominence)
 
 ---
