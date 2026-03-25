@@ -17,11 +17,11 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 
 ### Real-time Updates
 
-- [ ] **RT-01**: Benchmark progress updates in real-time via Server-Sent Events
-- [ ] **RT-02**: Visual progress bar shows completion percentage
-- [ ] **RT-03**: Results appear incrementally as cases complete (not after entire batch)
-- [ ] **RT-04**: Case status updates immediately (pending → running → pass/fail/skip)
-- [ ] **RT-05**: Active case count updates in real-time
+- [x] **RT-01**: Benchmark progress updates in real-time via Server-Sent Events
+- [x] **RT-02**: Visual progress bar shows completion percentage
+- [x] **RT-03**: Results appear incrementally as cases complete (not after entire batch)
+- [x] **RT-04**: Case status updates immediately (pending → running → pass/fail/skip)
+- [x] **RT-05**: Active case count updates in real-time
 
 ### Result Categorization
 
@@ -115,11 +115,11 @@ Each v1 requirement maps to exactly one phase.
 | UI-03 | Phase 1 | Pending |
 | UI-04 | Phase 1 | Pending |
 | UI-05 | Phase 1 | Pending |
-| RT-01 | Phase 1 | Pending |
-| RT-02 | Phase 1 | Pending |
-| RT-03 | Phase 1 | Pending |
-| RT-04 | Phase 1 | Pending |
-| RT-05 | Phase 1 | Pending |
+| RT-01 | Phase 1 | Complete |
+| RT-02 | Phase 1 | Complete |
+| RT-03 | Phase 1 | Complete |
+| RT-04 | Phase 1 | Complete |
+| RT-05 | Phase 1 | Complete |
 | CAT-01 | Phase 2 | Pending |
 | CAT-02 | Phase 2 | Pending |
 | CAT-03 | Phase 2 | Pending |
