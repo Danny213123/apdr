@@ -409,17 +409,6 @@ function setupDropdowns() {
       renderRunPage();
     },
   });
-  setDropdownOptions(
-    dropdowns.caseFilter,
-    [
-      { value: "all", label: "All cases" },
-      { value: "pass", label: "Passed" },
-      { value: "skip", label: "Skipped" },
-      { value: "fail", label: "Failed" },
-      { value: "outputs", label: "Has outputs" },
-    ],
-    state.caseFilter,
-  );
   setDropdownOptions(dropdowns.runHistory, [], state.selectedHistoryRunId);
   syncValidationBackendDropdown();
 
@@ -1146,20 +1135,8 @@ function buildCaseRow(item, openIds) {
 }
 
 function renderCases() {
-  const previousScrollTop = ui.casesScroll.scrollTop;
-  ui.casesScroll.innerHTML = "";
-  const cases = filteredCases();
-  ui.casesCount.textContent = `(${cases.length})`;
-  if (!cases.length) {
-    ui.casesScroll.innerHTML = `<div class="empty-line">No completed cases yet.</div>`;
-    return;
-  }
-  const fragment = document.createDocumentFragment();
-  for (const item of cases) {
-    fragment.appendChild(buildCaseRow(item, state.openCaseIds));
-  }
-  ui.casesScroll.appendChild(fragment);
-  ui.casesScroll.scrollTop = previousScrollTop;
+  // Redirect to new deterministic filters (Phase 2)
+  applyDeterministicFilters();
 }
 
 function renderDeterministicCases(filtered) {
