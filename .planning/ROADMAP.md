@@ -56,7 +56,13 @@ Plans:
 6. User sees confidence-based skip indicators when LLM skips low-confidence cases
 7. User expands case details to view full logs and resolution path
 
-**Plans**: TBD
+**Plans**: 4 plans in 2 waves
+
+Plans:
+- [ ] 02-01-PLAN.md — Backend tier categorization (Wave 1, autonomous)
+- [ ] 02-02-PLAN.md — Cache hit rate dashboard (Wave 2, autonomous)
+- [ ] 02-03-PLAN.md — Deterministic results panel enhancement (Wave 2, autonomous)
+- [ ] 02-04-PLAN.md — LLM results panel enhancement with checkpoint (Wave 2, has checkpoint)
 
 **UI hint**: yes
 
@@ -139,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Non-blocking UI Foundation | 3/3 | Complete | 2026-03-25 |
-| 2. Result Categorization & Insights | 0/TBD | Not started | - |
+| 2. Result Categorization & Insights | 0/4 | Ready to execute | - |
 | 3. LLM Recovery Accuracy | 0/TBD | Not started | - |
 | 4. LLM Performance Optimization | 0/TBD | Not started | - |
 | 5. Docker Parallel Validation | 0/TBD | Not started | - |
@@ -167,4 +173,4 @@ Phase 1: Non-blocking UI Foundation (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-25*
-*Last updated: 2026-03-25 (Phase 1 complete)*
+*Last updated: 2026-03-25 (Phase 1 complete, Phase 2 planned)*
