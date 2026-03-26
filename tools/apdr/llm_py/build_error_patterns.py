@@ -274,6 +274,25 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         fix_type="python_version",
         suggested_fix="M2Crypto modern versions require Python 3.6+ even if package metadata claims Python 2 support. Try Python 3.6+.",
     ),
+    # Specific package version unavailability
+    ErrorPattern(
+        pattern="Package `torch==1\\.2\\.0` is unavailable",
+        diagnosis="PyTorch 1.2.0 unavailable for current Python version",
+        fix_type="version",
+        suggested_fix="PyTorch 1.2.0 requires Python 3.5-3.7. Try Python 3.7 or use newer PyTorch.",
+    ),
+    ErrorPattern(
+        pattern="Package `numpy==1\\.21\\.6` is unavailable",
+        diagnosis="NumPy 1.21.6 unavailable for current Python version",
+        fix_type="version",
+        suggested_fix="NumPy 1.21.6 requires Python 3.7-3.10. Check Python version compatibility.",
+    ),
+    ErrorPattern(
+        pattern="Package `Caffe==0\\.1\\.0` is unavailable",
+        diagnosis="Caffe not available via PyPI",
+        fix_type="skip",
+        suggested_fix="Caffe requires vendor-specific installation. Not available as generic PyPI package.",
+    ),
 ]
 
 
