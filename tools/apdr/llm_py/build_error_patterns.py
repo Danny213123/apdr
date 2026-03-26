@@ -20,6 +20,25 @@ class ErrorPattern:
 # Ordered from most specific to most general
 ERROR_PATTERNS: list[ErrorPattern] = [
     # System dependency errors
+    # Python 2/3 syntax errors during build or runtime
+    ErrorPattern(
+        pattern="SyntaxError.*Missing parentheses in call to 'print'",
+        diagnosis="Code contains Python 2 print statements",
+        fix_type="python_version",
+        suggested_fix="Package or its dependencies require Python 2.7. Try Python 2.7 if code uses print statements.",
+    ),
+    ErrorPattern(
+        pattern="SyntaxError.*multiple exception types must be parenthesized",
+        diagnosis="Old-style exception handling syntax",
+        fix_type="python_version",
+        suggested_fix="Code uses Python 2 'except Type1, Type2:' syntax. Requires Python 2.7 or code modernization.",
+    ),
+    ErrorPattern(
+        pattern="SyntaxError.*Lambda expression parameters cannot be parenthesized",
+        diagnosis="Lambda syntax incompatible with Python 3.11+",
+        fix_type="python_version",
+        suggested_fix="Code has invalid lambda syntax for Python 3.11+. Try Python 3.9 or 3.10.",
+    ),
     ErrorPattern(
         pattern="fatal error: Python.h: No such file",
         diagnosis="Missing Python development headers",
@@ -100,6 +119,36 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         fix_type="system_dep",
         suggested_fix="Package requires Java. Cannot fix via pip alone.",
     ),
+    ErrorPattern(
+        pattern="Unable to find JAVA_HOME|java_home",
+        diagnosis="Runtime missing JAVA_HOME for pyjnius/jnius",
+        fix_type="system_dep",
+        suggested_fix="Install a JDK and set JAVA_HOME, or escalate to Docker with Java installed.",
+    ),
+    ErrorPattern(
+        pattern="geos_c\\.dll|lib geos_c|gdal-config|GDAL API version",
+        diagnosis="Missing GEOS/GDAL native libraries",
+        fix_type="system_dep",
+        suggested_fix="Install GEOS/GDAL system libraries or escalate to Docker with geospatial deps.",
+    ),
+    ErrorPattern(
+        pattern="soft_unicode|url_quote|markupsafe|werkzeug",
+        diagnosis="Legacy Flask/Jinja2/MarkupSafe compatibility break",
+        fix_type="version",
+        suggested_fix="Pin a coherent legacy Flask family bundle (Flask/Jinja2/MarkupSafe/Werkzeug/itsdangerous).",
+    ),
+    ErrorPattern(
+        pattern="urllib3|cfscrape",
+        diagnosis="cfscrape compatibility break with modern urllib3",
+        fix_type="version",
+        suggested_fix="Pin urllib3<2 alongside cfscrape.",
+    ),
+    ErrorPattern(
+        pattern="ggplot|pandas",
+        diagnosis="Legacy ggplot compatibility break with modern pandas",
+        fix_type="version",
+        suggested_fix="Pin an older pandas release alongside ggplot.",
+    ),
     # Protobuf descriptor incompatibility (TF 1.x + protobuf 4+)
     ErrorPattern(
         pattern="Descriptors cannot not be created directly",
@@ -119,6 +168,47 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         diagnosis="Package requires Rust compiler (cargo/rustc)",
         fix_type="system_dep",
         suggested_fix="Install Rust toolchain or use a pre-built wheel.",
+    ),
+    # NumPy compatibility errors
+    ErrorPattern(
+        pattern="AttributeError.*numpy.*has no attribute.*bool",
+        diagnosis="NumPy 1.24+ removed numpy.bool alias",
+        fix_type="version",
+        suggested_fix="Pin numpy<1.24 or update code to use bool instead of numpy.bool.",
+    ),
+    ErrorPattern(
+        pattern="module 'numpy' has no attribute 'bool'",
+        diagnosis="NumPy 1.24+ removed numpy.bool",
+        fix_type="add_dep",
+        suggested_fix="Add 'numpy<1.24' as explicit dependency for compatibility.",
+    ),
+    # Pandas version compatibility
+    ErrorPattern(
+        pattern="No matching distribution found for pandas==0\\.25",
+        diagnosis="Old pandas version unavailable for current Python",
+        fix_type="version",
+        suggested_fix="pandas 0.25.x requires Python 3.5-3.8. Use newer pandas or older Python.",
+    ),
+    # D-Bus system dependency
+    ErrorPattern(
+        pattern="No matching distribution found for dbus-python",
+        diagnosis="dbus-python requires system D-Bus libraries",
+        fix_type="system_dep",
+        suggested_fix="dbus-python needs libdbus-1-dev system package. Cannot install via pip alone.",
+    ),
+    # Pkg-config false positives
+    ErrorPattern(
+        pattern="Found pkg-config.*YES",
+        diagnosis="False positive - pkg-config found but other dep missing",
+        fix_type="system_dep",
+        suggested_fix="Build failed despite pkg-config being present. Check for other missing system deps.",
+    ),
+    # Double requirement errors
+    ErrorPattern(
+        pattern="ERROR: Double requirement given",
+        diagnosis="Same package listed twice in requirements",
+        fix_type="dedup",
+        suggested_fix="Remove duplicate package from requirements. Check transitive dependencies.",
     ),
 ]
 
