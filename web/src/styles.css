@@ -440,6 +440,34 @@ code {
   align-items: center;
 }
 
+.cache-hit-dashboard {
+  background: var(--bg-panel);
+  border: 1px solid rgba(122, 127, 138, 0.35);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.tier-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tier-metric:last-child {
+  margin-bottom: 0;
+}
+
+.tier-label {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.tier-value {
+  color: var(--yellow);
+  font-weight: 700;
+}
+
 .bullet-list {
   display: flex;
   flex-direction: column;
@@ -529,23 +557,29 @@ code {
 
 .filter-toolbar {
   display: flex;
-  align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  align-items: center;
+  gap: 12px 12px;
+  padding: 8px 0 16px 0;
+  border-bottom: 1px solid rgba(122, 127, 138, 0.35);
+  margin-bottom: 12px;
 }
 
 .filter-search-input {
-  min-width: 220px;
-  background: #0c0c11;
-  color: var(--text);
+  flex: 1;
+  min-width: 200px;
+  background: var(--bg);
   border: 1px solid rgba(122, 127, 138, 0.75);
-  padding: 4px 8px;
-  outline: none;
+  color: var(--text);
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 14px;
 }
 
 .filter-search-input:focus {
+  outline: none;
   border-color: var(--yellow);
+  box-shadow: 0 0 0 2px rgba(255, 217, 94, 0.2);
 }
 
 .case-table-head,
@@ -553,6 +587,7 @@ code {
   display: grid;
   grid-template-columns:
     48px
+    56px
     minmax(150px, 190px)
     74px
     54px
@@ -564,7 +599,7 @@ code {
     minmax(210px, 1fr);
   gap: 12px;
   align-items: center;
-  min-width: 1290px;
+  min-width: 1346px;
 }
 
 .case-table-head {
@@ -585,6 +620,29 @@ code {
 
 .case-row[open] {
   background: rgba(255, 255, 255, 0.02);
+}
+
+.tier-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.tier-badge.tier1 {
+  color: var(--green);
+  background: rgba(65, 242, 156, 0.1);
+}
+
+.tier-badge.tier2 {
+  color: var(--yellow);
+  background: rgba(255, 217, 94, 0.1);
+}
+
+.tier-badge.tier3 {
+  color: var(--blue);
+  background: rgba(143, 209, 255, 0.1);
 }
 
 .case-summary {
