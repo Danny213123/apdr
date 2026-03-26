@@ -295,6 +295,8 @@ class BenchmarkWorker(threading.Thread):
                     with self._summary_lock:
                         summary["results"].append(result)
                         self._write_summary(summary)
+                        # Emit tier_stats event after case completion
+                        self._emit_tier_stats_event(summary["results"])
                     self._append_context_log(
                         context_log,
                         "case-finished",
@@ -361,6 +363,8 @@ class BenchmarkWorker(threading.Thread):
                         with self._summary_lock:
                             summary["results"].append(result)
                             self._write_summary(summary)
+                            # Emit tier_stats event after case completion
+                            self._emit_tier_stats_event(summary["results"])
 
                         with completed_lock:
                             completed_count[0] += 1
@@ -543,6 +547,11 @@ class BenchmarkWorker(threading.Thread):
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
 
+        # Extract tier metadata from output for categorization
+        tier = self._extract_tier(output_metadata, captured_tail)
+        confidence = self._extract_confidence(output_metadata, captured_tail) if tier == "tier3" else None
+        cached = self._extract_cached_status(output_metadata, captured_tail) if tier == "tier3" else False
+
         # Determine result status for event emission
         if succeeded:
             result_status = "pass"
@@ -551,8 +560,20 @@ class BenchmarkWorker(threading.Thread):
         else:
             result_status = "fail"
 
-        # Emit case_complete event
-        emit_event("case_complete", caseId=case_id, status=result_status)
+        # Emit case_complete event with tier metadata
+        event_data = {"caseId": case_id, "status": result_status, "tier": tier}
+        if tier == "tier3":
+            if confidence is not None:
+                event_data["confidence"] = confidence
+            event_data["cached"] = cached
+        emit_event("case_complete", **event_data)
+
+        # Store tier in result for tier_stats calculation
+        result["tier"] = tier
+        if tier == "tier3":
+            if confidence is not None:
+                result["confidence"] = confidence
+            result["cached"] = cached
 
         # Emit progress event
         percent = round((index / total * 100), 1) if total > 0 else 0.0
@@ -697,6 +718,45 @@ class BenchmarkWorker(threading.Thread):
     def _emit(self, kind: str, **payload: Any) -> None:
         self.message_queue.put({"kind": kind, **payload})
 
+    def _emit_tier_stats_event(self, results: list[dict[str, Any]]) -> None:
+        """Emit tier_stats event to SSE queue with tier breakdown."""
+        if not hasattr(self, '_current_run_event_queue') or self._current_run_event_queue is None:
+            return
+
+        # Calculate tier breakdown
+        tier1_count = sum(1 for r in results if r.get("tier") == "tier1")
+        tier2_count = sum(1 for r in results if r.get("tier") == "tier2")
+        tier3_count = sum(1 for r in results if r.get("tier") == "tier3")
+        total = len(results)
+
+        tier_stats = {
+            "tier1": {
+                "count": tier1_count,
+                "percent": round(tier1_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "tier2": {
+                "count": tier2_count,
+                "percent": round(tier2_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "tier3": {
+                "count": tier3_count,
+                "percent": round(tier3_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "total": total
+        }
+
+        event = {
+            "type": "tier_stats",
+            "stats": tier_stats,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        try:
+            self._current_run_event_queue.put_nowait(event)
+        except Exception:
+            # Best-effort streaming - don't block runner on queue errors
+            pass
+
     def _write_summary(self, summary: dict[str, Any]) -> None:
         if not self.run_dir:
             return
@@ -788,3 +848,80 @@ class BenchmarkWorker(threading.Thread):
         if snippet.parent.name:
             return snippet.parent.name
         return snippet.stem or "case"
+
+    def _extract_tier(self, output_metadata: dict[str, str], log_tail: list[str]) -> str:
+        """Extract resolution tier from output metadata or logs.
+
+        Returns "tier1", "tier2", "tier3", or "unknown".
+        """
+        # Check metadata first (APDR may write tier to output_data YAML)
+        tier_value = str(output_metadata.get("resolution_tier") or "").strip().lower()
+        if tier_value in ("tier1", "tier2", "tier3"):
+            return tier_value
+
+        # Parse from log tail for tier markers
+        for line in log_tail:
+            line_lower = line.lower()
+            if "tier1" in line_lower or "cache hit" in line_lower and "seed" not in line_lower:
+                return "tier1"
+            if "tier2" in line_lower or "heuristic" in line_lower:
+                return "tier2"
+            if "tier3" in line_lower or "llm" in line_lower or "language model" in line_lower:
+                return "tier3"
+
+        # Default to unknown if tier not detected
+        return "unknown"
+
+    def _extract_confidence(self, output_metadata: dict[str, str], log_tail: list[str]) -> float | None:
+        """Extract LLM confidence score from output metadata or logs.
+
+        Returns float 0.0-1.0 or None if not available.
+        """
+        # Check metadata first
+        confidence_str = str(output_metadata.get("confidence") or "").strip()
+        if confidence_str:
+            try:
+                confidence = float(confidence_str)
+                if 0.0 <= confidence <= 1.0:
+                    return confidence
+            except (TypeError, ValueError):
+                pass
+
+        # Parse from log tail (look for "confidence: 0.XX" or "confidence=0.XX")
+        for line in log_tail:
+            line_lower = line.lower()
+            if "confidence" in line_lower:
+                # Try to extract numeric value after "confidence"
+                import re
+                match = re.search(r'confidence[:\s=]+([0-9.]+)', line_lower)
+                if match:
+                    try:
+                        confidence = float(match.group(1))
+                        if 0.0 <= confidence <= 1.0:
+                            return confidence
+                    except (TypeError, ValueError):
+                        pass
+
+        return None
+
+    def _extract_cached_status(self, output_metadata: dict[str, str], log_tail: list[str]) -> bool:
+        """Extract import-set cache hit status from output metadata or logs.
+
+        Returns True if import-set cache hit detected, False otherwise.
+        """
+        # Check metadata first
+        cached_str = str(output_metadata.get("import_set_cached") or "").strip().lower()
+        if cached_str in ("true", "1", "yes"):
+            return True
+        if cached_str in ("false", "0", "no"):
+            return False
+
+        # Parse from log tail (look for cache hit patterns)
+        for line in log_tail:
+            line_lower = line.lower()
+            if "import-set cache hit" in line_lower or "import set cache hit" in line_lower:
+                return True
+            if "cache hit" in line_lower and "import" in line_lower:
+                return True
+
+        return False
