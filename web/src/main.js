@@ -485,7 +485,7 @@ function applyLLMFilters() {
 
     // Python filter
     if (state.llmFilters.python !== "all") {
-      const pyVersion = caseData.pythonVersion || "";
+      const pyVersion = caseData.python || "";
       if (pyVersion !== state.llmFilters.python) return false;
     }
 
@@ -562,7 +562,7 @@ function applyDeterministicFilters() {
 
     // Python filter
     if (state.deterministicFilters.python !== "all") {
-      const pyVersion = caseData.pythonVersion || "";
+      const pyVersion = caseData.python || "";
       if (pyVersion !== state.deterministicFilters.python) return false;
     }
 
