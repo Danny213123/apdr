@@ -169,6 +169,105 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertIn("total", expected_progress["progress"])
         self.assertIn("percent", expected_progress["progress"])
 
+    def test_case_complete_includes_tier_metadata(self):
+        """Test case_complete events include tier field for categorization."""
+        from datetime import datetime
+        event_queue = Queue()
+
+        def emit_event(event_type, **kwargs):
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            event_queue.put_nowait(event)
+
+        # Test tier1 case
+        emit_event("case_complete", caseId="test-001", status="pass", tier="tier1")
+        event = event_queue.get_nowait()
+        self.assertEqual(event["tier"], "tier1")
+
+        # Test tier2 case
+        emit_event("case_complete", caseId="test-002", status="pass", tier="tier2")
+        event = event_queue.get_nowait()
+        self.assertEqual(event["tier"], "tier2")
+
+        # Test tier3 case
+        emit_event("case_complete", caseId="test-003", status="pass", tier="tier3")
+        event = event_queue.get_nowait()
+        self.assertEqual(event["tier"], "tier3")
+
+    def test_tier_defaults_to_unknown_when_not_detected(self):
+        """Test tier field defaults to 'unknown' when not detected in output."""
+        from datetime import datetime
+        event_queue = Queue()
+
+        def emit_event(event_type, **kwargs):
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            event_queue.put_nowait(event)
+
+        # Test unknown tier (when tier not detected in APDR output)
+        emit_event("case_complete", caseId="test-004", status="pass", tier="unknown")
+        event = event_queue.get_nowait()
+        self.assertEqual(event["tier"], "unknown")
+
+    def test_cached_field_for_import_set_cache_hits(self):
+        """Test cached field set to True for import-set cache hits (LLM-03)."""
+        from datetime import datetime
+        event_queue = Queue()
+
+        def emit_event(event_type, **kwargs):
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            event_queue.put_nowait(event)
+
+        # Test tier3 case with cache hit
+        emit_event("case_complete", caseId="test-005", status="pass",
+                   tier="tier3", cached=True, confidence=0.92)
+        event = event_queue.get_nowait()
+        self.assertEqual(event["tier"], "tier3")
+        self.assertTrue(event["cached"])
+        self.assertEqual(event["confidence"], 0.92)
+
+        # Test tier3 case without cache hit
+        emit_event("case_complete", caseId="test-006", status="pass",
+                   tier="tier3", cached=False, confidence=0.75)
+        event = event_queue.get_nowait()
+        self.assertFalse(event["cached"])
+
+    def test_llm_case_includes_confidence_field(self):
+        """Test LLM cases (tier3) include confidence score."""
+        from datetime import datetime
+        event_queue = Queue()
+
+        def emit_event(event_type, **kwargs):
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            event_queue.put_nowait(event)
+
+        # Test tier3 case with confidence
+        emit_event("case_complete", caseId="test-007", status="pass",
+                   tier="tier3", confidence=0.85, cached=False)
+        event = event_queue.get_nowait()
+        self.assertEqual(event["confidence"], 0.85)
+        self.assertGreaterEqual(event["confidence"], 0.0)
+        self.assertLessEqual(event["confidence"], 1.0)
+
+        # Test tier1/tier2 cases don't require confidence
+        emit_event("case_complete", caseId="test-008", status="pass", tier="tier1")
+        event = event_queue.get_nowait()
+        self.assertNotIn("confidence", event)
+
 
 if __name__ == "__main__":
     unittest.main()
