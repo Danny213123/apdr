@@ -206,3 +206,4 @@ deployment	local-helper	Likely a local module - Fabric deployment script helpers
 NudgeCore	local-helper	Project-specific module	0.95	0
 Stencil	local-helper	Could be local templating code (not Django/Jinja Stencil)	0.80	0
 icone	local-helper	Likely a local module	0.90	0
+pycrayon	broken-package	Package has circular self-import in setup.py (imports 'crayon' which is itself)	1.00	0

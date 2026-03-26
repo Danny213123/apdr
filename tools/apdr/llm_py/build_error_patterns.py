@@ -210,6 +210,37 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         fix_type="dedup",
         suggested_fix="Remove duplicate package from requirements. Check transitive dependencies.",
     ),
+    # Setup.py import errors (package imports dependencies during its own setup)
+    ErrorPattern(
+        pattern="Getting requirements to build wheel.+No module named 'numpy'",
+        diagnosis="FuncDesigner imports numpy during setup.py",
+        fix_type="add_dep",
+        suggested_fix="Add 'numpy' as explicit dependency BEFORE FuncDesigner. FuncDesigner's setup.py imports numpy.",
+    ),
+    ErrorPattern(
+        pattern="Getting requirements to build wheel.+No module named 'Cython'",
+        diagnosis="Package needs Cython at build time",
+        fix_type="add_dep",
+        suggested_fix="Add 'Cython' as explicit build dependency before this package. Setup.py imports Cython.",
+    ),
+    ErrorPattern(
+        pattern="pycrayon.+No module named 'crayon'",
+        diagnosis="pycrayon has circular self-import in setup.py",
+        fix_type="skip",
+        suggested_fix="pycrayon is broken - it imports itself during setup. Skip this package.",
+    ),
+    ErrorPattern(
+        pattern="Getting requirements to build wheel.+No module named 'pkg_resources'",
+        diagnosis="Package requires older setuptools with pkg_resources",
+        fix_type="version",
+        suggested_fix="Pin 'setuptools<58' for pkg_resources compatibility. Modern setuptools removed pkg_resources from setup.py context.",
+    ),
+    ErrorPattern(
+        pattern="Django.+No module named 'turbogears'",
+        diagnosis="Old Django package incorrectly listed as dependency",
+        fix_type="wrong_package",
+        suggested_fix="This may be a misidentified package. Check if 'django' should be 'Django-TurboGears' or similar.",
+    ),
 ]
 
 
@@ -222,7 +253,7 @@ def match_error_patterns(error_log: str) -> list[ErrorPattern]:
     matches = []
     for pattern in ERROR_PATTERNS:
         try:
-            if re.search(pattern.pattern, error_log, re.IGNORECASE):
+            if re.search(pattern.pattern, error_log, re.IGNORECASE | re.DOTALL):
                 matches.append(pattern)
         except re.error:
             # Fallback to simple substring match
