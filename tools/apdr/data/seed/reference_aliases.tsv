@@ -118,7 +118,7 @@ dotenv	python-dotenv		seed
 dynaconf	dynaconf		seed
 hydra	hydra-core		seed
 omegaconf	omegaconf		seed
-MySQLdb	PyMySQL		seed
+MySQLdb	mysqlclient		seed
 pymysql	PyMySQL		seed
 psycopg2	psycopg2-binary		seed
 asyncpg	asyncpg		seed
@@ -826,7 +826,6 @@ CoreGraphics	pyobjc-framework-Quartz		seed
 LaunchServices	pyobjc-framework-CoreServices		seed
 django_extensions	django-extensions		seed
 usb1	libusb1		seed
-mosquitto	paho-mqtt		seed
 pymc3	pymc3		seed
 libxmp	python-xmp-toolkit		seed
 torchaudio	torchaudio		seed
@@ -1210,3 +1209,8 @@ sendgrid	sendgrid		seed
 impala	impyla		seed
 github2	github2		seed
 BioSQL	biopython		seed
+word2vec	word2vec		seed
+gi	pygobject		seed
+mosquitto	paho-mqtt		seed
+cloudfiles	python-cloudfiles		seed
+pysqlite2	pysqlite3		seed
