@@ -409,7 +409,12 @@ class BenchmarkService:
     def _run_snapshot(self) -> dict[str, Any]:
         with self._lock:
             self._refresh_live_run_metrics_locked()
+            # Temporarily remove unpicklable objects before deepcopy
+            event_queue = self._current_run.pop("_event_queue", None)
             snapshot = deepcopy(self._current_run)
+            # Restore event queue to original dict
+            if event_queue is not None:
+                self._current_run["_event_queue"] = event_queue
         snapshot.pop("_recentActivityLimit", None)
         snapshot.pop("_completedCasesLimit", None)
         snapshot.pop("_solveSecondsTotal", None)
