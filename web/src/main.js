@@ -462,7 +462,10 @@ function setupLLMFilters() {
 
 function applyLLMFilters() {
   const run = displayRun();
-  if (!run || !run.completedCases) return;
+  if (!run || !run.completedCases) {
+    renderLlmCases([]);
+    return;
+  }
 
   const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (LLM = tier3 only)
@@ -543,7 +546,10 @@ function setupDeterministicFilters() {
 
 function applyDeterministicFilters() {
   const run = displayRun();
-  if (!run || !run.completedCases) return;
+  if (!run || !run.completedCases) {
+    renderDeterministicCases([]);
+    return;
+  }
 
   const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (deterministic = tier1 or tier2)
