@@ -118,6 +118,20 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     if req.error_log:
         error_pattern_ctx = format_error_context(req.error_log)
         if error_pattern_ctx:
+            # ADD structured logging BEFORE adding note
+            from ..build_error_patterns import match_error_patterns
+            matched_patterns = match_error_patterns(req.error_log)
+
+            logger.info(
+                "RAG pattern library matched",
+                extra={
+                    "event": "pattern_match",
+                    "action": "recovery",
+                    "patterns_matched": len(matched_patterns),
+                    "top_pattern": matched_patterns[0].diagnosis if matched_patterns else None,
+                    "fix_type": matched_patterns[0].fix_type if matched_patterns else None,
+                }
+            )
             notes.append("Build error pattern library matched")
 
     user_prompt = prompts.recovery_user(
