@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_plan: 3
-status: unknown
-last_updated: "2026-03-26T02:08:02.867Z"
+current_phase: 3
+current_plan: 2
+status: executing
+last_updated: "2026-03-25T23:35:34Z"
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 7
-  completed_plans: 6
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State: APDR Enhancement
 
-**Last Updated:** 2026-03-26
-**Current Phase:** 2
-**Current Plan:** 3
+**Last Updated:** 2026-03-25
+**Current Phase:** 3
+**Current Plan:** 2
 
 ---
 
@@ -25,14 +25,14 @@ progress:
 
 **Core Value:** The benchmark UI must stay responsive and show real-time progress during runs. Users need to see deterministic passes immediately (tier1/tier2 cache hits) separate from LLM-based resolution attempts, without browser hangs or stale data.
 
-**Current Focus:** Phase 2 — Result Categorization & Insights
+**Current Focus:** Phase 3 — LLM Recovery Accuracy
 
 ---
 
 ## Current Position
 
-Phase: 2 (Result Categorization & Insights) — EXECUTING
-Plan: 2 of N (completed 02-01, 02-02)
+Phase: 3 (LLM Recovery Accuracy) — EXECUTING
+Plan: 2 of N (completed 03-01)
 
 ## Performance Metrics
 
@@ -82,6 +82,14 @@ Plan: 2 of N (completed 02-01, 02-02)
 - Terminal aesthetic: blue labels, yellow values
 - Initialize to 0/0 (0.0%) on page load
 
+**Phase 3 Plan 01 (Test Infrastructure):**
+
+- Used monkeypatch fixture for PyPI mocking (cleaner than global patches)
+- Created rust_contract marker for Rust/Python boundary documentation tests
+- Documented confidence and retry enforcement in Python tests (implemented in Rust)
+- Provided sample_error_logs fixture with 5 known error patterns
+- Registered 3 pytest markers (integration, unit, rust_contract) to eliminate warnings
+
 ### Architecture Notes
 
 **Multi-tier Resolution:**
@@ -125,22 +133,22 @@ Plan: 2 of N (completed 02-01, 02-02)
 
 ### What Just Happened
 
-Completed Phase 2 Plan 02 (Cache Hit Dashboard):
+Completed Phase 3 Plan 01 (Test Infrastructure and Validation):
 
-- Wired cache hit rate dashboard to SSE tier_stats events
-- Implemented updateCacheHitDashboard() function with 1 decimal precision
-- Added tier_stats dispatcher in processPendingSSEUpdates()
-- Initialized dashboard to 0/0 (0.0%) on page load
-- Satisfied requirement LLM-01 (cache hit rate visibility)
-- Duration: 95 seconds (1.6 minutes)
+- Created pytest infrastructure with 4 shared fixtures (conftest.py)
+- Added 18 new tests covering REC-01, REC-02, REC-04, REC-05
+- Documented Rust/Python contract boundaries for confidence and retry enforcement
+- All 31 tests pass (18 new + 13 existing) with no warnings
+- Satisfied requirements REC-01, REC-02, REC-04, REC-05
+- Duration: 315 seconds (5.25 minutes)
 
 ### What's Next
 
-**Immediate:** Continue Phase 2 with remaining plans (result split, filtering, confidence badges)
+**Immediate:** Begin Phase 3 Plan 02 (Cache invalidation on PyPI failures)
 
-**This Phase:** Complete result categorization UI using tier metadata from Plan 02-01
+**This Phase:** Continue improving LLM recovery accuracy with cache invalidation and confidence tuning
 
-**Completed Requirements:** CAT-01, CAT-03, LLM-01, LLM-02, LLM-03 (5/12 Phase 2 requirements)
+**Completed Requirements:** REC-01, REC-02, REC-04, REC-05 (4/5 Phase 3 requirements)
 
 ### Context for Next Session
 
