@@ -21,6 +21,12 @@ const state = {
     python: "all",
     search: ""
   },
+  deterministicFilters: {
+    status: "all",
+    tier: "all",
+    python: "all",
+    search: ""
+  },
   pollTimer: null,
   previewTimer: null,
   serverStopping: false,
@@ -119,6 +125,10 @@ const ui = {
   llmConfidenceFilter: document.querySelector("#llm-confidence-filter"),
   llmPythonFilter: document.querySelector("#llm-python-filter"),
   llmSearchInput: document.querySelector("#llm-search-input"),
+  detStatusFilter: document.querySelector("#det-status-filter"),
+  detTierFilter: document.querySelector("#det-tier-filter"),
+  detPythonFilter: document.querySelector("#det-python-filter"),
+  detSearchInput: document.querySelector("#det-search-input"),
   tier1Value: document.getElementById("tier1-value"),
   tier2Value: document.getElementById("tier2-value"),
   tier3Value: document.getElementById("tier3-value"),
@@ -518,6 +528,80 @@ function applyLLMFilters() {
   });
 
   renderLLMCases(filtered);
+}
+
+function setupDeterministicFilters() {
+  // Status filter
+  setupCustomSelect(ui.detStatusFilter, (value) => {
+    state.deterministicFilters.status = value;
+    applyDeterministicFilters();
+  });
+
+  // Tier filter
+  setupCustomSelect(ui.detTierFilter, (value) => {
+    state.deterministicFilters.tier = value;
+    applyDeterministicFilters();
+  });
+
+  // Python filter
+  setupCustomSelect(ui.detPythonFilter, (value) => {
+    state.deterministicFilters.python = value;
+    applyDeterministicFilters();
+  });
+
+  // Search input (debounced 150ms per UI-SPEC performance contract)
+  let searchDebounce = null;
+  ui.detSearchInput.addEventListener("input", (e) => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.deterministicFilters.search = e.target.value.toLowerCase();
+      applyDeterministicFilters();
+    }, 150);
+  });
+}
+
+function applyDeterministicFilters() {
+  if (!state.currentRun || !state.currentRun.results) return;
+
+  const filtered = state.currentRun.results.filter(caseData => {
+    // Filter by tier (deterministic = tier1 or tier2)
+    const tier = caseData.tier || "unknown";
+    if (tier !== "tier1" && tier !== "tier2") return false;
+
+    // Status filter
+    if (state.deterministicFilters.status !== "all") {
+      if (caseData.status !== state.deterministicFilters.status) return false;
+    }
+
+    // Tier filter
+    if (state.deterministicFilters.tier !== "all") {
+      if (tier !== state.deterministicFilters.tier) return false;
+    }
+
+    // Python filter
+    if (state.deterministicFilters.python !== "all") {
+      const pyVersion = caseData.pythonVersion || "";
+      if (pyVersion !== state.deterministicFilters.python) return false;
+    }
+
+    // Search filter (case ID, snippet content, dependencies)
+    if (state.deterministicFilters.search) {
+      const searchTerm = state.deterministicFilters.search;
+      const caseId = (caseData.caseId || "").toLowerCase();
+      const result = (caseData.result || "").toLowerCase();
+      const deps = (caseData.dependencies || "").toLowerCase();
+
+      if (!caseId.includes(searchTerm) &&
+          !result.includes(searchTerm) &&
+          !deps.includes(searchTerm)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  renderDeterministicCases(filtered);
 }
 
 function renderConfidenceBadge(confidence, skipReason) {
@@ -1019,6 +1103,16 @@ function buildCaseRow(item, openIds) {
   const stat = node.querySelector(".case-stat");
   stat.textContent = item.status || "-";
   stat.classList.add(statusToneClass(item.status));
+
+  // Add tier badge
+  const tier = item.tier || "unknown";
+  const tierSpan = node.querySelector(".case-tier");
+  if (tier === "tier1" || tier === "tier2" || tier === "tier3") {
+    tierSpan.innerHTML = `<span class="tier-badge ${tier}">${tier.toUpperCase()}</span>`;
+  } else {
+    tierSpan.textContent = "-";
+  }
+
   node.querySelector(".case-id").textContent = item.caseId || "-";
   node.querySelector(".case-python").textContent = item.python || "-";
   node.querySelector(".case-attempts").textContent = item.tries || "-";
@@ -1070,6 +1164,22 @@ function renderCases() {
   }
   const fragment = document.createDocumentFragment();
   for (const item of cases) {
+    fragment.appendChild(buildCaseRow(item, state.openCaseIds));
+  }
+  ui.casesScroll.appendChild(fragment);
+  ui.casesScroll.scrollTop = previousScrollTop;
+}
+
+function renderDeterministicCases(filtered) {
+  const previousScrollTop = ui.casesScroll.scrollTop;
+  ui.casesScroll.innerHTML = "";
+  ui.casesCount.textContent = `(${filtered.length})`;
+  if (!filtered.length) {
+    ui.casesScroll.innerHTML = `<div class="empty-line">No deterministic cases match current filters.</div>`;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const item of filtered) {
     fragment.appendChild(buildCaseRow(item, state.openCaseIds));
   }
   ui.casesScroll.appendChild(fragment);
@@ -1826,6 +1936,8 @@ async function initialize() {
   console.time("ui-interactive");
 
   setupDropdowns();
+  setupLLMFilters();
+  setupDeterministicFilters();
   wireTabs();
   wireHomeControls();
   wireConfigure();

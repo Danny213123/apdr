@@ -196,25 +196,65 @@
 
           <details class="terminal-section cases-section collapsible-panel" id="cases-panel" open>
             <summary class="collapsible-summary">
-              <span class="section-title">Completed Cases <span class="collapsible-count" id="cases-count"></span></span>
+              <span class="section-title">Deterministic Results <span class="collapsible-count" id="cases-count"></span></span>
+              <span class="section-subtitle">(tier1 cache + tier2 heuristic)</span>
               <span class="collapsible-meta">expand / collapse</span>
             </summary>
             <div class="collapsible-body">
               <div class="collapsible-inner">
-                <div class="toolbar-line case-controls">
-                  <label class="toolbar-label" for="case-search">Search</label>
-                  <input id="case-search" type="search" placeholder="case id, result, dependency" />
-                  <span class="toolbar-label">Filter</span>
-                  <div class="custom-select custom-select-compact" id="case-filter" data-placeholder="All cases">
-                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter cases">
-                      <span class="custom-select-label">All cases</span>
+                <div class="filter-toolbar">
+                  <label class="toolbar-label" for="det-status-filter">Status</label>
+                  <div class="custom-select custom-select-compact" id="det-status-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by status">
+                      <span class="custom-select-label">All</span>
                       <span class="custom-select-arrow" aria-hidden="true">▾</span>
                     </button>
-                    <div class="custom-select-menu" role="listbox" aria-label="Case filters"></div>
+                    <div class="custom-select-menu" role="listbox" aria-label="Status options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="pass">Pass</div>
+                      <div class="custom-select-option" role="option" data-value="fail">Fail</div>
+                      <div class="custom-select-option" role="option" data-value="skip">Skip</div>
+                    </div>
                   </div>
+
+                  <label class="toolbar-label" for="det-tier-filter">Tier</label>
+                  <div class="custom-select custom-select-compact" id="det-tier-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by tier">
+                      <span class="custom-select-label">All</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Tier options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="tier1">Tier1</div>
+                      <div class="custom-select-option" role="option" data-value="tier2">Tier2</div>
+                    </div>
+                  </div>
+
+                  <label class="toolbar-label" for="det-python-filter">Python</label>
+                  <div class="custom-select custom-select-compact" id="det-python-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by Python version">
+                      <span class="custom-select-label">All</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Python version options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="2.7">2.7</div>
+                      <div class="custom-select-option" role="option" data-value="3.6">3.6</div>
+                      <div class="custom-select-option" role="option" data-value="3.7">3.7</div>
+                      <div class="custom-select-option" role="option" data-value="3.8">3.8</div>
+                      <div class="custom-select-option" role="option" data-value="3.9">3.9</div>
+                      <div class="custom-select-option" role="option" data-value="3.10">3.10</div>
+                      <div class="custom-select-option" role="option" data-value="3.11">3.11</div>
+                      <div class="custom-select-option" role="option" data-value="3.12">3.12</div>
+                    </div>
+                  </div>
+
+                  <label class="toolbar-label" for="det-search-input">Search</label>
+                  <input class="filter-search-input" id="det-search-input" type="search" placeholder="search case id, result, dependency..." />
                 </div>
                 <div class="case-table-head">
                   <span>STAT</span>
+                  <span>TIER</span>
                   <span>CASE ID</span>
                   <span>PY</span>
                   <span>TRY</span>
@@ -393,6 +433,7 @@
       <details class="case-row">
         <summary class="case-summary">
           <span class="case-stat"></span>
+          <span class="case-tier"></span>
           <span class="case-id"></span>
           <span class="case-python"></span>
           <span class="case-attempts"></span>
