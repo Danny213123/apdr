@@ -461,9 +461,10 @@ function setupLLMFilters() {
 }
 
 function applyLLMFilters() {
-  if (!state.currentRun || !state.currentRun.results) return;
+  const run = displayRun();
+  if (!run || !run.completedCases) return;
 
-  const filtered = state.currentRun.results.filter(caseData => {
+  const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (LLM = tier3 only)
     const tier = caseData.tier || "unknown";
     if (tier !== "tier3") return false;
@@ -541,9 +542,10 @@ function setupDeterministicFilters() {
 }
 
 function applyDeterministicFilters() {
-  if (!state.currentRun || !state.currentRun.results) return;
+  const run = displayRun();
+  if (!run || !run.completedCases) return;
 
-  const filtered = state.currentRun.results.filter(caseData => {
+  const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (deterministic = tier1 or tier2)
     const tier = caseData.tier || "unknown";
     if (tier !== "tier1" && tier !== "tier2") return false;
@@ -1256,7 +1258,7 @@ function renderRunPage() {
     (item) => `• ${escapeHtml(item)}`,
   );
   renderCases();
-  renderLlmCases();
+  applyLLMFilters();
   updateSuccessRateDashboard();
   ui.runStopButton.disabled = !isRunActive(state.currentRun);
   ui.refreshRunsButton.disabled = false;
