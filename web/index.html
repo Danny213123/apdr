@@ -153,19 +153,15 @@
             <div class="last-llm-line" id="last-llm-line"></div>
           </section>
 
-          <section class="terminal-section cache-hit-dashboard" id="cache-hit-dashboard" role="region" aria-label="Cache hit rate breakdown">
-            <div class="section-title">Cache Hit Rate</div>
+          <section class="terminal-section cache-hit-dashboard" id="success-rate-dashboard" role="region" aria-label="Success rate breakdown">
+            <div class="section-title">Success Rates</div>
             <div class="tier-metric">
-              <span class="tier-label">Tier1 (cache):</span>
-              <span class="tier-value" id="tier1-value">0/0 (0.0%)</span>
+              <span class="tier-label">Deterministic (tier1+tier2):</span>
+              <span class="tier-value" id="deterministic-success-value">0/0 (0.0%)</span>
             </div>
             <div class="tier-metric">
-              <span class="tier-label">Tier2 (heuristic):</span>
-              <span class="tier-value" id="tier2-value">0/0 (0.0%)</span>
-            </div>
-            <div class="tier-metric">
-              <span class="tier-label">Tier3 (LLM):</span>
-              <span class="tier-value" id="tier3-value">0/0 (0.0%)</span>
+              <span class="tier-label">LLM (tier3):</span>
+              <span class="tier-value" id="llm-success-value">0/0 (0.0%)</span>
             </div>
           </section>
 

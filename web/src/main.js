@@ -127,9 +127,8 @@ const ui = {
   detTierFilter: document.querySelector("#det-tier-filter"),
   detPythonFilter: document.querySelector("#det-python-filter"),
   detSearchInput: document.querySelector("#det-search-input"),
-  tier1Value: document.getElementById("tier1-value"),
-  tier2Value: document.getElementById("tier2-value"),
-  tier3Value: document.getElementById("tier3-value"),
+  deterministicSuccessValue: document.getElementById("deterministic-success-value"),
+  llmSuccessValue: document.getElementById("llm-success-value"),
 };
 
 const PAGE_PATHS = {
@@ -1258,6 +1257,7 @@ function renderRunPage() {
   );
   renderCases();
   renderLlmCases();
+  updateSuccessRateDashboard();
   ui.runStopButton.disabled = !isRunActive(state.currentRun);
   ui.refreshRunsButton.disabled = false;
   ui.loadRunButton.disabled = !historyRun || isRunActive(state.currentRun);
@@ -1528,7 +1528,7 @@ function processPendingSSEUpdates() {
         addActivityItem(event);
         break;
       case "tier_stats":
-        updateCacheHitDashboard(event.stats);
+        // No longer used - success rates calculated from case data
         break;
       case "heartbeat":
         // No UI update needed, just proves connection alive
@@ -1597,17 +1597,32 @@ function handleBenchmarkComplete() {
   teardownSSE();
 }
 
-function updateCacheHitDashboard(stats) {
-  if (!ui.tier1Value || !ui.tier2Value || !ui.tier3Value) return;
+function updateSuccessRateDashboard() {
+  if (!ui.deterministicSuccessValue || !ui.llmSuccessValue) return;
 
-  const tier1 = stats.tier1 || {count: 0, percent: 0.0};
-  const tier2 = stats.tier2 || {count: 0, percent: 0.0};
-  const tier3 = stats.tier3 || {count: 0, percent: 0.0};
-  const total = stats.total || 0;
+  const run = displayRun();
+  if (!run) {
+    ui.deterministicSuccessValue.textContent = "0/0 (0.0%)";
+    ui.llmSuccessValue.textContent = "0/0 (0.0%)";
+    return;
+  }
 
-  ui.tier1Value.textContent = `${tier1.count}/${total} (${tier1.percent.toFixed(1)}%)`;
-  ui.tier2Value.textContent = `${tier2.count}/${total} (${tier2.percent.toFixed(1)}%)`;
-  ui.tier3Value.textContent = `${tier3.count}/${total} (${tier3.percent.toFixed(1)}%)`;
+  const allCases = run.completedCases || [];
+
+  // Deterministic cases (tier1 + tier2)
+  const deterministicCases = allCases.filter(c => c.tier === "tier1" || c.tier === "tier2");
+  const deterministicPass = deterministicCases.filter(c => c.status === "PASS").length;
+  const deterministicTotal = deterministicCases.length;
+  const deterministicPercent = deterministicTotal > 0 ? (deterministicPass / deterministicTotal * 100) : 0.0;
+
+  // LLM cases (tier3)
+  const llmCases = allCases.filter(c => c.tier === "tier3");
+  const llmPass = llmCases.filter(c => c.status === "PASS").length;
+  const llmTotal = llmCases.length;
+  const llmPercent = llmTotal > 0 ? (llmPass / llmTotal * 100) : 0.0;
+
+  ui.deterministicSuccessValue.textContent = `${deterministicPass}/${deterministicTotal} (${deterministicPercent.toFixed(1)}%)`;
+  ui.llmSuccessValue.textContent = `${llmPass}/${llmTotal} (${llmPercent.toFixed(1)}%)`;
 }
 
 async function pollStatus() {
@@ -1987,13 +2002,8 @@ async function initialize() {
   // Initialize SSE status indicator
   updateSSEStatusIndicator();
 
-  // Initialize cache hit dashboard to initial state
-  updateCacheHitDashboard({
-    tier1: {count: 0, percent: 0.0},
-    tier2: {count: 0, percent: 0.0},
-    tier3: {count: 0, percent: 0.0},
-    total: 0
-  });
+  // Initialize success rate dashboard
+  updateSuccessRateDashboard();
 
   // Mark UI as interactive
   console.timeEnd("ui-interactive");
