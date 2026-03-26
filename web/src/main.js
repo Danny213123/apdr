@@ -1294,9 +1294,21 @@ async function pollStatus() {
     renderHome();
     renderRunPage();
     renderDoctor();
+
+    // Setup SSE when runId becomes available for active run
+    const newRunId = state.currentRun?.runId || "";
+    if (newRunId && newRunId !== previousRunId && isRunActive(state.currentRun)) {
+      setupSSE(newRunId);
+    }
+
+    // Teardown SSE when run becomes inactive
+    if (previousRunId && !isRunActive(state.currentRun) && state.sseConnection) {
+      teardownSSE();
+    }
+
     if (
       previousRunId &&
-      (previousRunId !== (state.currentRun?.runId || "") || previousStatus !== (state.currentRun?.status || "")) &&
+      (previousRunId !== newRunId || previousStatus !== (state.currentRun?.status || "")) &&
       !isRunActive(state.currentRun)
     ) {
       state.selectedHistoryRunId = state.currentRun?.runId || state.selectedHistoryRunId;
@@ -1367,10 +1379,7 @@ function wireHomeControls() {
       renderRunPage();
       switchPage("run");
 
-      // Setup SSE connection for real-time updates
-      if (state.currentRun?.runId) {
-        setupSSE(state.currentRun.runId);
-      }
+      // SSE will be setup automatically by pollStatus once runId is available
     } catch (error) {
       alert(error.message);
     }
