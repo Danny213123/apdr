@@ -508,7 +508,7 @@ function applyLLMFilters() {
     return true;
   });
 
-  renderLLMCases(filtered);
+  renderLlmCases(filtered);
 }
 
 function setupDeterministicFilters() {
