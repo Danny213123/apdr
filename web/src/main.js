@@ -1610,8 +1610,8 @@ function updateSuccessRateDashboard() {
 
   const run = displayRun();
   if (!run) {
-    ui.deterministicSuccessValue.textContent = "0/0 (0.0%)";
-    ui.llmSuccessValue.textContent = "0/0 (0.0%)";
+    ui.deterministicSuccessValue.innerHTML = formatSuccessRate(0, 0, 0, 0);
+    ui.llmSuccessValue.innerHTML = formatSuccessRate(0, 0, 0, 0);
     return;
   }
 
@@ -1619,18 +1619,32 @@ function updateSuccessRateDashboard() {
 
   // Deterministic cases (tier1 + tier2)
   const deterministicCases = allCases.filter(c => c.tier === "tier1" || c.tier === "tier2");
-  const deterministicPass = deterministicCases.filter(c => c.status === "PASS").length;
-  const deterministicTotal = deterministicCases.length;
-  const deterministicPercent = deterministicTotal > 0 ? (deterministicPass / deterministicTotal * 100) : 0.0;
+  const detSucceeded = deterministicCases.filter(c => c.status === "PASS").length;
+  const detFailed = deterministicCases.filter(c => c.status === "FAIL").length;
+  const detPassed = deterministicCases.filter(c => c.status === "PASS" || c.status === "SKIP").length;
+  const detTotal = deterministicCases.length;
 
   // LLM cases (tier3)
   const llmCases = allCases.filter(c => c.tier === "tier3");
-  const llmPass = llmCases.filter(c => c.status === "PASS").length;
+  const llmSucceeded = llmCases.filter(c => c.status === "PASS").length;
+  const llmFailed = llmCases.filter(c => c.status === "FAIL").length;
+  const llmPassed = llmCases.filter(c => c.status === "PASS" || c.status === "SKIP").length;
   const llmTotal = llmCases.length;
-  const llmPercent = llmTotal > 0 ? (llmPass / llmTotal * 100) : 0.0;
 
-  ui.deterministicSuccessValue.textContent = `${deterministicPass}/${deterministicTotal} (${deterministicPercent.toFixed(1)}%)`;
-  ui.llmSuccessValue.textContent = `${llmPass}/${llmTotal} (${llmPercent.toFixed(1)}%)`;
+  ui.deterministicSuccessValue.innerHTML = formatSuccessRate(detSucceeded, detFailed, detPassed, detTotal);
+  ui.llmSuccessValue.innerHTML = formatSuccessRate(llmSucceeded, llmFailed, llmPassed, llmTotal);
+}
+
+function formatSuccessRate(succeeded, failed, passed, total) {
+  return `
+    <span style="color: #50fa7b; font-weight: bold;" title="Cases that passed validation">✓ ${succeeded}</span>
+    <span style="color: #6272a4;"> / </span>
+    <span style="color: #ff5555; font-weight: bold;" title="Cases that failed validation">✗ ${failed}</span>
+    <span style="color: #6272a4;"> / </span>
+    <span style="color: #8be9fd; font-weight: bold;" title="Total passed (PASS + SKIP)">⊕ ${passed}</span>
+    <span style="color: #6272a4;"> / </span>
+    <span style="color: #f8f8f2;" title="Total cases">∑ ${total}</span>
+  `;
 }
 
 async function pollStatus() {
