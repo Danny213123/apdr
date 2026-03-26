@@ -7,7 +7,7 @@
 ## Phases
 
 - [x] **Phase 1: Non-blocking UI Foundation** - Responsive UI with real-time streaming
-- [ ] **Phase 2: Result Categorization & Insights** - Deterministic/LLM split view with filtering
+- [x] **Phase 2: Result Categorization & Insights** - Deterministic/LLM split view with filtering
 - [ ] **Phase 3: LLM Recovery Accuracy** - Improved error recovery with validation and confidence scoring
 - [ ] **Phase 4: LLM Performance Optimization** - Batching, caching, and parallel inference
 - [ ] **Phase 5: Docker Parallel Validation** - Concurrent Python version testing with BuildKit
@@ -62,7 +62,7 @@ Plans:
 - [x] 02-01-PLAN.md — Backend tier categorization (Wave 1, autonomous)
 - [x] 02-02-PLAN.md — Cache hit rate dashboard (Wave 2, autonomous)
 - [x] 02-03-PLAN.md — Deterministic results panel enhancement (Wave 2, autonomous)
-- [ ] 02-04-PLAN.md — LLM results panel enhancement with checkpoint (Wave 2, has checkpoint)
+- [x] 02-04-PLAN.md — LLM results panel enhancement with checkpoint (Wave 2, has checkpoint)
 
 **UI hint**: yes
 
@@ -82,7 +82,12 @@ Plans:
 4. User sees recovery attempts skip when confidence score <0.4 (avoid bad suggestions)
 5. User observes max 5 recovery attempts per case (prevents infinite retry loops)
 
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — Test infrastructure and validation (Wave 1, autonomous)
+- [ ] 03-02-PLAN.md — Prompt hash cache invalidation (Wave 2, autonomous)
+- [ ] 03-03-PLAN.md — Metrics logging and verification (Wave 3, has checkpoint)
 
 ---
 
@@ -145,8 +150,8 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Non-blocking UI Foundation | 3/3 | Complete | 2026-03-25 |
-| 2. Result Categorization & Insights | 0/4 | Ready to execute | - |
-| 3. LLM Recovery Accuracy | 0/TBD | Not started | - |
+| 2. Result Categorization & Insights | 4/4 | Complete | 2026-03-26 |
+| 3. LLM Recovery Accuracy | 0/3 | Planned | - |
 | 4. LLM Performance Optimization | 0/TBD | Not started | - |
 | 5. Docker Parallel Validation | 0/TBD | Not started | - |
 | 6. End-to-End Validation | 0/TBD | Not started | - |
@@ -173,4 +178,4 @@ Phase 1: Non-blocking UI Foundation (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-25*
-*Last updated: 2026-03-25 (Phase 1 complete, Phase 2 planned)*
+*Last updated: 2026-03-26 (Phase 1-2 complete, Phase 3 planned)*
