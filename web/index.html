@@ -153,6 +153,22 @@
             <div class="last-llm-line" id="last-llm-line"></div>
           </section>
 
+          <section class="terminal-section cache-hit-dashboard" id="cache-hit-dashboard" role="region" aria-label="Cache hit rate breakdown">
+            <div class="section-title">Cache Hit Rate</div>
+            <div class="tier-metric">
+              <span class="tier-label">Tier1 (cache):</span>
+              <span class="tier-value" id="tier1-value">0/0 (0.0%)</span>
+            </div>
+            <div class="tier-metric">
+              <span class="tier-label">Tier2 (heuristic):</span>
+              <span class="tier-value" id="tier2-value">0/0 (0.0%)</span>
+            </div>
+            <div class="tier-metric">
+              <span class="tier-label">Tier3 (LLM):</span>
+              <span class="tier-value" id="tier3-value">0/0 (0.0%)</span>
+            </div>
+          </section>
+
           <details class="terminal-section collapsible-panel" id="active-cases-panel" open>
             <summary class="collapsible-summary">
               <span class="section-title">Active cases</span>
@@ -216,13 +232,67 @@
 
           <details class="terminal-section cases-section collapsible-panel" id="llm-cases-panel">
             <summary class="collapsible-summary">
-              <span class="section-title">LLM Cases <span class="collapsible-count" id="llm-cases-count"></span></span>
+              <span class="section-title">LLM Results <span class="collapsible-count" id="llm-cases-count"></span></span>
+              <span class="section-subtitle">(tier3 LLM-assisted resolution)</span>
               <span class="collapsible-meta">expand / collapse</span>
             </summary>
             <div class="collapsible-body">
               <div class="collapsible-inner">
+                <div class="filter-toolbar">
+                  <label class="toolbar-label" for="llm-status-filter">Status</label>
+                  <div class="custom-select custom-select-compact" id="llm-status-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by status">
+                      <span class="custom-select-label">All</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Status options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="pass">Pass</div>
+                      <div class="custom-select-option" role="option" data-value="fail">Fail</div>
+                      <div class="custom-select-option" role="option" data-value="skip">Skip</div>
+                    </div>
+                  </div>
+
+                  <label class="toolbar-label" for="llm-confidence-filter">Confidence</label>
+                  <div class="custom-select custom-select-compact" id="llm-confidence-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by confidence">
+                      <span class="custom-select-label">All</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Confidence options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="high">High (&gt;0.7)</div>
+                      <div class="custom-select-option" role="option" data-value="medium">Medium (0.4-0.7)</div>
+                      <div class="custom-select-option" role="option" data-value="low">Low (&lt;0.4)</div>
+                      <div class="custom-select-option" role="option" data-value="skipped">Skipped</div>
+                    </div>
+                  </div>
+
+                  <label class="toolbar-label" for="llm-python-filter">Python</label>
+                  <div class="custom-select custom-select-compact" id="llm-python-filter" data-placeholder="All">
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by Python version">
+                      <span class="custom-select-label">All</span>
+                      <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="custom-select-menu" role="listbox" aria-label="Python version options">
+                      <div class="custom-select-option" role="option" data-value="all">All</div>
+                      <div class="custom-select-option" role="option" data-value="2.7">2.7</div>
+                      <div class="custom-select-option" role="option" data-value="3.6">3.6</div>
+                      <div class="custom-select-option" role="option" data-value="3.7">3.7</div>
+                      <div class="custom-select-option" role="option" data-value="3.8">3.8</div>
+                      <div class="custom-select-option" role="option" data-value="3.9">3.9</div>
+                      <div class="custom-select-option" role="option" data-value="3.10">3.10</div>
+                      <div class="custom-select-option" role="option" data-value="3.11">3.11</div>
+                      <div class="custom-select-option" role="option" data-value="3.12">3.12</div>
+                    </div>
+                  </div>
+
+                  <label class="toolbar-label" for="llm-search-input">Search</label>
+                  <input class="filter-search-input" id="llm-search-input" type="search" placeholder="search case id, confidence, result..." />
+                </div>
                 <div class="case-table-head">
                   <span>STAT</span>
+                  <span>CONF</span>
                   <span>CASE ID</span>
                   <span>PY</span>
                   <span>TRY</span>

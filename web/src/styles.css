@@ -152,6 +152,12 @@ code {
   font-weight: 700;
 }
 
+.section-subtitle {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
 .warning-copy,
 .empty-line {
   color: var(--muted);
@@ -519,6 +525,27 @@ code {
 .case-controls input,
 .case-controls .custom-select {
   min-width: 220px;
+}
+
+.filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.filter-search-input {
+  min-width: 220px;
+  background: #0c0c11;
+  color: var(--text);
+  border: 1px solid rgba(122, 127, 138, 0.75);
+  padding: 4px 8px;
+  outline: none;
+}
+
+.filter-search-input:focus {
+  border-color: var(--yellow);
 }
 
 .case-table-head,
