@@ -241,6 +241,39 @@ ERROR_PATTERNS: list[ErrorPattern] = [
         fix_type="wrong_package",
         suggested_fix="This may be a misidentified package. Check if 'django' should be 'Django-TurboGears' or similar.",
     ),
+    # Legacy Qt bindings
+    ErrorPattern(
+        pattern="No matching distribution found for PySide[^2-9]",
+        diagnosis="PySide v1 is deprecated and unavailable for Python 3.8+",
+        fix_type="skip",
+        suggested_fix="PySide v1 is legacy. Cannot replace with PySide6/PySide2 due to incompatible API. Requires Python 2.7 or early Python 3.",
+    ),
+    ErrorPattern(
+        pattern="missing module `PySide`",
+        diagnosis="PySide v1 import failed (likely replaced with incompatible PySide6)",
+        fix_type="skip",
+        suggested_fix="PySide v1 imports (from PySide.QtCore) are incompatible with PySide6 (from PySide6.QtCore). Code needs manual migration.",
+    ),
+    # Setup.py syntax errors (setup.py requires newer Python than package supports)
+    ErrorPattern(
+        pattern="setup\\.py.+SyntaxError.+invalid syntax",
+        diagnosis="Package setup.py uses Python 3 syntax but building with Python 2",
+        fix_type="python_version",
+        suggested_fix="Package setup.py requires Python 3+ (type annotations, f-strings, etc.). Try Python 3.6+.",
+    ),
+    ErrorPattern(
+        pattern="SyntaxError.+type annotation",
+        diagnosis="Type annotations require Python 3.5+",
+        fix_type="python_version",
+        suggested_fix="Code uses type annotations. Requires Python 3.5+.",
+    ),
+    # M2Crypto specific (common build failure)
+    ErrorPattern(
+        pattern="M2Crypto.+SyntaxError",
+        diagnosis="M2Crypto setup.py incompatible with Python 2",
+        fix_type="python_version",
+        suggested_fix="M2Crypto modern versions require Python 3.6+ even if package metadata claims Python 2 support. Try Python 3.6+.",
+    ),
 ]
 
 
