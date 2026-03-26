@@ -1186,18 +1186,75 @@ function renderDeterministicCases(filtered) {
   ui.casesScroll.scrollTop = previousScrollTop;
 }
 
-function renderLlmCases() {
+function buildLLMCaseRow(item, openIds) {
+  const node = ui.caseRowTemplate.content.firstElementChild.cloneNode(true);
+  node.dataset.caseId = item.caseId || "";
+  const stat = node.querySelector(".case-stat");
+
+  // Add confidence badge + cache badge to status column
+  const confBadgeHTML = renderConfidenceBadge(item.confidence, item.skipReason);
+  const cacheBadgeHTML = renderCacheBadge(item.cached);
+  stat.innerHTML = `<span class="${statusToneClass(item.status)}">${escapeHtml(item.status || "-")}</span>${cacheBadgeHTML}`;
+
+  // Add confidence badge to CONF column (uses .case-tier selector which maps to CONF column in LLM table)
+  const confSpan = node.querySelector(".case-tier");
+  confSpan.innerHTML = confBadgeHTML;
+
+  node.querySelector(".case-id").textContent = item.caseId || "-";
+  node.querySelector(".case-python").textContent = item.python || "-";
+  node.querySelector(".case-attempts").textContent = item.tries || "-";
+  node.querySelector(".case-seconds").textContent = item.seconds || "0.0";
+
+  const pllm = node.querySelector(".case-pllm");
+  pllm.textContent = item.pllm || "-";
+  pllm.classList.add(markerClass(item.pllm));
+  pllm.title = item.pllmSummary || "";
+
+  const pyego = node.querySelector(".case-pyego");
+  pyego.textContent = item.legacy || "-";
+  pyego.classList.add(markerClass(item.legacy));
+  pyego.title = item.legacySummary || "";
+
+  const readpy = node.querySelector(".case-readpy");
+  readpy.textContent = item.readpy || "-";
+  readpy.classList.add(markerClass(item.readpy));
+  readpy.title = item.readpySummary || "";
+
+  node.querySelector(".case-result").textContent = item.result || "-";
+  node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
+
+  if (openIds.has(item.caseId)) {
+    node.open = true;
+    renderCaseDetails(node.querySelector(".case-detail"), item);
+  }
+
+  node.addEventListener("toggle", () => {
+    if (node.open) {
+      openIds.add(item.caseId);
+      // Use renderCaseDetail for LLM-specific expandable content
+      const detailContainer = node.querySelector(".case-detail");
+      detailContainer.innerHTML = renderCaseDetail(item);
+    } else {
+      openIds.delete(item.caseId);
+    }
+  });
+
+  return node;
+}
+
+function renderLlmCases(filtered = null) {
   const previousScrollTop = ui.llmCasesScroll.scrollTop;
   ui.llmCasesScroll.innerHTML = "";
-  const llmCases = llmCasesForRun();
+  const llmCases = filtered !== null ? filtered : llmCasesForRun();
   ui.llmCasesCount.textContent = `(${llmCases.length})`;
   if (!llmCases.length) {
-    ui.llmCasesScroll.innerHTML = `<div class="empty-line">No LLM cases yet.</div>`;
+    const message = filtered !== null ? "No LLM cases match current filters." : "No LLM cases yet.";
+    ui.llmCasesScroll.innerHTML = `<div class="empty-line">${message}</div>`;
     return;
   }
   const fragment = document.createDocumentFragment();
   for (const item of llmCases) {
-    fragment.appendChild(buildCaseRow(item, state.openLlmCaseIds));
+    fragment.appendChild(buildLLMCaseRow(item, state.openLlmCaseIds));
   }
   ui.llmCasesScroll.appendChild(fragment);
   ui.llmCasesScroll.scrollTop = previousScrollTop;
