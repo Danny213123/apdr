@@ -861,6 +861,9 @@ class BenchmarkService:
             "envBuilds": str(env_builds),
             "retries": str(retries),
             "hadLlmRetry": retries > 0,
+            "tier": result.get("tier", "unknown"),
+            "confidence": result.get("confidence"),
+            "cached": result.get("cached", False),
         }
 
     def _append_activity(self, text: str) -> None:
