@@ -43,11 +43,11 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 
 ### Recovery Accuracy
 
-- [ ] **REC-01**: Recovery suggestions validate package exists on PyPI before suggesting
-- [ ] **REC-02**: Error pattern matching uses RAG-enhanced recovery prompts
+- [x] **REC-01**: Recovery suggestions validate package exists on PyPI before suggesting
+- [x] **REC-02**: Error pattern matching uses RAG-enhanced recovery prompts
 - [x] **REC-03**: Cache invalidation based on prompt hash + model ID (prevent stale suggestions)
-- [ ] **REC-04**: Recovery confidence scoring to skip low-confidence suggestions
-- [ ] **REC-05**: Recovery attempt limit enforced (max 5 attempts per case)
+- [x] **REC-04**: Recovery confidence scoring to skip low-confidence suggestions
+- [x] **REC-05**: Recovery attempt limit enforced (max 5 attempts per case)
 
 ### LLM Performance
 
@@ -132,11 +132,11 @@ Each v1 requirement maps to exactly one phase.
 | LLM-02 | Phase 2 | Complete |
 | LLM-03 | Phase 2 | Complete |
 | LLM-04 | Phase 2 | Pending |
-| REC-01 | Phase 3 | Pending |
-| REC-02 | Phase 3 | Pending |
+| REC-01 | Phase 3 | Complete |
+| REC-02 | Phase 3 | Complete |
 | REC-03 | Phase 3 | Complete |
-| REC-04 | Phase 3 | Pending |
-| REC-05 | Phase 3 | Pending |
+| REC-04 | Phase 3 | Complete |
+| REC-05 | Phase 3 | Complete |
 | PERF-01 | Phase 4 | Pending |
 | PERF-02 | Phase 4 | Pending |
 | PERF-03 | Phase 4 | Pending |
