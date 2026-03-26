@@ -8,10 +8,13 @@ Improvements:
 - #8:  LiteLLM model fallback chain via Router
 - #9:  Structured scratchpad chain-of-thought
 - New: Semantic entropy gating (per-import confidence estimation)
+- REC-03: Prompt hash-based cache invalidation
 """
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 import logging
 import math
@@ -175,14 +178,78 @@ class LlmClient:
         self.provider = provider
         self.model = model
         self.base_url = base_url.rstrip("/")
+        # --- REC-03: Compute prompt version hash for cache invalidation ---
+        self._prompt_version_hash = self._compute_prompt_version()
         self._instructor_client = instructor.from_litellm(litellm.completion)
         # --- #8: Detect fallback models ---
         self._fallback_models = self._detect_fallback_models()
         # --- #7: Init cache ---
         _init_cache()
+        # --- REC-03: Configure cache with prompt versioning ---
+        self._init_cache_with_versioning()
         # --- #13: Pre-warm Ollama to load model into GPU memory ---
         if self.provider == "ollama":
             prewarm_ollama(self.base_url, self.model)
+
+    def _compute_prompt_version(self) -> str:
+        """Compute SHA256 hash of prompt templates for cache versioning.
+
+        Returns first 16 chars of hex digest (64-bit collision resistance).
+        Hash includes template structure ONLY, not dynamic content.
+        """
+        from . import prompts
+
+        # Collect all prompt templates (structure only, not dynamic content)
+        templates = {
+            "recovery_system": prompts.RECOVERY_SYSTEM,
+            "recovery_user_template": self._extract_user_template(prompts.recovery_user),
+            "solvability_system": getattr(prompts, "SOLVABILITY_SYSTEM", ""),
+            "resolution_system": getattr(prompts, "RESOLUTION_SYSTEM", ""),
+            "model": self.model,  # Include model ID per D-11
+        }
+
+        # Stable serialization (sort_keys ensures deterministic output)
+        canonical = json.dumps(templates, sort_keys=True)
+
+        # Hash and truncate to first 16 chars (64-bit collision resistance)
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return digest[:16]
+
+    def _extract_user_template(self, prompt_fn) -> str:
+        """Extract template structure from prompt function.
+
+        Uses function source code to capture template structure.
+        Dynamic placeholders (error_log, resolved_packages) are included
+        as-is - we hash the template structure, not the content.
+        """
+        try:
+            source = inspect.getsource(prompt_fn)
+            return source
+        except Exception:
+            # Fallback: use function name if source unavailable
+            return prompt_fn.__name__
+
+    def _init_cache_with_versioning(self):
+        """Configure LiteLLM cache with prompt version injection.
+
+        Wraps the global cache's get_cache_key() to prepend prompt version hash.
+        This ensures cache misses when prompts change without breaking existing cache.
+        """
+        if not hasattr(litellm, 'cache') or litellm.cache is None:
+            return
+
+        cache = litellm.cache
+        original_get_key = cache.get_cache_key
+        prompt_hash = self._prompt_version_hash
+
+        def versioned_get_cache_key(*args, **kwargs):
+            """Inject prompt version into cache key."""
+            base_key = original_get_key(*args, **kwargs)
+            # Prepend prompt version to ensure invalidation on prompt change
+            return f"v{prompt_hash}:{base_key}"
+
+        cache.get_cache_key = versioned_get_cache_key
+        logger.debug("LiteLLM cache configured with prompt version %s", prompt_hash)
 
     def _detect_fallback_models(self) -> list[str]:
         """Detect additional Ollama models available for fallback."""
