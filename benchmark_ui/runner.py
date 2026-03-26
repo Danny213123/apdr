@@ -548,7 +548,7 @@ class BenchmarkWorker(threading.Thread):
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
 
         # Extract tier metadata from output for categorization
-        tier = self._extract_tier(output_metadata, captured_tail)
+        tier = self._extract_tier(output_metadata, captured_tail, llm_calls)
         confidence = self._extract_confidence(output_metadata, captured_tail) if tier == "tier3" else None
         cached = self._extract_cached_status(output_metadata, captured_tail) if tier == "tier3" else False
 
@@ -849,7 +849,7 @@ class BenchmarkWorker(threading.Thread):
             return snippet.parent.name
         return snippet.stem or "case"
 
-    def _extract_tier(self, output_metadata: dict[str, str], log_tail: list[str]) -> str:
+    def _extract_tier(self, output_metadata: dict[str, str], log_tail: list[str], llm_calls: int) -> str:
         """Extract resolution tier from output metadata or logs.
 
         Returns "tier1", "tier2", "tier3", or "unknown".
@@ -858,6 +858,10 @@ class BenchmarkWorker(threading.Thread):
         tier_value = str(output_metadata.get("resolution_tier") or "").strip().lower()
         if tier_value in ("tier1", "tier2", "tier3"):
             return tier_value
+
+        # Strong indicator: if llm_calls > 0, it's tier3
+        if llm_calls > 0:
+            return "tier3"
 
         # Parse from log tail for tier markers
         for line in log_tail:
@@ -869,8 +873,8 @@ class BenchmarkWorker(threading.Thread):
             if "tier3" in line_lower or "llm" in line_lower or "language model" in line_lower:
                 return "tier3"
 
-        # Default to unknown if tier not detected
-        return "unknown"
+        # Default to tier1 (most cases are cache/seed lookups)
+        return "tier1"
 
     def _extract_confidence(self, output_metadata: dict[str, str], log_tail: list[str]) -> float | None:
         """Extract LLM confidence score from output metadata or logs.
