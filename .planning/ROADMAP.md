@@ -85,8 +85,8 @@ Plans:
 **Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 03-01-PLAN.md — Test infrastructure and validation (Wave 1, autonomous)
-- [ ] 03-02-PLAN.md — Prompt hash cache invalidation (Wave 2, autonomous)
+- [x] 03-01-PLAN.md — Test infrastructure and validation (Wave 1, autonomous)
+- [x] 03-02-PLAN.md — Prompt hash cache invalidation (Wave 2, autonomous)
 - [ ] 03-03-PLAN.md — Metrics logging and verification (Wave 3, has checkpoint)
 
 ---
@@ -151,7 +151,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Non-blocking UI Foundation | 3/3 | Complete | 2026-03-25 |
 | 2. Result Categorization & Insights | 4/4 | Complete | 2026-03-26 |
-| 3. LLM Recovery Accuracy | 0/3 | Planned | - |
+| 3. LLM Recovery Accuracy | 2/3 | In Progress|  |
 | 4. LLM Performance Optimization | 0/TBD | Not started | - |
 | 5. Docker Parallel Validation | 0/TBD | Not started | - |
 | 6. End-to-End Validation | 0/TBD | Not started | - |
