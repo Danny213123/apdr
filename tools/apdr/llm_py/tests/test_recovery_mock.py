@@ -140,23 +140,23 @@ def test_swap_plus_add_dep(mock_client_cls, mock_pypi):
     mock_client.is_available.return_value = True
     mock_client.complete_json.return_value = RecoveryResult(
         fix_possible=True,
-        wrong_package="mysqlclient",
-        correct_package="PyMySQL",
+        wrong_package="psycopg2",
+        correct_package="psycopg2-binary",
         add_package="cryptography==3.3.2",
-        reasoning="mysqlclient needs mysql_config; PyMySQL is pure Python.",
+        reasoning="psycopg2 needs pg_config; psycopg2-binary ships wheels.",
     )
     mock_client_cls.return_value = mock_client
 
     req = _make_request(
-        resolved_packages=["mysqlclient (import: MySQLdb)"],
-        error_log="mysql_config not found",
+        resolved_packages=["psycopg2 (import: psycopg2)"],
+        error_log="pg_config executable not found",
         error_type="BuildFailure",
     )
     resp = handle(req)
 
     assert resp.fix_possible is True
-    assert resp.wrong_package == "mysqlclient"
-    assert resp.correct_package == "PyMySQL"
+    assert resp.wrong_package == "psycopg2"
+    assert resp.correct_package == "psycopg2-binary"
     assert resp.add_package == "cryptography==3.3.2"
 
 
@@ -270,6 +270,45 @@ def test_same_package_no_version_rejected(mock_client_cls, mock_pypi):
     assert resp.fix_possible is False
 
 
+@patch("llm_py.actions.recovery.package_exists_on_pypi", return_value=True)
+@patch("llm_py.actions.recovery.LlmClient")
+@pytest.mark.parametrize(
+    ("resolved_packages", "wrong_package", "correct_package"),
+    [
+        (["PySide (import: PySide)"], "PySide", "PySide6"),
+        (["python-ldap (import: ldap)"], "python-ldap", "ldap3"),
+        (["python-Levenshtein (import: Levenshtein)"], "python-Levenshtein", "fuzzywuzzy"),
+        (["oaipmh (import: oaipmh)"], "oaipmh", "a"),
+        (["mosquitto (import: mosquitto)"], "mosquitto", "paho-mqtt"),
+    ],
+)
+def test_namespace_incompatible_swap_rejected(
+    mock_client_cls,
+    mock_pypi,
+    resolved_packages,
+    wrong_package,
+    correct_package,
+):
+    mock_client = MagicMock()
+    mock_client.is_available.return_value = True
+    mock_client.complete_json.return_value = RecoveryResult(
+        fix_possible=True,
+        wrong_package=wrong_package,
+        correct_package=correct_package,
+        reasoning="Try a different package.",
+    )
+    mock_client_cls.return_value = mock_client
+
+    req = _make_request(
+        resolved_packages=resolved_packages,
+        error_type="ModuleNotFound",
+    )
+    resp = handle(req)
+
+    assert resp.fix_possible is False
+    assert any("does not preserve import namespace" in note for note in resp.notes)
+
+
 # ---------------------------------------------------------------------------
 # Test: build error pattern RAG context is prepended
 # ---------------------------------------------------------------------------
@@ -297,6 +336,46 @@ def test_build_error_patterns_injected(mock_client_cls, mock_pypi):
     user_prompt = call_args.kwargs.get("user_prompt") or call_args[1].get("user_prompt", "")
     assert "Known error patterns" in user_prompt
     assert "Build error pattern library matched" in resp.notes
+
+
+# ---------------------------------------------------------------------------
+# Test: max retry limit contract (REC-05)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.rust_contract
+def test_max_retries_contract():
+    """REC-05: Max retry limit is enforced in Rust, not Python recovery action.
+
+    Max retry enforcement happens in Rust resolver:
+    - Retry loop: src/resolver/mod.rs:842 (for attempt_index in 0..=config.max_retries)
+    - Config default: lib.rs:217 (max_retries = 5)
+
+    Python recovery action is stateless:
+    - It receives previous_attempts count in ResolutionRequest
+    - It doesn't enforce the limit - just uses it for prompt context
+    - Rust controls the retry loop and stops after max_retries
+
+    This test documents the contract boundary for REC-05.
+    Actual retry limit enforcement is tested in Rust integration tests.
+
+    See: tests/test_resolver.rs for Rust-side retry limit tests.
+    """
+    # Python recovery action receives previous_attempts but doesn't enforce limit
+    # The Rust resolver controls when to stop calling recovery
+
+    # Verify ResolutionRequest includes previous_attempts field
+    req = _make_request(previous_attempts=[
+        ["psycopg2"],  # Attempt 1 failed
+        ["psycopg2==2.8.0"],  # Attempt 2 failed
+        ["psycopg2-binary"],  # Attempt 3 failed
+    ])
+
+    assert hasattr(req, "previous_attempts")
+    assert len(req.previous_attempts) == 3
+
+    # Python doesn't enforce max - Rust does
+    # If Rust calls recovery with previous_attempts >= max_retries, that's a Rust bug
+    # Python just processes the request regardless of attempt count
 
 
 # ---------------------------------------------------------------------------
