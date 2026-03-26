@@ -426,9 +426,8 @@ class BenchmarkWorker(threading.Thread):
     ) -> dict[str, Any]:
         # Get event queue from current run if available
         event_queue: Queue[dict[str, Any]] | None = None
-        with self._lock:
-            if hasattr(self, '_current_run_event_queue'):
-                event_queue = self._current_run_event_queue
+        if hasattr(self, '_current_run_event_queue'):
+            event_queue = self._current_run_event_queue
 
         def emit_event(event_type: str, **kwargs: Any) -> None:
             """Emit progress event to SSE queue if available."""
