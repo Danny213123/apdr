@@ -232,11 +232,38 @@ class BenchmarkService:
         with self._lock:
             return {"currentRun": self._run_snapshot(), "runs": self.runs()}
 
+    def _calculate_tier_stats(self, run_state: dict[str, Any]) -> dict[str, Any]:
+        """Calculate tier1/tier2/tier3 breakdown from results.
+
+        Returns dict with tier counts and percentages.
+        """
+        results = run_state.get("results", [])
+        tier1_count = sum(1 for r in results if r.get("tier") == "tier1")
+        tier2_count = sum(1 for r in results if r.get("tier") == "tier2")
+        tier3_count = sum(1 for r in results if r.get("tier") == "tier3")
+        total = len(results)
+
+        return {
+            "tier1": {
+                "count": tier1_count,
+                "percent": round(tier1_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "tier2": {
+                "count": tier2_count,
+                "percent": round(tier2_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "tier3": {
+                "count": tier3_count,
+                "percent": round(tier3_count / total * 100, 1) if total > 0 else 0.0
+            },
+            "total": total
+        }
+
     def stream_benchmark_progress(self, run_id: str) -> Generator[dict[str, Any], None, None]:
         """Stream Server-Sent Events for real-time benchmark progress.
 
         Yields event dicts with heartbeat every 15 seconds to prevent proxy buffering.
-        Event types: init, status_update, case_complete, progress, heartbeat, complete.
+        Event types: init, status_update, case_complete, progress, heartbeat, complete, tier_stats.
         """
         run_id = self.state._sanitize_path_component(run_id)
 
