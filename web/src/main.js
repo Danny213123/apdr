@@ -1142,7 +1142,7 @@ function setupSSE(runId) {
     state.sseReconnectAttempts++;
 
     state.sseReconnectTimer = setTimeout(() => {
-      if (state.currentRun?.id === runId) {
+      if (state.currentRun?.runId === runId) {
         setupSSE(runId);
       }
     }, delay);
