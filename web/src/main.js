@@ -471,7 +471,7 @@ function applyLLMFilters() {
 
     // Status filter
     if (state.llmFilters.status !== "all") {
-      if (caseData.status !== state.llmFilters.status) return false;
+      if (caseData.status?.toUpperCase() !== state.llmFilters.status.toUpperCase()) return false;
     }
 
     // Confidence filter
@@ -480,7 +480,7 @@ function applyLLMFilters() {
       if (state.llmFilters.confidence === "high" && (conf === null || conf <= 0.7)) return false;
       if (state.llmFilters.confidence === "medium" && (conf === null || conf < 0.4 || conf > 0.7)) return false;
       if (state.llmFilters.confidence === "low" && (conf === null || conf >= 0.4)) return false;
-      if (state.llmFilters.confidence === "skipped" && caseData.status !== "skip") return false;
+      if (state.llmFilters.confidence === "skipped" && caseData.status?.toUpperCase() !== "SKIP") return false;
     }
 
     // Python filter
@@ -552,7 +552,7 @@ function applyDeterministicFilters() {
 
     // Status filter
     if (state.deterministicFilters.status !== "all") {
-      if (caseData.status !== state.deterministicFilters.status) return false;
+      if (caseData.status?.toUpperCase() !== state.deterministicFilters.status.toUpperCase()) return false;
     }
 
     // Tier filter
