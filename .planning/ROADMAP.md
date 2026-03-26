@@ -59,9 +59,9 @@ Plans:
 **Plans**: 4 plans in 2 waves
 
 Plans:
-- [ ] 02-01-PLAN.md — Backend tier categorization (Wave 1, autonomous)
-- [ ] 02-02-PLAN.md — Cache hit rate dashboard (Wave 2, autonomous)
-- [ ] 02-03-PLAN.md — Deterministic results panel enhancement (Wave 2, autonomous)
+- [x] 02-01-PLAN.md — Backend tier categorization (Wave 1, autonomous)
+- [x] 02-02-PLAN.md — Cache hit rate dashboard (Wave 2, autonomous)
+- [x] 02-03-PLAN.md — Deterministic results panel enhancement (Wave 2, autonomous)
 - [ ] 02-04-PLAN.md — LLM results panel enhancement with checkpoint (Wave 2, has checkpoint)
 
 **UI hint**: yes

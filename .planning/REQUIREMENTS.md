@@ -26,11 +26,11 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 ### Result Categorization
 
 - [x] **CAT-01**: Deterministic results display separately from LLM results (two sections)
-- [ ] **CAT-02**: Results filterable by status (pass, fail, skip, timeout)
+- [x] **CAT-02**: Results filterable by status (pass, fail, skip, timeout)
 - [x] **CAT-03**: Results filterable by resolution tier (tier1 cache, tier2 heuristic, tier3 LLM)
-- [ ] **CAT-04**: Results filterable by Python version
-- [ ] **CAT-05**: Case search by ID or snippet content
-- [ ] **CAT-06**: Pass/fail status indicators color-coded and visible at glance
+- [x] **CAT-04**: Results filterable by Python version
+- [x] **CAT-05**: Case search by ID or snippet content
+- [x] **CAT-06**: Pass/fail status indicators color-coded and visible at glance
 - [ ] **CAT-07**: Error messages categorized (build failure, import error, version conflict, timeout)
 - [ ] **CAT-08**: Expandable case details show full logs and resolution path
 
@@ -121,11 +121,11 @@ Each v1 requirement maps to exactly one phase.
 | RT-04 | Phase 1 | Complete |
 | RT-05 | Phase 1 | Complete |
 | CAT-01 | Phase 2 | Complete |
-| CAT-02 | Phase 2 | Pending |
+| CAT-02 | Phase 2 | Complete |
 | CAT-03 | Phase 2 | Complete |
-| CAT-04 | Phase 2 | Pending |
-| CAT-05 | Phase 2 | Pending |
-| CAT-06 | Phase 2 | Pending |
+| CAT-04 | Phase 2 | Complete |
+| CAT-05 | Phase 2 | Complete |
+| CAT-06 | Phase 2 | Complete |
 | CAT-07 | Phase 2 | Pending |
 | CAT-08 | Phase 2 | Pending |
 | LLM-01 | Phase 2 | Complete |
