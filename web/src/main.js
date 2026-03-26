@@ -467,6 +467,10 @@ function applyLLMFilters() {
     return;
   }
 
+  console.log(`[DEBUG] LLM filter - Total cases: ${run.completedCases.length}`);
+  const tier3Count = run.completedCases.filter(c => c.tier === "tier3").length;
+  console.log(`[DEBUG] Tier3 cases found: ${tier3Count}`);
+
   const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (LLM = tier3 only)
     const tier = caseData.tier || "unknown";
@@ -550,6 +554,10 @@ function applyDeterministicFilters() {
     renderDeterministicCases([]);
     return;
   }
+
+  console.log(`[DEBUG] Deterministic filter - Total cases: ${run.completedCases.length}`);
+  const tiersFound = run.completedCases.map(c => c.tier || 'missing').filter((v, i, a) => a.indexOf(v) === i);
+  console.log(`[DEBUG] Tiers found in data:`, tiersFound);
 
   const filtered = run.completedCases.filter(caseData => {
     // Filter by tier (deterministic = tier1 or tier2)
