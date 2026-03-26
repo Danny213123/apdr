@@ -195,3 +195,14 @@ pcbnew	host-runtime	KiCad PCB design software API — not available on PyPI	1.00
 terminatorlib	host-runtime	Terminator terminal emulator library — not available on PyPI	1.00	0
 pyfbsdk	host-runtime	Autodesk MotionBuilder SDK — requires MotionBuilder	1.00	0
 glfwpy	local-helper	GLFW wrapper (deprecated, use glfw instead)	0.80	0
+request	local-helper	Likely a local module - generic name suggests project-specific code	0.90	0
+api	local-helper	Likely a local module - generic name suggests project-specific code	0.90	0
+project	local-helper	Likely a local module - generic name suggests project-specific code	0.90	0
+tweets	local-helper	Likely a local module - project-specific Twitter code	0.90	0
+myapplication	local-helper	Obvious local module - application-specific code	1.00	0
+my_helpers	local-helper	Obvious local module - helper utilities	1.00	0
+authorization	local-helper	Likely a local module - project-specific auth code	0.90	0
+deployment	local-helper	Likely a local module - Fabric deployment script helpers	0.90	0
+NudgeCore	local-helper	Project-specific module	0.95	0
+Stencil	local-helper	Could be local templating code (not Django/Jinja Stencil)	0.80	0
+icone	local-helper	Likely a local module	0.90	0
