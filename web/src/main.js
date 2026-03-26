@@ -94,8 +94,6 @@ const ui = {
   llmCasesScroll: document.querySelector("#llm-cases-scroll"),
   activeCases: document.querySelector("#active-cases"),
   recentActivity: document.querySelector("#recent-activity"),
-  caseSearch: document.querySelector("#case-search"),
-  caseFilter: document.querySelector("#case-filter"),
   casesScroll: document.querySelector("#cases-scroll"),
   caseRowTemplate: document.querySelector("#case-row-template"),
 
@@ -402,12 +400,6 @@ function setupDropdowns() {
     onChange: (value) => {
       state.selectedLoadoutSlug = value;
       renderLoadouts();
-    },
-  });
-  dropdowns.caseFilter = createDropdown(ui.caseFilter, {
-    onChange: (value) => {
-      state.caseFilter = value || "all";
-      renderCases();
     },
   });
   dropdowns.runHistory = createDropdown(ui.runHistorySelect, {
@@ -1785,10 +1777,6 @@ function wireHomeControls() {
     }
   });
 
-  ui.caseSearch.addEventListener("input", (event) => {
-    state.caseSearch = event.target.value.trim().toLowerCase();
-    renderCases();
-  });
   ui.runHomeButton.addEventListener("click", () => {
     switchPage("home");
   });
