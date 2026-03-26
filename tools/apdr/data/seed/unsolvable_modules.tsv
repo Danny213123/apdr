@@ -14,6 +14,11 @@ c4d	host-runtime	Cinema 4D Python API — not available on PyPI	1.00	0
 hou	host-runtime	Houdini Python API — not available on PyPI	1.00	0
 nuke	host-runtime	Foundry Nuke compositing API — not available on PyPI	1.00	0
 odbaccess	host-runtime	Abaqus/ODB Python API — not available on PyPI	1.00	0
+binaryninja	host-runtime	Binary Ninja desktop API — not available as a generic PyPI runtime	1.00	0
+pyfbsdk	host-runtime	Autodesk MotionBuilder Python API — requires the host application runtime	1.00	0
+microbit	host-runtime	BBC micro:bit runtime API — requires the micro:bit runtime or hardware	1.00	0
+OpenDirectory	host-runtime	macOS OpenDirectory framework — requires the macOS host runtime	1.00	0
+SystemConfiguration	host-runtime	macOS SystemConfiguration framework — requires the macOS host runtime	1.00	0
 rhinoscriptsyntax	host-runtime	Rhino 3D scripting API — not available on PyPI	1.00	0
 scriptcontext	host-runtime	Rhino 3D scripting API — not available on PyPI	1.00	0
 monkeyrunner	host-runtime	Android monkeyrunner tool — requires Jython/Android SDK	1.00	0
@@ -53,6 +58,8 @@ appex	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
 dialogs	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
 editor	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
 photos	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
+clipboard	host-runtime	Pythonista iOS app clipboard module — not available on PyPI	1.00	0
+camera	host-runtime	Pythonista iOS app camera module — not available on PyPI	1.00	0
 keychain	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
 motion	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
 sound	host-runtime	Pythonista iOS app module — not available on PyPI	1.00	0
@@ -95,6 +102,9 @@ gtk	system-dependency	PyGTK/GTK bindings — requires system GTK development hea
 pygtk	system-dependency	PyGTK bindings — requires system GTK development headers	1.00	0
 gobject	system-dependency	GObject/GLib bindings — requires system GLib development headers	1.00	0
 glib	system-dependency	GLib bindings — requires system GLib development headers	1.00	0
+xcb	host-runtime	XCB desktop bindings — requires the host desktop X11 runtime	1.00	0
+Granite	host-runtime	Granite desktop bindings — requires the elementary/GTK desktop runtime	1.00	0
+gi.repository.Granite	host-runtime	Granite GI bindings — requires the host desktop runtime	1.00	0
 android	platform-specific	Python-for-Android (p4a/buildozer) runtime — requires Android device	1.00	0
 droid	platform-specific	Android automation module — requires Android device	1.00	0
 com	platform-specific	Windows COM automation — requires Windows platform	1.00	0
@@ -108,6 +118,17 @@ win32ts	platform-specific	Windows Terminal Services (pywin32) — not available 
 win32timezone	platform-specific	Windows timezone (pywin32) — not available on Linux/macOS	1.00	0
 win32com	platform-specific	Windows COM support (pywin32) — not available on Linux/macOS	1.00	0
 adodbapi	platform-specific	Windows ADO database API — not available on Linux/macOS	1.00	0
+caffe	unsolvable	Caffe is a native/vendor ecosystem package, not a generic PyPI dependency in benchmark conditions	1.00	0
+ROOT	unsolvable	CERN ROOT Python bindings require the ROOT distribution, not a generic PyPI install	1.00	0
+graphlab	unsolvable	GraphLab Create is vendor-distributed and not available as a generic PyPI dependency	1.00	0
+ibapi	unsolvable	Interactive Brokers API is vendor-distributed and not reliably available as a generic PyPI dependency	1.00	0
+fontforge	unsolvable	FontForge bindings require the host FontForge distribution, not a generic PyPI install	1.00	0
+vtk	unsolvable	VTK Python bindings require native/vendor distribution beyond generic PyPI resolution	1.00	0
+freenect	unsolvable	libfreenect bindings require external native/runtime distribution	1.00	0
+qfs	unsolvable	QFS client bindings require the external Quantcast/KosmosFS distribution	1.00	0
+mojo	unsolvable	Mojo bindings/runtime are not available as a generic PyPI dependency in benchmark conditions	1.00	0
+pykd	unsolvable	pykd requires Windows debugger runtime support and is not a generic PyPI dependency	1.00	0
+mesos	unsolvable	Apache Mesos bindings require the Mesos distribution and native toolchain	1.00	0
 commands	deprecated-stdlib	Python 2 stdlib module removed in Python 3 — use subprocess instead	1.00	0
 cStringIO	deprecated-stdlib	Python 2 C-accelerated StringIO — use io.StringIO in Python 3	1.00	0
 cPickle	deprecated-stdlib	Python 2 C-accelerated pickle — use pickle in Python 3	1.00	0
@@ -162,3 +183,15 @@ tkSimpleDialog	deprecated-stdlib	Python 2 tkSimpleDialog — use tkinter.simpled
 xmlrpclib	deprecated-stdlib	Python 2 xmlrpclib — renamed xmlrpc.client in Python 3	1.00	0
 DocXMLRPCServer	deprecated-stdlib	Python 2 DocXMLRPCServer — renamed xmlrpc.server in Python 3	1.00	0
 SimpleXMLRPCServer	deprecated-stdlib	Python 2 SimpleXMLRPCServer — renamed xmlrpc.server in Python 3	1.00	0
+AppKit	platform-specific	macOS Cocoa AppKit framework — requires the macOS host runtime	1.00	0
+camera	platform-specific	Platform-specific camera API (e.g., Android, embedded) — requires hardware	1.00	0
+clipboard	platform-specific	Platform-specific clipboard API (e.g., iOS, Android) — requires host runtime	1.00	0
+xcb	host-runtime	X11 XCB bindings — requires system X11 libraries (not standalone PyPI package)	1.00	0
+chef	host-runtime	Ruby Chef SDK Python bindings — requires Ruby Chef installation	1.00	0
+plist	platform-specific	macOS plist format utilities — typically part of system frameworks	1.00	0
+gameduino	host-runtime	Gameduino Arduino shield API — requires hardware	1.00	0
+FreeCAD	host-runtime	FreeCAD CAD software API — not available as standalone PyPI package	1.00	0
+pcbnew	host-runtime	KiCad PCB design software API — not available on PyPI	1.00	0
+terminatorlib	host-runtime	Terminator terminal emulator library — not available on PyPI	1.00	0
+pyfbsdk	host-runtime	Autodesk MotionBuilder SDK — requires MotionBuilder	1.00	0
+glfwpy	local-helper	GLFW wrapper (deprecated, use glfw instead)	0.80	0
