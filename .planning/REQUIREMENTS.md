@@ -25,9 +25,9 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 
 ### Result Categorization
 
-- [ ] **CAT-01**: Deterministic results display separately from LLM results (two sections)
+- [x] **CAT-01**: Deterministic results display separately from LLM results (two sections)
 - [ ] **CAT-02**: Results filterable by status (pass, fail, skip, timeout)
-- [ ] **CAT-03**: Results filterable by resolution tier (tier1 cache, tier2 heuristic, tier3 LLM)
+- [x] **CAT-03**: Results filterable by resolution tier (tier1 cache, tier2 heuristic, tier3 LLM)
 - [ ] **CAT-04**: Results filterable by Python version
 - [ ] **CAT-05**: Case search by ID or snippet content
 - [ ] **CAT-06**: Pass/fail status indicators color-coded and visible at glance
@@ -36,9 +36,9 @@ Requirements for accuracy and performance improvements. Each maps to roadmap pha
 
 ### LLM Insights
 
-- [ ] **LLM-01**: Cache hit rate dashboard shows tier1/tier2/tier3 breakdown with percentages
-- [ ] **LLM-02**: Confidence-based skip indicators surface when LLM skips case (<0.4 threshold)
-- [ ] **LLM-03**: Import-set cache reuse indicator shows when exact import combination cached
+- [x] **LLM-01**: Cache hit rate dashboard shows tier1/tier2/tier3 breakdown with percentages
+- [x] **LLM-02**: Confidence-based skip indicators surface when LLM skips case (<0.4 threshold)
+- [x] **LLM-03**: Import-set cache reuse indicator shows when exact import combination cached
 - [ ] **LLM-04**: LLM recovery attempts show which error pattern triggered from pattern library
 
 ### Recovery Accuracy
@@ -120,17 +120,17 @@ Each v1 requirement maps to exactly one phase.
 | RT-03 | Phase 1 | Complete |
 | RT-04 | Phase 1 | Complete |
 | RT-05 | Phase 1 | Complete |
-| CAT-01 | Phase 2 | Pending |
+| CAT-01 | Phase 2 | Complete |
 | CAT-02 | Phase 2 | Pending |
-| CAT-03 | Phase 2 | Pending |
+| CAT-03 | Phase 2 | Complete |
 | CAT-04 | Phase 2 | Pending |
 | CAT-05 | Phase 2 | Pending |
 | CAT-06 | Phase 2 | Pending |
 | CAT-07 | Phase 2 | Pending |
 | CAT-08 | Phase 2 | Pending |
-| LLM-01 | Phase 2 | Pending |
-| LLM-02 | Phase 2 | Pending |
-| LLM-03 | Phase 2 | Pending |
+| LLM-01 | Phase 2 | Complete |
+| LLM-02 | Phase 2 | Complete |
+| LLM-03 | Phase 2 | Complete |
 | LLM-04 | Phase 2 | Pending |
 | REC-01 | Phase 3 | Pending |
 | REC-02 | Phase 3 | Pending |
