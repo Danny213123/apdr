@@ -416,6 +416,9 @@ class LlmClient:
         full schema GBNF) and parses the response tolerantly. No instructor
         dependency, no field_validators during generation.
         """
+        import time
+        started = time.time()
+
         schema_instructions = _format_schema_instructions(response_model)
         augmented_prompt = f"{user_prompt}\n\n{schema_instructions}"
 
@@ -442,7 +445,26 @@ class LlmClient:
                 continue
 
             try:
-                return response_model.model_validate(parsed)
+                result = response_model.model_validate(parsed)
+
+                duration_ms = int((time.time() - started) * 1000)
+
+                # Detect cache hit - LiteLLM may not expose this directly
+                # Heuristic: very fast responses (<100ms) are likely cache hits
+                cache_hit = duration_ms < 100
+
+                logger.info(
+                    "LLM completion finished",
+                    extra={
+                        "event": "llm_completion",
+                        "cache_hit": cache_hit,
+                        "duration_ms": duration_ms,
+                        "model": self.model,
+                        "prompt_version": self._prompt_version_hash,
+                    }
+                )
+
+                return result
             except Exception as e:
                 logger.debug(
                     "complete_json attempt %d: validation failed: %s", attempt + 1, e,
