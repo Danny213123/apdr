@@ -15,6 +15,12 @@ const state = {
   caseFilter: "all",
   openCaseIds: new Set(),
   openLlmCaseIds: new Set(),
+  llmFilters: {
+    status: "all",
+    confidence: "all",
+    python: "all",
+    search: ""
+  },
   pollTimer: null,
   previewTimer: null,
   serverStopping: false,
@@ -109,6 +115,13 @@ const ui = {
   sseStatusText: document.querySelector("#sse-status-text"),
   sseStatusRegion: document.querySelector("#sse-status-region"),
   streamingBadge: document.querySelector("#streaming-badge"),
+  llmStatusFilter: document.querySelector("#llm-status-filter"),
+  llmConfidenceFilter: document.querySelector("#llm-confidence-filter"),
+  llmPythonFilter: document.querySelector("#llm-python-filter"),
+  llmSearchInput: document.querySelector("#llm-search-input"),
+  tier1Value: document.getElementById("tier1-value"),
+  tier2Value: document.getElementById("tier2-value"),
+  tier3Value: document.getElementById("tier3-value"),
 };
 
 const PAGE_PATHS = {
@@ -415,6 +428,170 @@ function setupDropdowns() {
     }
   });
   window.addEventListener("blur", () => closeAllDropdowns());
+}
+
+function setupCustomSelect(root, onChange) {
+  const dropdown = createDropdown(root, { onChange });
+  const options = Array.from(root.querySelectorAll(".custom-select-option")).map(option => ({
+    value: option.dataset.value || "",
+    label: option.textContent || ""
+  }));
+  setDropdownOptions(dropdown, options, "all");
+  return dropdown;
+}
+
+function setupLLMFilters() {
+  // Status filter
+  setupCustomSelect(ui.llmStatusFilter, (value) => {
+    state.llmFilters.status = value;
+    applyLLMFilters();
+  });
+
+  // Confidence filter
+  setupCustomSelect(ui.llmConfidenceFilter, (value) => {
+    state.llmFilters.confidence = value;
+    applyLLMFilters();
+  });
+
+  // Python filter
+  setupCustomSelect(ui.llmPythonFilter, (value) => {
+    state.llmFilters.python = value;
+    applyLLMFilters();
+  });
+
+  // Search input (debounced 150ms)
+  let searchDebounce = null;
+  ui.llmSearchInput.addEventListener("input", (e) => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.llmFilters.search = e.target.value.toLowerCase();
+      applyLLMFilters();
+    }, 150);
+  });
+}
+
+function applyLLMFilters() {
+  if (!state.currentRun || !state.currentRun.results) return;
+
+  const filtered = state.currentRun.results.filter(caseData => {
+    // Filter by tier (LLM = tier3 only)
+    const tier = caseData.tier || "unknown";
+    if (tier !== "tier3") return false;
+
+    // Status filter
+    if (state.llmFilters.status !== "all") {
+      if (caseData.status !== state.llmFilters.status) return false;
+    }
+
+    // Confidence filter
+    if (state.llmFilters.confidence !== "all") {
+      const conf = caseData.confidence;
+      if (state.llmFilters.confidence === "high" && (conf === null || conf <= 0.7)) return false;
+      if (state.llmFilters.confidence === "medium" && (conf === null || conf < 0.4 || conf > 0.7)) return false;
+      if (state.llmFilters.confidence === "low" && (conf === null || conf >= 0.4)) return false;
+      if (state.llmFilters.confidence === "skipped" && caseData.status !== "skip") return false;
+    }
+
+    // Python filter
+    if (state.llmFilters.python !== "all") {
+      const pyVersion = caseData.pythonVersion || "";
+      if (pyVersion !== state.llmFilters.python) return false;
+    }
+
+    // Search filter
+    if (state.llmFilters.search) {
+      const searchTerm = state.llmFilters.search;
+      const caseId = (caseData.caseId || "").toLowerCase();
+      const confidence = (caseData.confidence || "").toString();
+      const result = (caseData.result || "").toLowerCase();
+      const deps = (caseData.dependencies || "").toLowerCase();
+
+      if (!caseId.includes(searchTerm) &&
+          !confidence.includes(searchTerm) &&
+          !result.includes(searchTerm) &&
+          !deps.includes(searchTerm)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  renderLLMCases(filtered);
+}
+
+function renderConfidenceBadge(confidence, skipReason) {
+  if (skipReason) {
+    return `<span class="skip-badge" data-tooltip="Skipped: ${escapeHtml(skipReason)}">⊘</span>`;
+  }
+
+  if (confidence === null || confidence === undefined) {
+    return `<span class="confidence-badge" data-tooltip="No confidence data"></span>`;
+  }
+
+  let level = "low";
+  let tooltip = `Low confidence: ${confidence.toFixed(2)}`;
+  if (confidence > 0.7) {
+    level = "high";
+    tooltip = `High confidence: ${confidence.toFixed(2)}`;
+  } else if (confidence >= 0.4) {
+    level = "medium";
+    tooltip = `Medium confidence: ${confidence.toFixed(2)}`;
+  }
+
+  return `<span class="confidence-badge ${level}" data-tooltip="${tooltip}"></span>`;
+}
+
+function renderCacheBadge(cached) {
+  if (!cached) return "";
+  return `<span class="cache-badge" data-tooltip="Cached: import combination previously resolved">⚡</span>`;
+}
+
+function renderCaseDetail(caseData) {
+  let html = '<div class="case-detail">';
+
+  // Resolution path
+  if (caseData.resolutionPath) {
+    html += '<div class="resolution-path-view">';
+    html += '<div class="section-title">Resolution path</div>';
+    caseData.resolutionPath.forEach(step => {
+      const cssClass = step.result === "match" ? "success" : "attempted";
+      html += `<div class="resolution-path-item ${cssClass}">${escapeHtml(step.tier)} → ${escapeHtml(step.result)}</div>`;
+    });
+    html += '</div>';
+  }
+
+  // Confidence breakdown
+  if (caseData.confidenceBreakdown) {
+    html += '<div class="confidence-breakdown">';
+    html += '<div class="section-title" style="grid-column: 1 / -1;">Confidence scoring</div>';
+    Object.entries(caseData.confidenceBreakdown).forEach(([key, value]) => {
+      html += `<div class="label">${escapeHtml(key)}:</div><div class="value">${value.toFixed(2)}</div>`;
+    });
+    html += '</div>';
+  }
+
+  // LLM prompt/response
+  if (caseData.llmPrompt) {
+    html += '<div class="section-title">LLM prompt</div>';
+    html += `<pre class="llm-prompt-response">${escapeHtml(caseData.llmPrompt)}</pre>`;
+  }
+  if (caseData.llmResponse) {
+    html += '<div class="section-title">LLM response</div>';
+    html += `<pre class="llm-prompt-response">${escapeHtml(caseData.llmResponse)}</pre>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function setupCaseRowExpansion(rowElement, caseData) {
+  rowElement.addEventListener("click", () => {
+    rowElement.classList.toggle("expanded");
+    if (rowElement.classList.contains("expanded") && !rowElement.querySelector(".case-detail")) {
+      rowElement.insertAdjacentHTML("beforeend", renderCaseDetail(caseData));
+    }
+  });
 }
 
 function escapeHtml(value) {
@@ -1214,6 +1391,9 @@ function processPendingSSEUpdates() {
         updateCaseStatus(event.caseId, event.status);
         addActivityItem(event);
         break;
+      case "tier_stats":
+        updateCacheHitDashboard(event.stats);
+        break;
       case "heartbeat":
         // No UI update needed, just proves connection alive
         break;
@@ -1279,6 +1459,19 @@ function handleBenchmarkComplete() {
   // Update UI to reflect completion
   // Will be enhanced in Task 3 with full integration
   teardownSSE();
+}
+
+function updateCacheHitDashboard(stats) {
+  if (!ui.tier1Value || !ui.tier2Value || !ui.tier3Value) return;
+
+  const tier1 = stats.tier1 || {count: 0, percent: 0.0};
+  const tier2 = stats.tier2 || {count: 0, percent: 0.0};
+  const tier3 = stats.tier3 || {count: 0, percent: 0.0};
+  const total = stats.total || 0;
+
+  ui.tier1Value.textContent = `${tier1.count}/${total} (${tier1.percent.toFixed(1)}%)`;
+  ui.tier2Value.textContent = `${tier2.count}/${total} (${tier2.percent.toFixed(1)}%)`;
+  ui.tier3Value.textContent = `${tier3.count}/${total} (${tier3.percent.toFixed(1)}%)`;
 }
 
 async function pollStatus() {
@@ -1659,6 +1852,14 @@ async function initialize() {
 
   // Initialize SSE status indicator
   updateSSEStatusIndicator();
+
+  // Initialize cache hit dashboard to initial state
+  updateCacheHitDashboard({
+    tier1: {count: 0, percent: 0.0},
+    tier2: {count: 0, percent: 0.0},
+    tier3: {count: 0, percent: 0.0},
+    total: 0
+  });
 
   // Mark UI as interactive
   console.timeEnd("ui-interactive");
