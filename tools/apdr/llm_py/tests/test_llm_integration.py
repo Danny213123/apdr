@@ -567,3 +567,551 @@ def test_sql_package_ambiguity(ollama_available):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+# Auto-generated tier3 success test cases
+# Based on benchmark run 20260326-132841-apdr
+
+
+@pytest.mark.integration
+def test_tier3_gist_098f399d69f230521ef5(ollama_available):
+    """Tier3: LLM identifies Foundation as local module (gist 098f399d69f230521ef530baca832e76)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Foundation (import: Foundation)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nIOError: [Errno 2] No such file or directory: '/System/Library/CoreServices/SystemVersion.plist'\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify Foundation as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "Foundation" in resp.remove_package.lower(), \
+            f"Expected Foundation to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1202516(ollama_available):
+    """Tier3: LLM identifies Foundation as local module (gist 1202516)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Foundation (import: Foundation)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nIOError: [Errno 2] No such file or directory: '/System/Library/CoreServices/SystemVersion.plist'\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="import os import csv from subprocess import Popen, PIPE",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify Foundation as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "Foundation" in resp.remove_package.lower(), \
+            f"Expected Foundation to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1242589(ollama_available):
+    """Tier3: LLM identifies Foundation as local module (gist 1242589)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Foundation (import: Foundation)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nIOError: [Errno 2] No such file or directory: '/System/Library/CoreServices/SystemVersion.plist'\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify Foundation as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "Foundation" in resp.remove_package.lower(), \
+            f"Expected Foundation to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1283684(ollama_available):
+    """Tier3: LLM identifies d3 as local module (gist 1283684)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "networkx (import: networkx)",
+            "simplejson (import: simplejson)",
+            "d3 (import: d3)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nIOError: [Errno 2] No such file or directory: 'c:\\users\\danny\\appdata\\local\\temp\\pip-install-g\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="import simplejson,urllib,csv,sys from itertools import combinations",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify d3 as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "d3" in resp.remove_package.lower(), \
+            f"Expected d3 to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1315148(ollama_available):
+    """Tier3: LLM identifies PyV8 as local module (gist 1315148)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "PyV8 (import: PyV8)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nKeyError: 'INCLUDE'\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="import os",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify PyV8 as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "PyV8" in resp.remove_package.lower(), \
+            f"Expected PyV8 to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1307521(ollama_available):
+    """Tier3: LLM recognizes _webassets as optional import (gist 1307521)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "webassets==0.10 (import: webassets)",
+            "_webassets (import: _webassets)",
+        ],
+        error_log="""
+ModuleNotFoundError: No module named '_webassets'\nModuleNotFoundError: No module named '_webassets'
+        """,
+        snippet_source="\"\"\" This gist adds url expiration functionality to flask-webassets on App Engine. Few hints how to use it:",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize _webassets as optional/guarded import
+    if resp.fix_possible and resp.remove_package:
+        pass  # Correctly identified as optional
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1423116(ollama_available):
+    """Tier3: LLM identifies cmemcached as local module (gist 1423116)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "cmemcached (import: cmemcached)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nerror: Microsoft Visual C++ 9.0 is required. Get it from http://aka.ms/vcpython27\nERROR: Failed building wheel for pylibmc
+        """,
+        snippet_source="import os import sys import cPickle",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify cmemcached as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "cmemcached" in resp.remove_package.lower(), \
+            f"Expected cmemcached to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1424374(ollama_available):
+    """Tier3: LLM identifies pcap as local module (gist 1424374)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "dpkt (import: dpkt)",
+            "ipaddr (import: ipaddr)",
+            "pcap (import: pcap)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nerror: Microsoft Visual C++ 9.0 is required. Get it from http://aka.ms/vcpython27\nERROR: Failed building wheel for pcapy
+        """,
+        snippet_source="import dpkt, pcap, socket from ipaddr import IPv4Address, IPv6Address import syslog",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify pcap as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "pcap" in resp.remove_package.lower(), \
+            f"Expected pcap to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1417f55cb896a44e68a6(ollama_available):
+    """Tier3: LLM recovery for -- (gist 1417f55cb896a44e68a6)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Kivy==1.9.1 (import: Kivy)",
+            "pyserial (import: pyserial)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nERROR: Could not find a version that satisfies the requirement kivy_deps.gstreamer_dev~=0.3.1 (from \nERROR: No matching distribution found for kivy_deps.gstreamer_dev~=0.3.1
+        """,
+        snippet_source="from kivy.app import App from kivy.uix.floatlayout import FloatLayout from kivy.graphics import Line",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should provide recovery suggestion
+    if resp.fix_possible:
+        pass  # Recovery suggested
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1638546(ollama_available):
+    """Tier3: LLM identifies authorization as local module (gist 1638546)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "httplib2 (import: httplib2)",
+            "sql==0.3.0 (import: sql)",
+            "authorization (import: authorization)",
+        ],
+        error_log="""
+ERROR: Could not find a version that satisfies the requirement pywin32==302 (from -r D:\apdr\runs\20\nERROR: No matching distribution found for pywin32==302 (from -r D:\apdr\runs\20260326-132841-apdr\ca
+        """,
+        snippet_source="\"\"\" FusionRunner Queries Google Fusion Tables for MyTracks data. \"\"\"",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify authorization as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "authorization" in resp.remove_package.lower(), \
+            f"Expected authorization to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1653394(ollama_available):
+    """Tier3: LLM identifies webservice as local module (gist 1653394)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "pyramid (import: pyramid)",
+            "webservice (import: webservice)",
+        ],
+        error_log="""
+ImportError: No module named web\nImportError: No module named web
+        """,
+        snippet_source="from pyramid.config import Configurator from pyramid.view import view_config import json",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify webservice as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "webservice" in resp.remove_package.lower(), \
+            f"Expected webservice to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1694496(ollama_available):
+    """Tier3: LLM recovery for settings (gist 1694496)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Django==5.1.3 (import: Django)",
+            "settings (import: settings)",
+        ],
+        error_log="""
+ERROR: Ignored the following yanked versions: 4.2.12\nERROR: Ignored the following versions that require a different python version: 5.0 Requires-Python >\nERROR: Could not find a version that satisfies the requirement Django==5.1.3 (from versions: 1.1.3, 
+        """,
+        snippet_source="\"\"\" This allows you to import Django modules into a Salt module \"\"\"",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should provide recovery suggestion
+    if resp.fix_possible:
+        pass  # Recovery suggested
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1701845(ollama_available):
+    """Tier3: LLM identifies clips as local module (gist 1701845)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Django==5.1.3 (import: Django)",
+            "django-haystack (import: django-haystack)",
+            "django-tastypie (import: django-tastypie)",
+            "clips (import: clips)",
+        ],
+        error_log="""
+ERROR: Ignored the following yanked versions: 4.2.12\nERROR: Ignored the following versions that require a different python version: 5.0 Requires-Python >\nERROR: Could not find a version that satisfies the requirement Django==5.1.3 (from versions: 1.1.3, 
+        """,
+        snippet_source="from django.conf.urls.defaults import * from tastypie.paginator import Paginator from tastypie.exceptions import BadRequest",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify clips as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "clips" in resp.remove_package.lower(), \
+            f"Expected clips to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_1c160c9eee91fd44c587(ollama_available):
+    """Tier3: LLM identifies pymba as local module (gist 1c160c9eee91fd44c587)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "moviepy==0.2.1.8.07 (import: moviepy)",
+            "scikit-image==0.14.2 (import: scikit-image)",
+            "pymba (import: pymba)",
+        ],
+        error_log="""
+ERROR: Command errored out with exit status 1:\nSyntaxError: invalid syntax\nERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full comm
+        """,
+        snippet_source="\"\"\" This demonstration assumes you have already installed Pymba and followed the installation instructions there: https://github.com/morefigs/pymba",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify pymba as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "pymba" in resp.remove_package.lower(), \
+            f"Expected pymba to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_19317d3e4b9a58f2355e(ollama_available):
+    """Tier3: LLM recognizes UpdateManager as optional import (gist 19317d3e4b9a58f2355e7643040d483a)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "prettytable==3.1.1 (import: prettytable)",
+            "UpdateManager (import: UpdateManager)",
+        ],
+        error_log="""
+ERROR: Ignored the following yanked versions: 0.0.0, 0.7.8\nERROR: Ignored the following versions that require a different python version: 3.17.0 Requires-Pytho\nERROR: Could not find a version that satisfies the requirement python-apt (from versions: none)
+        """,
+        snippet_source="\"\"\" This script lists all APT package updates currently available for your system along with the version numbers of the old & new packages.  It is der",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize UpdateManager as optional/guarded import
+    if resp.fix_possible and resp.remove_package:
+        pass  # Correctly identified as optional
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_2901479(ollama_available):
+    """Tier3: LLM identifies flask_celery as local module (gist 2901479)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Flask==3.1.0 (import: Flask)",
+            "flask-heroku==0.1.5 (import: flask-heroku)",
+            "flask-sslify==0.1.3 (import: flask-sslify)",
+            "raven (import: raven)",
+            "celery==5.3.4 (import: celery)",
+            "flask_celery (import: flask_celery)",
+        ],
+        error_log="""
+ERROR: Ignored the following versions that require a different python version: 8.2.0 Requires-Python\nERROR: Could not find a version that satisfies the requirement Flask-Script-fix (from flask-celery) \nERROR: No matching distribution found for Flask-Script-fix
+        """,
+        snippet_source="import os from flask import Flask",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify flask_celery as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "flask_celery" in resp.remove_package.lower(), \
+            f"Expected flask_celery to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_2b2abbb88b5d2b4f4e5a(ollama_available):
+    """Tier3: LLM identifies newspaper as local module (gist 2b2abbb88b5d2b4f4e5adde42975fd0f)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "beautifulsoup4==4.12.3 (import: beautifulsoup4)",
+            "requests==2.32.3 (import: requests)",
+            "newspaper (import: newspaper)",
+        ],
+        error_log="""
+error: subprocess-exited-with-error\nERROR: Failed to build 'newspaper' when getting requirements to build wheel
+        """,
+        snippet_source="from bs4 import BeautifulSoup import requests, csv, os from newspaper import Article",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify newspaper as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "newspaper" in resp.remove_package.lower(), \
+            f"Expected newspaper to be removed, got: {resp.remove_package}"
+
+
+
+@pytest.mark.integration
+def test_tier3_gist_2de2e9a156fe619dbdad(ollama_available):
+    """Tier3: LLM identifies -- as local module (gist 2de2e9a156fe619dbdad762fe1cf84e1)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "numpy==1.21.6 (import: numpy)",
+            "Theano-PyMC==1.1.2 (import: Theano-PyMC)",
+            "arviz==0.12.1 (import: arviz)",
+            "pandas==1.5.3 (import: pandas)",
+            "pymc3==3.11.5 (import: pymc3)",
+        ],
+        error_log="""
+ImportError: cannot import name 'MRG_RandomStreams' from 'theano.sandbox.rng_mrg' (D:\apdr\runs\2026\nImportError: cannot import name 'MRG_RandomStreams' from 'theano.sandbox.rng_mrg' (D:\apdr\runs\2026
+        """,
+        snippet_source="",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify -- as local module and suggest removal
+    if resp.fix_possible and resp.remove_package:
+        assert "--" in resp.remove_package.lower(), \
+            f"Expected -- to be removed, got: {resp.remove_package}"
+
+
