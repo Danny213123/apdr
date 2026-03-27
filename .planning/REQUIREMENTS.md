@@ -27,8 +27,8 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 - [x] **VAL-01**: Validation reuses caches, layers, or artifacts more effectively to reduce repeated build work
 - [x] **VAL-02**: Validation fallback and retry paths avoid unnecessary duplicate environment creation
-- [ ] **VAL-03**: Python-version or backend attempts use a more efficient execution strategy than the current bottlenecks
-- [ ] **VAL-04**: Validation telemetry clearly separates solve time, env create time, install time, and smoke or runtime cost
+- [x] **VAL-03**: Python-version or backend attempts use a more efficient execution strategy than the current bottlenecks
+- [x] **VAL-04**: Validation telemetry clearly separates solve time, env create time, install time, and smoke or runtime cost
 - [x] **VAL-05**: Validation changes preserve Windows and Docker compatibility
 
 ### Codebase Layout
@@ -92,8 +92,8 @@ Deferred to a later milestone after the core modernization work lands.
 | EFF-05 | Phase 2 | Complete |
 | VAL-01 | Phase 3 | Complete |
 | VAL-02 | Phase 3 | Complete |
-| VAL-03 | Phase 3 | Pending |
-| VAL-04 | Phase 3 | Pending |
+| VAL-03 | Phase 3 | Complete |
+| VAL-04 | Phase 3 | Complete |
 | VAL-05 | Phase 3 | Complete |
 | ARCH-01 | Phase 4 | Pending |
 | ARCH-02 | Phase 4 | Pending |
@@ -118,4 +118,4 @@ Deferred to a later milestone after the core modernization work lands.
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 2 completion*
+*Last updated: 2026-03-27 after 03-02 execution*

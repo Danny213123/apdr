@@ -74,7 +74,7 @@
 
 **Plans**:
 - [x] `03-01` - Env Attempt Staging & Validated-Env Reuse Cleanup
-- [ ] `03-02` - Backend Attempt Telemetry & Validation Benchmark Reporting
+- [x] `03-02` - Backend Attempt Telemetry & Validation Benchmark Reporting
 - [ ] `03-03` - Validation Candidate Benchmark & Delta Report
 
 ---
@@ -139,7 +139,7 @@
 |-------|----------------|--------|-----------|
 | 1. Baseline & Guardrails | 2/2 | Complete | 2026-03-27 |
 | 2. Resolver Memory & Algorithm Efficiency | 3/3 | Complete | 2026-03-27 |
-| 3. Validation Pipeline Throughput | 1/3 | In Progress | - |
+| 3. Validation Pipeline Throughput | 2/3 | In Progress | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
 | 5. Documentation, Error Handling & Review Readiness | 0/TBD | Not started | - |
 | 6. Benchmark Verification & v2 Closeout | 0/TBD | Not started | - |
@@ -166,4 +166,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after 03-01 execution*
+*Last updated: 2026-03-27 after 03-02 execution*

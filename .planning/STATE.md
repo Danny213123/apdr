@@ -3,21 +3,21 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 03
-current_plan: 2
+current_plan: 3
 status: active
-last_updated: "2026-03-27T16:15:36.000Z"
+last_updated: "2026-03-27T16:29:24.000Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-27
 **Current Phase:** 03
-**Current Plan:** 2
+**Current Plan:** 3
 
 ---
 
@@ -32,7 +32,7 @@ progress:
 ## Current Position
 
 Phase: 03 (validation-pipeline-throughput) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Milestone Snapshot
 
@@ -75,13 +75,13 @@ Plan: 2 of 3
 
 ## Current Blockers
 
-*None - 03-01 is complete and Phase 3 is continuing into 03-02.*
+*None - 03-02 is complete and Phase 3 is continuing into 03-03.*
 
 ## Active TODOs
 
-- [ ] Execute Plan `03-02` (`Backend Attempt Telemetry & Validation Benchmark Reporting`)
-- [ ] Preserve the `validation_pipeline_` cargo-test filter and workspace clippy pass while touching validation code paths
-- [ ] Capture both the warm and forced validation candidate artifacts before closing Phase 3
+- [ ] Execute Plan `03-03` (`Validation Candidate Benchmark & Delta Report`)
+- [ ] Capture both the warm and forced validation candidate artifacts with the updated benchmark harness
+- [ ] Run the Phase 3 regression comparison against `01-baseline.json` before closing the phase
 
 ## Deferred Items
 
@@ -100,21 +100,22 @@ Plan: 2 of 3
 - Completed `02-03` with `02-resolver-candidate.json`, `02-RESOLVER-CANDIDATE.md`, and `02-RESOLVER-DELTA.md`
 - Planned Phase 3 with `03-RESEARCH.md`, `03-VALIDATION.md`, and three execution plans focused on validation throughput, backend telemetry, and candidate benchmarking
 - Completed `03-01` with explicit env-attempt path staging, validated-env cache-source helpers, ordered env-to-Docker retry history, and passing validation-pipeline tests
+- Completed `03-02` with cached Docker-agent probing, JSON-backed agent-result parsing, richer per-sample validation benchmark reporting, and optional env-create or install or smoke regression thresholds
 
 ### What's Next
 
-**Immediate:** Continue Phase 3 with Plan `03-02`
+**Immediate:** Continue Phase 3 with Plan `03-03`
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Cache backend-attempt probing, improve validation benchmark reporting, and extend the regression gate for validation sub-stages
+**Next Phase:** Capture warm and forced validation candidates, run the regression gate, and write the Phase 3 validation delta note
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Read `03-02-PLAN.md`, then continue execution in Phase 3
+4. Read `03-03-PLAN.md`, then continue execution in Phase 3
 
 ---
 
@@ -135,7 +136,7 @@ Plan: 2 of 3
 - `.planning/phases/03-validation-pipeline-throughput/03-RESEARCH.md` - validation hotspot and measurement guidance for Phase 3
 - `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION.md` - verification contract for validation-throughput work
 - `.planning/phases/03-validation-pipeline-throughput/03-01-SUMMARY.md` - Wave 1 env-attempt staging and cache-source cleanup summary
-- `.planning/phases/03-validation-pipeline-throughput/03-01-PLAN.md` - env staging and validated-env reuse cleanup
+- `.planning/phases/03-validation-pipeline-throughput/03-02-SUMMARY.md` - Wave 2 backend telemetry and benchmark-reporting summary
 - `.planning/phases/03-validation-pipeline-throughput/03-02-PLAN.md` - backend telemetry and benchmark-reporting work
 - `.planning/phases/03-validation-pipeline-throughput/03-03-PLAN.md` - candidate capture and delta closeout
 
@@ -148,4 +149,4 @@ Plan: 2 of 3
 
 ---
 
-*State updated after 03-01 execution on 2026-03-27*
+*State updated after 03-02 execution on 2026-03-27*
