@@ -17,11 +17,11 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 ### Memory & Algorithm Efficiency
 
-- [ ] **EFF-01**: Hot-path Rust code reduces unnecessary cloning and allocation in resolver and cache flows
-- [ ] **EFF-02**: Shared-state contention in benchmark-critical paths is reduced with a better ownership or aggregation strategy
-- [ ] **EFF-03**: Repeated metadata lookups or recomputation in solve and validate paths are reduced or eliminated
+- [x] **EFF-01**: Hot-path Rust code reduces unnecessary cloning and allocation in resolver and cache flows
+- [x] **EFF-02**: Shared-state contention in benchmark-critical paths is reduced with a better ownership or aggregation strategy
+- [x] **EFF-03**: Repeated metadata lookups or recomputation in solve and validate paths are reduced or eliminated
 - [ ] **EFF-04**: Candidate-selection and retry logic use clearer, cheaper algorithms in the hottest Rust paths
-- [ ] **EFF-05**: Performance-oriented refactors preserve deterministic behavior and benchmark correctness
+- [x] **EFF-05**: Performance-oriented refactors preserve deterministic behavior and benchmark correctness
 
 ### Validation Throughput
 
@@ -85,11 +85,11 @@ Deferred to a later milestone after the core modernization work lands.
 | BASE-03 | Phase 1 | Pending |
 | BASE-04 | Phase 1 | Pending |
 | BASE-05 | Phase 1 | Pending |
-| EFF-01 | Phase 2 | Pending |
-| EFF-02 | Phase 2 | Pending |
-| EFF-03 | Phase 2 | Pending |
+| EFF-01 | Phase 2 | Complete |
+| EFF-02 | Phase 2 | Complete |
+| EFF-03 | Phase 2 | Complete |
 | EFF-04 | Phase 2 | Pending |
-| EFF-05 | Phase 2 | Pending |
+| EFF-05 | Phase 2 | Complete |
 | VAL-01 | Phase 3 | Pending |
 | VAL-02 | Phase 3 | Pending |
 | VAL-03 | Phase 3 | Pending |
