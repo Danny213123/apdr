@@ -1397,6 +1397,65 @@ fn resolver_maps_johnny_cache_imports_to_johnny_cache_package() {
 }
 
 #[test]
+fn resolver_dependency_updates_use_normalized_package_identity() {
+    let resolved = vec![apdr::ResolvedDependency {
+        import_name: "django".to_string(),
+        package_name: "Django".to_string(),
+        version: Some("5.1.3".to_string()),
+        strategy: "cache:seed".to_string(),
+        confidence: 0.82,
+    }];
+    let resolved = apdr::resolver::debug_update_package_version(
+        resolved,
+        "django",
+        Some("1.8.19".to_string()),
+    );
+    let resolved = apdr::resolver::debug_upsert_dependency(
+        resolved,
+        "django",
+        "django",
+        Some("1.8.19".to_string()),
+        "recovery:cache",
+    );
+
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].package_name.to_ascii_lowercase(), "django");
+    assert_eq!(resolved[0].version.as_deref(), Some("1.8.19"));
+}
+
+#[test]
+fn resolver_retry_loop_reuses_dirty_requirements_buffer() {
+    let clean_dependency = apdr::ResolvedDependency {
+        import_name: "requests".to_string(),
+        package_name: "requests".to_string(),
+        version: Some("2.32.3".to_string()),
+        strategy: "cache:seed".to_string(),
+        confidence: 0.9,
+    };
+    let downgraded_dependency = apdr::ResolvedDependency {
+        version: Some("2.31.0".to_string()),
+        strategy: "recovery:version-adjustment".to_string(),
+        ..clean_dependency.clone()
+    };
+
+    let trace = apdr::resolver::debug_retry_loop_requirements_trace(
+        "requests==2.32.3\n".to_string(),
+        vec![
+            (vec![clean_dependency.clone()], false),
+            (vec![clean_dependency], false),
+            (vec![downgraded_dependency.clone()], true),
+            (vec![downgraded_dependency], false),
+        ],
+    );
+
+    assert_eq!(trace.len(), 4);
+    assert_eq!(trace[0], "requests==2.32.3\n");
+    assert_eq!(trace[0], trace[1]);
+    assert_eq!(trace[2], "requests==2.31.0\n");
+    assert_eq!(trace[2], trace[3]);
+}
+
+#[test]
 fn resolver_prefers_mecab_python_for_python2_snippets() {
     let result = resolve_fixture("python2_mecab_snippet.py", "test-python2-mecab-output");
     let req_lower = result.requirements_txt.to_lowercase();
