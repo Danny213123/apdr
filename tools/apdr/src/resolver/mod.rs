@@ -722,7 +722,6 @@ pub fn resolve_path(
         "resolved-final.txt",
         &format_dependency_state(&resolved, &unresolved),
     )?;
-    let mut validation = validation;
     validation.debug_dir = Some(
         context::debug_root(&config.output_dir)
             .display()
@@ -896,6 +895,7 @@ fn skipped_validation_summary(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_with_retries(
     snippet_path: &Path,
     snippet_source: &str,
@@ -916,8 +916,7 @@ fn validate_with_retries(
     }
     let config = &effective_config;
     let mut validation = ValidationSummary::default();
-    let mut seen_requirements = BTreeSet::new();
-    let mut attempted_versions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut retry_state = RetryLoopState::new(requirements_txt.clone());
     let mut pending_pattern_learning: Option<(String, String, String, String)> = None;
     let mut llm_recovery_history: Vec<(String, String, String)> = Vec::new();
     let mut seed_llm_fallback_attempted = false;
@@ -926,9 +925,6 @@ fn validate_with_retries(
     let mut failure_signature_requirements: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut module_requirement_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut repeat_failure_signature: Option<String> = None;
-    // Track imports explicitly removed by LLM recovery (local modules, wrong packages)
-    // so they don't get re-added by cache lookups.
-    let mut llm_removed_imports: Vec<String> = Vec::new();
 
     // Overall wall-time budget for the entire retry loop equals validation_timeout.
     // Each validate_requirements call gets the *remaining* time as its budget.
@@ -954,7 +950,7 @@ fn validate_with_retries(
             ));
             break;
         }
-        *requirements_txt = render_requirements(resolved);
+        render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
         let lockfile_key = lockfile_cache::key_for(requirements_txt, selected_python);
         validation.lockfile_key = Some(lockfile_key.clone());
         validation.build_cache_key = Some(lockfile_key.clone());
@@ -977,7 +973,10 @@ fn validate_with_retries(
             ));
         }
 
-        if !seen_requirements.insert(requirements_txt.clone()) {
+        if !retry_state
+            .seen_requirements
+            .insert(requirements_txt.clone())
+        {
             // Before giving up on oscillation, try one LLM recovery pass.
             // The oscillation often means a package keeps flipping between
             // versions that both fail (e.g. python-memcached on Py2.7).
@@ -1007,7 +1006,7 @@ fn validate_with_retries(
                         resolved,
                         store,
                         &failed_import_package_pairs,
-                        &mut llm_removed_imports,
+                        &mut retry_state.llm_removed_imports,
                         "LLM oscillation recovery",
                         "oscillation",
                     );
@@ -1024,8 +1023,12 @@ fn validate_with_retries(
                         set_repair_strategy(&mut validation, &note);
                     }
                     if applied {
-                        seen_requirements.clear();
-                        seen_requirements.insert(render_requirements(resolved));
+                        retry_state.seen_requirements.clear();
+                        retry_state.requirements_dirty = true;
+                        render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
+                        retry_state
+                            .seen_requirements
+                            .insert(requirements_txt.clone());
                         continue;
                     }
                 }
@@ -1140,11 +1143,11 @@ fn validate_with_retries(
                     &llm_recovery_history,
                 ) {
                     let (mut applied, llm_notes): (bool, Vec<String>) = (false, Vec::new());
-                    let norm_wrong = hint.wrong_pkg.to_ascii_lowercase().replace('_', "-");
+                    let norm_wrong = normalize_package_key(&hint.wrong_pkg);
                     if !norm_wrong.is_empty() {
-                        if let Some(dep) = resolved.iter_mut().find(|d| {
-                            d.package_name.to_ascii_lowercase().replace('_', "-") == norm_wrong
-                        }) {
+                        if let Some(dep_index) = dependency_index_by_package(resolved, &norm_wrong)
+                        {
+                            let dep = &mut resolved[dep_index];
                             let old_pkg = dep.package_name.clone();
                             let import_name = dep.import_name.clone();
                             dep.package_name = hint.correct_pkg.clone();
@@ -1197,12 +1200,10 @@ fn validate_with_retries(
                         applied = true;
                     }
                     if let Some(ref remove_name) = None::<String> {
-                        let norm_remove = remove_name.to_ascii_lowercase().replace('_', "-");
-                        if let Some(pos) = resolved.iter().position(|d| {
-                            d.package_name.to_ascii_lowercase().replace('_', "-") == norm_remove
-                        }) {
+                        let norm_remove = normalize_package_key(remove_name);
+                        if let Some(pos) = dependency_index_by_package(resolved, &norm_remove) {
                             let removed = resolved.remove(pos);
-                            llm_removed_imports.push(removed.import_name.clone());
+                            retry_state.remember_removed_import(&removed.import_name);
                             let note = format!(
                                 "LLM recovery: removed `{}` (import `{}`) — not a real PyPI package.",
                                 removed.package_name, removed.import_name
@@ -1225,6 +1226,8 @@ fn validate_with_retries(
                     }
                     if applied {
                         report.retries += 1;
+                        retry_state.requirements_dirty = true;
+                        render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
                         iteration_snapshots.push((
                             iter_num,
                             "recovery.txt".to_string(),
@@ -1233,7 +1236,7 @@ fn validate_with_retries(
                         iteration_snapshots.push((
                             iter_num,
                             "requirements-after-recovery.txt".to_string(),
-                            render_requirements(resolved),
+                            requirements_txt.clone(),
                         ));
                         consecutive_llm_failures = 0;
                         continue;
@@ -1318,10 +1321,7 @@ fn validate_with_retries(
             "ModuleNotFound" | "ImportError"
         ) {
             if let Some(module) = extract_missing_module(&last_log) {
-                if llm_removed_imports
-                    .iter()
-                    .any(|r| r.eq_ignore_ascii_case(&module))
-                {
+                if retry_state.has_removed_import(&module) {
                     let note = format!(
                         "Missing module `{module}` was previously identified by LLM as a local/project module \
                          (not a PyPI package). Dependencies are correct; treating as resolved."
@@ -1451,7 +1451,8 @@ fn validate_with_retries(
             }
         }
         if let Some((package_name, _)) = extract_package_and_version(&last_log) {
-            if attempted_versions
+            if retry_state
+                .attempted_versions
                 .get(&package_name)
                 .map(|versions| versions.iter().collect::<BTreeSet<_>>().len() >= 2)
                 .unwrap_or(false)
@@ -1482,9 +1483,8 @@ fn validate_with_retries(
             parse_result,
             selected_python,
             store,
-            &mut attempted_versions,
+            &mut retry_state,
             config,
-            &llm_removed_imports,
         ) {
             report.retries += 1;
             report.notes.push(note.clone());
@@ -1499,6 +1499,8 @@ fn validate_with_retries(
             if let Some(last_attempt) = validation.attempts.last_mut() {
                 last_attempt.fix_applied = Some(note);
             }
+            retry_state.requirements_dirty = true;
+            render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
             iteration_snapshots.push((
                 iter_num,
                 "recovery.txt".to_string(),
@@ -1507,7 +1509,7 @@ fn validate_with_retries(
             iteration_snapshots.push((
                 iter_num,
                 "requirements-after-recovery.txt".to_string(),
-                render_requirements(resolved),
+                requirements_txt.clone(),
             ));
             consecutive_llm_failures = 0;
             continue;
@@ -1557,7 +1559,7 @@ fn validate_with_retries(
                     resolved,
                     store,
                     &failed_import_package_pairs,
-                    &mut llm_removed_imports,
+                    &mut retry_state.llm_removed_imports,
                     "LLM recovery",
                     &format!("{} error", classified.error_type),
                 );
@@ -1593,12 +1595,10 @@ fn validate_with_retries(
                 }
                 // Handle remove_package: remove a package that shouldn't be installed
                 if let Some(ref remove_name) = None::<String> {
-                    let norm_remove = remove_name.to_ascii_lowercase().replace('_', "-");
-                    if let Some(pos) = resolved.iter().position(|d| {
-                        d.package_name.to_ascii_lowercase().replace('_', "-") == norm_remove
-                    }) {
+                    let norm_remove = normalize_package_key(remove_name);
+                    if let Some(pos) = dependency_index_by_package(resolved, &norm_remove) {
                         let removed = resolved.remove(pos);
-                        llm_removed_imports.push(removed.import_name.clone());
+                        retry_state.remember_removed_import(&removed.import_name);
                         let note = format!(
                             "LLM recovery: removed `{}` (import `{}`) — likely a local/project module, not a PyPI package.",
                             removed.package_name, removed.import_name
@@ -1627,6 +1627,8 @@ fn validate_with_retries(
                 }
                 if applied {
                     report.retries += 1;
+                    retry_state.requirements_dirty = true;
+                    render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
                     iteration_snapshots.push((
                         iter_num,
                         "recovery.txt".to_string(),
@@ -1635,7 +1637,7 @@ fn validate_with_retries(
                     iteration_snapshots.push((
                         iter_num,
                         "requirements-after-recovery.txt".to_string(),
-                        render_requirements(resolved),
+                        requirements_txt.clone(),
                     ));
                     consecutive_llm_failures = 0;
                     continue;
@@ -1692,11 +1694,15 @@ fn validate_with_retries(
                 // Replace seed-sourced deps with LLM results
                 let mut changed = false;
                 for llm_dep in &llm_result.resolved {
-                    if let Some(existing) = resolved.iter_mut().find(|d| {
-                        d.import_name == llm_dep.import_name
-                            && (d.strategy.starts_with("cache:seed")
-                                || d.strategy.starts_with("cache:discrepancy"))
-                    }) {
+                    if let Some(existing_index) =
+                        dependency_index_by_import(resolved, &llm_dep.import_name)
+                    {
+                        let existing = &mut resolved[existing_index];
+                        if !(existing.strategy.starts_with("cache:seed")
+                            || existing.strategy.starts_with("cache:discrepancy"))
+                        {
+                            continue;
+                        }
                         if existing.package_name != llm_dep.package_name {
                             let old_pkg = existing.package_name.clone();
                             existing.package_name = llm_dep.package_name.clone();
@@ -1721,7 +1727,8 @@ fn validate_with_retries(
                     }
                 }
                 if changed {
-                    *requirements_txt = render_requirements(resolved);
+                    retry_state.requirements_dirty = true;
+                    render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
                     iteration_snapshots.push((
                         iter_num,
                         "recovery.txt".to_string(),
@@ -1730,7 +1737,7 @@ fn validate_with_retries(
                     iteration_snapshots.push((
                         iter_num,
                         "requirements-after-recovery.txt".to_string(),
-                        render_requirements(resolved),
+                        requirements_txt.clone(),
                     ));
                     continue;
                 }
@@ -1752,10 +1759,8 @@ fn validate_with_retries(
                     | "DependencyConflict"
             ) {
                 if let Some((package_name, _)) = extract_package_and_version(&last_log) {
-                    if let Some(dep) = resolved
-                        .iter_mut()
-                        .find(|d| d.package_name.eq_ignore_ascii_case(&package_name))
-                    {
+                    if let Some(dep_index) = dependency_index_by_package(resolved, &package_name) {
+                        let dep = &mut resolved[dep_index];
                         if dep.version.is_some() {
                             let old_ver = dep.version.clone().unwrap_or_default();
                             dep.version = None;
@@ -1771,6 +1776,12 @@ fn validate_with_retries(
                             if let Some(last_attempt) = validation.attempts.last_mut() {
                                 last_attempt.fix_applied = Some(note);
                             }
+                            retry_state.requirements_dirty = true;
+                            render_requirements_if_dirty(
+                                &mut retry_state,
+                                resolved,
+                                requirements_txt,
+                            );
                             iteration_snapshots.push((
                                 iter_num,
                                 "recovery.txt".to_string(),
@@ -1779,7 +1790,7 @@ fn validate_with_retries(
                             iteration_snapshots.push((
                                 iter_num,
                                 "requirements-after-recovery.txt".to_string(),
-                                render_requirements(resolved),
+                                requirements_txt.clone(),
                             ));
                             continue;
                         }
@@ -1810,6 +1821,8 @@ fn validate_with_retries(
                     if let Some(last_attempt) = validation.attempts.last_mut() {
                         last_attempt.fix_applied = Some(note);
                     }
+                    retry_state.requirements_dirty = true;
+                    render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
                     iteration_snapshots.push((
                         iter_num,
                         "recovery.txt".to_string(),
@@ -1818,7 +1831,7 @@ fn validate_with_retries(
                     iteration_snapshots.push((
                         iter_num,
                         "requirements-after-recovery.txt".to_string(),
-                        render_requirements(resolved),
+                        requirements_txt.clone(),
                     ));
                     continue;
                 }
@@ -1866,6 +1879,7 @@ fn validate_with_retries(
     Ok(validation)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_recovery_fix(
     classified: &crate::ClassifierResult,
     log: &str,
@@ -1873,9 +1887,8 @@ fn apply_recovery_fix(
     parse_result: &crate::ParseResult,
     python_version: &str,
     store: &mut CacheStore,
-    attempted_versions: &mut BTreeMap<String, Vec<String>>,
+    retry_state: &mut RetryLoopState,
     config: &ResolveConfig,
-    llm_removed_imports: &[String],
 ) -> Option<String> {
     if let Some(note) = family_knowledge::recover_family_knowledge(
         parse_result,
@@ -1917,10 +1930,8 @@ fn apply_recovery_fix(
                     "Kept family-managed package `{package_name}` pinned after DependencyConflict to avoid breaking a curated compatibility bundle.",
                 ));
             }
-            if let Some(dep) = resolved
-                .iter_mut()
-                .find(|d| d.package_name.eq_ignore_ascii_case(&package_name))
-            {
+            if let Some(dep_index) = dependency_index_by_package(resolved, &package_name) {
+                let dep = &mut resolved[dep_index];
                 if dep.version.is_some() {
                     dep.version = None;
                     dep.strategy = "recovery:constraint-relaxation".to_string();
@@ -1974,26 +1985,24 @@ fn apply_recovery_fix(
                 if python_version.starts_with("2.") {
                     if let Some(ceiling) = last_python2_version(&package_name) {
                         let current_ver = current_version.as_deref().unwrap_or("");
-                        if current_ver != ceiling {
-                            if update_package_version(
+                        if current_ver != ceiling
+                            && update_package_version(
                                 resolved,
                                 &package_name,
                                 Some(ceiling.to_string()),
-                            ) {
-                                return Some(format!(
-                                    "Pinned {package_name} to {ceiling} (last known Python 2 version) after {}.",
-                                    classified.error_type
-                                ));
-                            }
+                            )
+                        {
+                            return Some(format!(
+                                "Pinned {package_name} to {ceiling} (last known Python 2 version) after {}.",
+                                classified.error_type
+                            ));
                         }
                     }
                 }
                 // Still no luck — try stripping the version pin entirely so pip
                 // can pick the best compatible version on its own.
-                if let Some(dep) = resolved
-                    .iter_mut()
-                    .find(|d| d.package_name.eq_ignore_ascii_case(&package_name))
-                {
+                if let Some(dep_index) = dependency_index_by_package(resolved, &package_name) {
+                    let dep = &mut resolved[dep_index];
                     if dep.version.is_some() {
                         dep.version = None;
                         dep.strategy = "recovery:version-strip".to_string();
@@ -2006,7 +2015,10 @@ fn apply_recovery_fix(
                 }
                 return None;
             }
-            let previous = attempted_versions.entry(package_name.clone()).or_default();
+            let previous = retry_state
+                .attempted_versions
+                .entry(package_name.clone())
+                .or_default();
             if let Some(current) = current_version.clone() {
                 previous.push(current);
             }
@@ -2026,25 +2038,22 @@ fn apply_recovery_fix(
         "ModuleNotFound" | "ImportError" | "AttributeError" => {
             let module_name = extract_missing_module(log)?;
             // Skip re-adding imports that were explicitly removed by LLM recovery
-            if llm_removed_imports
-                .iter()
-                .any(|r| r.eq_ignore_ascii_case(&module_name))
-            {
+            if retry_state.has_removed_import(&module_name) {
                 return None;
             }
             // pkg_resources comes from setuptools — a common issue with modern pip
-            if module_name == "pkg_resources" {
-                if upsert_dependency(
+            if module_name == "pkg_resources"
+                && upsert_dependency(
                     resolved,
                     "pkg_resources",
                     "setuptools",
                     None,
                     "recovery:pkg-resources",
-                ) {
-                    return Some(
-                        "Added setuptools to provide missing pkg_resources module.".to_string(),
-                    );
-                }
+                )
+            {
+                return Some(
+                    "Added setuptools to provide missing pkg_resources module.".to_string(),
+                );
             }
             // pip module may be needed at import time by some packages
             if module_name == "pip" {
@@ -2233,14 +2242,8 @@ fn apply_recovery_fix(
                     // Guard: skip if LLM echoed the module name back (or its
                     // top-level component), which causes oscillation with the
                     // cache-based recovery path.
-                    let norm_pkg = package_name
-                        .to_ascii_lowercase()
-                        .replace('_', "-")
-                        .replace('.', "-");
-                    let norm_mod = module_name
-                        .to_ascii_lowercase()
-                        .replace('_', "-")
-                        .replace('.', "-");
+                    let norm_pkg = package_name.to_ascii_lowercase().replace(['_', '.'], "-");
+                    let norm_mod = module_name.to_ascii_lowercase().replace(['_', '.'], "-");
                     let norm_top = module_name
                         .split('.')
                         .next()
@@ -2305,7 +2308,10 @@ fn apply_recovery_fix(
                     }
                 }
                 if !known_versions.is_empty() {
-                    let previous = attempted_versions.entry(package_name.clone()).or_default();
+                    let previous = retry_state
+                        .attempted_versions
+                        .entry(package_name.clone())
+                        .or_default();
                     if let Some(current) = current_version {
                         previous.push(current);
                     }
@@ -2354,10 +2360,8 @@ fn apply_recovery_fix(
             // specific package instead of giving up.
             if let Some(module_name) = extract_syntax_error_package(log) {
                 let norm_mod = module_name.to_ascii_lowercase().replace('_', "-");
-                if let Some(dep) = resolved
-                    .iter()
-                    .find(|d| d.import_name.to_ascii_lowercase().replace('_', "-") == norm_mod)
-                {
+                if let Some(dep_index) = dependency_index_by_import(resolved, &norm_mod) {
+                    let dep = &resolved[dep_index];
                     let package_name = dep.package_name.clone();
                     let mut known_versions =
                         pypi_client::compatible_versions(store, &package_name, python_version);
@@ -2369,7 +2373,10 @@ fn apply_recovery_fix(
                         }
                     }
                     if !known_versions.is_empty() {
-                        let previous = attempted_versions.entry(package_name.clone()).or_default();
+                        let previous = retry_state
+                            .attempted_versions
+                            .entry(package_name.clone())
+                            .or_default();
                         if let Some(current) = dep.version.clone() {
                             previous.push(current);
                         }
@@ -2402,10 +2409,8 @@ fn apply_recovery_fix(
                 || lowercase.contains("use_2to3 is not supported")
             {
                 if let Some(pkg) = extract_setup_error_package(log) {
-                    if let Some(dep) = resolved
-                        .iter_mut()
-                        .find(|d| d.package_name.eq_ignore_ascii_case(&pkg))
-                    {
+                    if let Some(dep_index) = dependency_index_by_package(resolved, &pkg) {
+                        let dep = &mut resolved[dep_index];
                         if dep.version.is_some() {
                             let old_version = dep.version.clone().unwrap_or_default();
                             dep.version = None;
@@ -2510,6 +2515,36 @@ fn selected_python_version(parse_result: &crate::ParseResult, config: &ResolveCo
     parse_result.python_version_min.clone()
 }
 
+struct RetryLoopState {
+    seen_requirements: BTreeSet<String>,
+    attempted_versions: BTreeMap<String, Vec<String>>,
+    llm_removed_imports: BTreeSet<String>,
+    cached_requirements: String,
+    requirements_dirty: bool,
+}
+
+impl RetryLoopState {
+    fn new(initial_requirements: String) -> Self {
+        Self {
+            seen_requirements: BTreeSet::new(),
+            attempted_versions: BTreeMap::new(),
+            llm_removed_imports: BTreeSet::new(),
+            cached_requirements: initial_requirements,
+            requirements_dirty: false,
+        }
+    }
+
+    fn remember_removed_import(&mut self, import_name: &str) {
+        self.llm_removed_imports
+            .insert(normalize_package_key(import_name));
+    }
+
+    fn has_removed_import(&self, import_name: &str) -> bool {
+        self.llm_removed_imports
+            .contains(&normalize_package_key(import_name))
+    }
+}
+
 fn render_requirements(resolved: &[ResolvedDependency]) -> String {
     resolved
         .iter()
@@ -2522,6 +2557,77 @@ fn render_requirements(resolved: &[ResolvedDependency]) -> String {
         + "\n"
 }
 
+fn render_requirements_if_dirty(
+    retry_state: &mut RetryLoopState,
+    resolved: &[ResolvedDependency],
+    requirements_txt: &mut String,
+) {
+    if retry_state.requirements_dirty {
+        retry_state.cached_requirements = render_requirements(resolved);
+        retry_state.requirements_dirty = false;
+    }
+    if *requirements_txt != retry_state.cached_requirements {
+        *requirements_txt = retry_state.cached_requirements.clone();
+    }
+}
+
+#[doc(hidden)]
+pub fn debug_retry_loop_requirements_trace(
+    initial_requirements: String,
+    steps: Vec<(Vec<ResolvedDependency>, bool)>,
+) -> Vec<String> {
+    let mut retry_state = RetryLoopState::new(initial_requirements.clone());
+    let mut requirements_txt = initial_requirements;
+    let mut trace = Vec::new();
+
+    for (resolved, dirty) in steps {
+        retry_state.requirements_dirty = dirty;
+        render_requirements_if_dirty(&mut retry_state, &resolved, &mut requirements_txt);
+        trace.push(requirements_txt.clone());
+    }
+
+    trace
+}
+
+#[doc(hidden)]
+pub fn debug_update_package_version(
+    mut resolved: Vec<ResolvedDependency>,
+    package_name: &str,
+    version: Option<String>,
+) -> Vec<ResolvedDependency> {
+    let _ = update_package_version(&mut resolved, package_name, version);
+    resolved
+}
+
+#[doc(hidden)]
+pub fn debug_upsert_dependency(
+    mut resolved: Vec<ResolvedDependency>,
+    import_name: &str,
+    package_name: &str,
+    version: Option<String>,
+    strategy: &str,
+) -> Vec<ResolvedDependency> {
+    let _ = upsert_dependency(&mut resolved, import_name, package_name, version, strategy);
+    resolved
+}
+
+fn dependency_index_by_package(
+    resolved: &[ResolvedDependency],
+    package_name: &str,
+) -> Option<usize> {
+    let package_key = normalize_package_key(package_name);
+    resolved
+        .iter()
+        .position(|dependency| normalize_package_key(&dependency.package_name) == package_key)
+}
+
+fn dependency_index_by_import(resolved: &[ResolvedDependency], import_name: &str) -> Option<usize> {
+    let import_key = normalize_package_key(import_name);
+    resolved
+        .iter()
+        .position(|dependency| normalize_package_key(&dependency.import_name) == import_key)
+}
+
 fn dedupe_dependencies(resolved: &mut Vec<ResolvedDependency>) {
     // Normalize with lowercase + hyphen-to-underscore so that "Django" and
     // "django==5.0.8", or "Pillow" and "pillow", collapse to a single entry.
@@ -2529,7 +2635,7 @@ fn dedupe_dependencies(resolved: &mut Vec<ResolvedDependency>) {
     // has a version pin from seed/cache).
     let mut seen = BTreeSet::new();
     resolved.retain(|dependency| {
-        let key = dependency.package_name.to_lowercase().replace('-', "_");
+        let key = normalize_package_key(&dependency.package_name);
         seen.insert(key)
     });
 }
@@ -2539,16 +2645,15 @@ fn update_package_version(
     package_name: &str,
     version: Option<String>,
 ) -> bool {
-    for dependency in resolved.iter_mut() {
-        if dependency.package_name.eq_ignore_ascii_case(package_name) {
-            if dependency.version == version {
-                return false;
-            }
-            dependency.version = version;
-            dependency.strategy = "recovery:version-adjustment".to_string();
-            dependency.confidence = 0.74;
-            return true;
+    if let Some(index) = dependency_index_by_package(resolved, package_name) {
+        let dependency = &mut resolved[index];
+        if dependency.version == version {
+            return false;
         }
+        dependency.version = version;
+        dependency.strategy = "recovery:version-adjustment".to_string();
+        dependency.confidence = 0.74;
+        return true;
     }
     false
 }
@@ -2560,10 +2665,7 @@ fn ensure_dependency(
     version: Option<String>,
     strategy: &str,
 ) -> bool {
-    if resolved
-        .iter()
-        .any(|dependency| dependency.package_name == package_name)
-    {
+    if dependency_index_by_package(resolved, package_name).is_some() {
         return false;
     }
     resolved.push(ResolvedDependency {
@@ -2579,7 +2681,7 @@ fn ensure_dependency(
 /// When a package fails to build due to missing system headers/libraries, try
 /// swapping it for a pure-Python or headless alternative that doesn't need them.
 fn try_build_failure_alternatives(
-    resolved: &mut Vec<ResolvedDependency>,
+    resolved: &mut [ResolvedDependency],
     log: &str,
     store: &mut CacheStore,
     python_version: &str,
@@ -2648,7 +2750,7 @@ fn try_build_failure_alternatives(
                 && (lower.contains(&format!(
                     "failed building wheel for {}",
                     failing.to_lowercase()
-                )) || lower.contains(&format!("error: command 'gcc'"))
+                )) || lower.contains("error: command 'gcc'")
                     || lower.contains("no matching distribution")
                     || lower.contains("could not build wheels")
                     || lower.contains("subprocess-exited-with-error")
@@ -2687,18 +2789,19 @@ fn upsert_dependency(
     version: Option<String>,
     strategy: &str,
 ) -> bool {
-    for dependency in resolved.iter_mut() {
-        if dependency.import_name == import_name {
-            let changed = dependency.package_name != package_name || dependency.version != version;
-            dependency.package_name = package_name.to_string();
-            dependency.version = version.clone();
-            dependency.strategy = strategy.to_string();
-            dependency.confidence = 0.78;
-            return changed;
-        }
-        if dependency.package_name == package_name {
-            return false;
-        }
+    if let Some(index) = dependency_index_by_import(resolved, import_name) {
+        let dependency = &mut resolved[index];
+        let changed = normalize_package_key(&dependency.package_name)
+            != normalize_package_key(package_name)
+            || dependency.version != version;
+        dependency.package_name = package_name.to_string();
+        dependency.version = version.clone();
+        dependency.strategy = strategy.to_string();
+        dependency.confidence = 0.78;
+        return changed;
+    }
+    if dependency_index_by_package(resolved, package_name).is_some() {
+        return false;
     }
     ensure_dependency(resolved, import_name, package_name, version, strategy)
 }
@@ -2719,11 +2822,7 @@ fn apply_compatibility_overrides(
 }
 
 fn normalize_package_key(value: &str) -> String {
-    value
-        .trim()
-        .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace('.', "-")
+    value.trim().to_ascii_lowercase().replace(['_', '.'], "-")
 }
 
 fn unsolvable_status_for_category(category: &str) -> &'static str {
@@ -2743,19 +2842,15 @@ fn remember_failed_import_mapping(
     module_name: &str,
 ) {
     let module_norm = normalize_package_key(module_name);
-    if let Some(dep) = resolved
-        .iter()
-        .find(|dep| normalize_package_key(&dep.import_name) == module_norm)
-    {
+    if let Some(index) = dependency_index_by_import(resolved, &module_norm) {
+        let dep = &resolved[index];
         failed_pairs.insert((module_norm, normalize_package_key(&dep.package_name)));
         return;
     }
     let top_level = module_name.split('.').next().unwrap_or(module_name);
     let top_norm = normalize_package_key(top_level);
-    if let Some(dep) = resolved
-        .iter()
-        .find(|dep| normalize_package_key(&dep.import_name) == top_norm)
-    {
+    if let Some(index) = dependency_index_by_import(resolved, &top_norm) {
+        let dep = &resolved[index];
         failed_pairs.insert((top_norm, normalize_package_key(&dep.package_name)));
     }
 }
@@ -2793,7 +2888,7 @@ fn apply_llm_recovery_hint(
     resolved: &mut Vec<ResolvedDependency>,
     store: &mut CacheStore,
     failed_pairs: &BTreeSet<(String, String)>,
-    llm_removed_imports: &mut Vec<String>,
+    llm_removed_imports: &mut BTreeSet<String>,
     label: &str,
     reason: &str,
 ) -> (bool, Vec<String>) {
@@ -2802,10 +2897,7 @@ fn apply_llm_recovery_hint(
 
     let norm_wrong = normalize_package_key(&hint.wrong_pkg);
     if !norm_wrong.is_empty() {
-        if let Some(dep_index) = resolved
-            .iter()
-            .position(|d| normalize_package_key(&d.package_name) == norm_wrong)
-        {
+        if let Some(dep_index) = dependency_index_by_package(resolved, &norm_wrong) {
             let dep = &resolved[dep_index];
             let target_pkg = hint.correct_pkg.trim();
             let target_version = hint.version.clone();
@@ -2830,11 +2922,8 @@ fn apply_llm_recovery_hint(
                     dep.import_name
                 ));
             } else if dep.package_name != target_pkg
-                && resolved.iter().enumerate().any(|(idx, existing)| {
-                    idx != dep_index
-                        && normalize_package_key(&existing.package_name)
-                            == normalize_package_key(target_pkg)
-                })
+                && dependency_index_by_package(resolved, target_pkg)
+                    .is_some_and(|index| index != dep_index)
             {
                 notes.push(format!(
                     "{label}: discarded duplicate replacement `{}` -> `{target_pkg}`.",
@@ -2898,12 +2987,9 @@ fn apply_llm_recovery_hint(
 
     if let Some(remove_name) = hint.remove_pkg.as_deref() {
         let norm_remove = normalize_package_key(remove_name);
-        if let Some(pos) = resolved
-            .iter()
-            .position(|d| normalize_package_key(&d.package_name) == norm_remove)
-        {
+        if let Some(pos) = dependency_index_by_package(resolved, &norm_remove) {
             let removed = resolved.remove(pos);
-            llm_removed_imports.push(removed.import_name.clone());
+            llm_removed_imports.insert(normalize_package_key(&removed.import_name));
             notes.push(format!(
                 "{label}: removed `{}` (import `{}`) because it should not be installed from PyPI.",
                 removed.package_name, removed.import_name
@@ -2981,10 +3067,7 @@ fn update_failure_metadata(
 /// Returns the last known Python 2.7-compatible version for popular packages.
 /// Used to cap version sampling during recovery for Python 2.7 snippets.
 fn last_python2_version(package_name: &str) -> Option<&'static str> {
-    let normalized = package_name
-        .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace('.', "-");
+    let normalized = package_name.to_ascii_lowercase().replace(['_', '.'], "-");
     match normalized.as_str() {
         "numpy" => Some("1.16.6"),
         "scipy" => Some("1.2.3"),
@@ -3398,7 +3481,7 @@ fn extract_build_dependency(log: &str) -> Option<String> {
                 .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
             if !name.is_empty()
                 && name.len() < 40
-                && name.chars().next().map_or(false, |c| c.is_alphabetic())
+                && name.chars().next().is_some_and(|c| c.is_alphabetic())
                 && !REJECT.contains(&name.to_lowercase().as_str())
             {
                 return Some(name.to_string());
@@ -4495,6 +4578,7 @@ fn extract_packages_without_metadata(result: &pre_solve::PreSolveResult) -> Opti
 }
 
 /// Retry resolution with LLM for packages that have no KGraph metadata
+#[allow(clippy::too_many_arguments)]
 fn retry_with_llm_for_missing_packages(
     parse_result: &crate::ParseResult,
     snippet_source: &str,
