@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 1
-current_plan: Not started
-status: ready_for_planning
-last_updated: "2026-03-26T23:10:28.6639502-04:00"
+current_plan: "01-01"
+status: ready_for_execution
+last_updated: "2026-03-26T23:35:08.4739999-04:00"
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
 ---
 
@@ -17,7 +17,7 @@ progress:
 
 **Last Updated:** 2026-03-26
 **Current Phase:** 1
-**Current Plan:** Not started
+**Current Plan:** 01-01
 
 ---
 
@@ -31,9 +31,9 @@ progress:
 
 ## Current Position
 
-Phase: 1 (baseline-and-guardrails) - NOT STARTED
-Plan: -
-Status: Ready for planning
+Phase: 1 (baseline-and-guardrails) - PLANNED
+Plan: 01-01
+Status: Ready for execution
 
 ## Milestone Snapshot
 
@@ -79,13 +79,13 @@ Status: Ready for planning
 
 ## Current Blockers
 
-*None - ready for Phase 1 planning*
+*None - ready to execute Phase 1*
 
 ## Active TODOs
 
-- [ ] Run `$gsd-plan-phase 1`
-- [ ] Capture benchmark and memory baselines for current Rust workflows
-- [ ] Define the review gate command set for touched Rust modules
+- [ ] Execute `01-01` to add the deterministic baseline harness and memory capture workflow
+- [ ] Execute `01-02` to add the regression gate, hotspot audit, and README guardrails
+- [ ] Run `$gsd-execute-phase 1`
 
 ## Deferred Items
 
@@ -100,21 +100,22 @@ Status: Ready for planning
 - Archived milestone v1.0 and moved its phase directories into `.planning/milestones/v1.0-phases/`
 - Replaced the active roadmap with milestone v2.0: Rust Codebase Modernization
 - Reset phase numbering to 1 for the new milestone
+- Created Phase 1 research and validation docs plus plans `01-01` and `01-02`
 
 ### What's Next
 
-**Immediate:** Plan Phase 1 (Baseline & Guardrails)
+**Immediate:** Execute Phase 1 plan `01-01` (Baseline Harness & Memory Capture)
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Phase 1 establishes baselines, hotspot ranking, and regression checks for the refactor work
+**Next Phase:** Finish Phase 1 so Phase 2 can optimize from measured evidence
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Start with `$gsd-plan-phase 1`
+4. Execute `$gsd-execute-phase 1`
 
 ---
 
@@ -131,11 +132,11 @@ Status: Ready for planning
 
 **Key Commands:**
 
-- `$gsd-plan-phase 1` - create the first detailed execution plan
+- `$gsd-execute-phase 1` - execute the planned baseline and guardrail work
 - `$gsd-progress` - review milestone state after planning
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State reset for milestone v2.0 on 2026-03-26*
+*State updated after Phase 1 planning on 2026-03-26*

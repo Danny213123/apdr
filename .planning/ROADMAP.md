@@ -31,7 +31,9 @@
 4. Hotspots are ranked from measured evidence, not just code inspection
 5. Every later optimization phase has an explicit regression check to protect correctness
 
-**Plans**: TBD
+**Plans**:
+- `01-01` - Baseline Harness & Memory Capture
+- `01-02` - Regression Gate, Hotspot Audit & Guardrails
 
 ---
 
@@ -129,7 +131,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Baseline & Guardrails | 0/TBD | Not started | - |
+| 1. Baseline & Guardrails | 0/2 | Planned | - |
 | 2. Resolver Memory & Algorithm Efficiency | 0/TBD | Not started | - |
 | 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
@@ -158,4 +160,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-26 after v2.0 reset and milestone definition*
+*Last updated: 2026-03-26 after Phase 1 planning*
