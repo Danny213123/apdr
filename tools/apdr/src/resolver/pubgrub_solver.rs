@@ -90,8 +90,7 @@ impl<'a> DependencyProvider for ApdrProvider<'a> {
         }
         // MRV: fewer matching versions → higher priority
         let mut store = self.store.borrow_mut();
-        let versions =
-            pypi_client::compatible_versions(&mut store, package, &self.python_version);
+        let versions = pypi_client::compatible_versions(&mut store, package, &self.python_version);
         let count = versions
             .iter()
             .filter(|v| range.contains(&PyVersion(v.to_string())))
@@ -109,8 +108,7 @@ impl<'a> DependencyProvider for ApdrProvider<'a> {
             return Ok(if range.contains(&v) { Some(v) } else { None });
         }
         let mut store = self.store.borrow_mut();
-        let versions =
-            pypi_client::compatible_versions(&mut store, package, &self.python_version);
+        let versions = pypi_client::compatible_versions(&mut store, package, &self.python_version);
         // Prefer highest compatible version
         let best = versions
             .iter()
@@ -260,7 +258,11 @@ pub fn solve_with_pubgrub(
         root_deps,
     };
 
-    match pubgrub::resolve(&provider, ROOT_PACKAGE.to_string(), PyVersion("0.0.0".to_string())) {
+    match pubgrub::resolve(
+        &provider,
+        ROOT_PACKAGE.to_string(),
+        PyVersion("0.0.0".to_string()),
+    ) {
         Ok(solution) => {
             let mut selected = BTreeMap::new();
             for (pkg, version) in solution {

@@ -66,33 +66,9 @@ pub fn validate_requirements(
             if summary.succeeded {
                 return Ok(summary);
             }
-            // Fall back to Docker when env validation fails due to:
-            // 1. Missing local Python interpreter (e.g. Python 3.12 not installed)
-            // 2. System-dep build errors (missing C headers / libraries)
-            // 3. Build timeout (packages compiling from source on Windows;
-            //    Docker/Linux has pre-built wheels)
-            // Docker images (python:X.Y-slim) have the right interpreter and
-            // can install system deps via apt-get.
-            let reqs_have_sys_deps =
-                !system_deps::infer_system_deps_from_requirements(requirements_txt).is_empty();
-            if command_on_path("docker")
-                && (env_has_system_dep_failure(&summary)
-                    || env_has_interpreter_failure(&summary)
-                    || env_has_build_timeout(&summary)
-                    || reqs_have_sys_deps)
-            {
-                let reason = if env_has_interpreter_failure(&summary) {
-                    "missing local Python interpreter"
-                } else if env_has_build_timeout(&summary) {
-                    "build timeout (Docker has pre-built wheels)"
-                } else if reqs_have_sys_deps {
-                    "packages require system libraries"
-                } else {
-                    "system-dep build errors"
-                };
-                eprintln!(
-                    "[validation] env failed with {reason}, retrying with Docker"
-                );
+            if should_retry_failed_env_validation_in_docker(&summary, requirements_txt) {
+                let reason = env_failure_reason_for_docker_retry(&summary, requirements_txt);
+                eprintln!("[validation] env failed with {reason}, retrying with Docker");
                 let docker_offset = attempt_offset + summary.attempts.len();
                 let mut docker_summary = validate_requirements_docker(
                     snippet_path,
@@ -149,7 +125,7 @@ fn validate_requirements_env(
     // when earlier attempts consumed most of the total.
     let min_attempt_budget = Duration::from_secs(120);
 
-    for (local_index, python_version) in candidate_versions.iter().enumerate() {
+    'versions: for (local_index, python_version) in candidate_versions.iter().enumerate() {
         // Check total validation budget before starting another attempt.
         // Require at least min_attempt_budget remaining so the attempt has a
         // realistic chance of completing.
@@ -219,6 +195,9 @@ fn validate_requirements_env(
                     ),
                 )?;
                 summary.attempts.push(attempt);
+                if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+                    break 'versions;
+                }
                 continue;
             }
         };
@@ -319,7 +298,10 @@ fn validate_requirements_env(
                 } else {
                     Err(io::Error::new(
                         io::ErrorKind::NotFound,
-                        format!("Extracted env missing bin/ directory: {}", env_dir.display()),
+                        format!(
+                            "Extracted env missing bin/ directory: {}",
+                            env_dir.display()
+                        ),
                     ))
                 }
             });
@@ -366,6 +348,10 @@ fn validate_requirements_env(
                     if !attempt.status.is_empty() {
                         let _ = fs::remove_dir_all(&env_dir);
                         summary.attempts.push(attempt);
+                        if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap())
+                        {
+                            break 'versions;
+                        }
                         continue;
                     }
                     let mut log = format!("(cache restore failed: {})\n", err);
@@ -396,6 +382,9 @@ fn validate_requirements_env(
             if !attempt.status.is_empty() {
                 let _ = fs::remove_dir_all(&env_dir);
                 summary.attempts.push(attempt);
+                if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+                    break 'versions;
+                }
                 continue;
             }
             result
@@ -436,6 +425,9 @@ fn validate_requirements_env(
             )?;
             let _ = fs::remove_dir_all(&env_dir);
             summary.attempts.push(attempt);
+            if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+                break 'versions;
+            }
             continue;
         }
 
@@ -494,6 +486,9 @@ fn validate_requirements_env(
             ),
         )?;
         summary.attempts.push(attempt);
+        if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+            break 'versions;
+        }
         // Clean up the venv to reclaim disk space (logs and metadata are preserved)
         let _ = fs::remove_dir_all(&env_dir);
     }
@@ -595,8 +590,15 @@ fn attempt_langgraph_agent(
   "validation_timeout_secs": {},
   "max_attempts": 5
 }}"#,
-        snippet_path.display().to_string().replace('\\', "\\\\").replace('"', "\\\""),
-        requirements_txt.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"),
+        snippet_path
+            .display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\""),
+        requirements_txt
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n"),
         imports
             .iter()
             .map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
@@ -808,8 +810,7 @@ fn validate_requirements_docker(
 
             global_attempt += 1;
             let attempt_index = attempt_offset + global_attempt;
-            let work_dir =
-                context::attempt_dir(&config.output_dir, attempt_index, python_version);
+            let work_dir = context::attempt_dir(&config.output_dir, attempt_index, python_version);
             fs::create_dir_all(&work_dir)?;
 
             let dockerfile_path = work_dir.join("Dockerfile");
@@ -822,10 +823,8 @@ fn validate_requirements_docker(
                 "docker build --progress=plain -t {image_tag} {}",
                 work_dir.display()
             );
-            let container_name =
-                docker_container_name(&build_key, python_version, attempt_index);
-            let run_command =
-                format!("docker run --rm --name {container_name} {image_tag}");
+            let container_name = docker_container_name(&build_key, python_version, attempt_index);
+            let run_command = format!("docker run --rm --name {container_name} {image_tag}");
 
             fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
             fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
@@ -1223,8 +1222,9 @@ fn create_and_install_env(
     let prereqs = build_time_prerequisites(&requirements_content, python_version);
     let mut prereq_ms = 0u128;
     if !prereqs.is_empty() {
-        let prereq_timeout =
-            timeout.saturating_sub(Duration::from_millis((create_output.duration_ms + bootstrap_ms) as u64));
+        let prereq_timeout = timeout.saturating_sub(Duration::from_millis(
+            (create_output.duration_ms + bootstrap_ms) as u64,
+        ));
         let mut command = Command::new(env_python);
         command
             .arg("-m")
@@ -1294,7 +1294,8 @@ fn create_and_install_env(
         // for scipy, Cython for certain C extensions).  The flag lets the
         // build process see the current env's site-packages.
         let remaining = timeout.saturating_sub(Duration::from_millis(
-            (create_output.duration_ms + bootstrap_ms + prereq_ms + install_output.duration_ms) as u64,
+            (create_output.duration_ms + bootstrap_ms + prereq_ms + install_output.duration_ms)
+                as u64,
         ));
         if remaining > Duration::from_secs(10) {
             let mut no_iso_cmd = Command::new(env_python);
@@ -1321,7 +1322,9 @@ fn create_and_install_env(
                     return Ok((
                         retry_build_output,
                         retry_output.exit_code,
-                        create_output.duration_ms + install_output.duration_ms + retry_output.duration_ms,
+                        create_output.duration_ms
+                            + install_output.duration_ms
+                            + retry_output.duration_ms,
                     ));
                 }
             }
@@ -1413,10 +1416,7 @@ fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Res
     let out_file = fs::File::create(tmp_out.path())?;
     let err_file = out_file.try_clone()?;
 
-    let mut child = command
-        .stdout(out_file)
-        .stderr(err_file)
-        .spawn()?;
+    let mut child = command.stdout(out_file).stderr(err_file).spawn()?;
     let started = Instant::now();
 
     // Adaptive polling: start fast (50ms) for short commands, back off
@@ -1620,12 +1620,8 @@ fn attempt_python_auto_install(python_version: &str) -> String {
     use std::collections::BTreeSet;
     static FAILED_MANAGERS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
     let failed = FAILED_MANAGERS.get_or_init(|| Mutex::new(BTreeSet::new()));
-    let is_failed = |name: &str| -> bool {
-        failed
-            .lock()
-            .map(|set| set.contains(name))
-            .unwrap_or(false)
-    };
+    let is_failed =
+        |name: &str| -> bool { failed.lock().map(|set| set.contains(name)).unwrap_or(false) };
     let mark_failed = |name: &str| {
         if let Ok(mut set) = failed.lock() {
             set.insert(name.to_string());
@@ -1858,15 +1854,23 @@ fn python_install_specs(python_version: &str) -> Vec<String> {
 /// `apt-get install` can fix.
 fn env_has_system_dep_failure(summary: &ValidationSummary) -> bool {
     for attempt in &summary.attempts {
-        if attempt.status != "build-failed" {
+        if attempt.status != "build-failed" && attempt.status != "runtime-failed" {
             continue;
         }
         let log = &attempt.log_excerpt;
-        if !system_deps::extract_system_deps_from_log(log).is_empty() {
+        if !system_deps::extract_system_deps_from_log(log).is_empty()
+            || system_deps::requires_external_runtime_from_log(log)
+        {
             return true;
         }
     }
     false
+}
+
+fn env_attempt_requires_backend_escalation(attempt: &ValidationAttempt) -> bool {
+    matches!(attempt.status.as_str(), "build-failed" | "runtime-failed")
+        && (!system_deps::extract_system_deps_from_log(&attempt.log_excerpt).is_empty()
+            || system_deps::requires_external_runtime_from_log(&attempt.log_excerpt))
 }
 
 /// Returns true when any env-backend attempt failed because the local Python
@@ -1884,9 +1888,7 @@ fn env_has_interpreter_failure(summary: &ValidationSummary) -> bool {
                 || attempt
                     .log_excerpt
                     .contains("Organization policies are preventing installation")
-                || attempt
-                    .log_excerpt
-                    .contains("python unavailable")
+                || attempt.log_excerpt.contains("python unavailable")
                 || attempt
                     .log_excerpt
                     .contains("Installer failed with exit code"))
@@ -1897,10 +1899,48 @@ fn env_has_interpreter_failure(summary: &ValidationSummary) -> bool {
 /// Docker/Linux typically has pre-built wheels available, avoiding lengthy
 /// from-source compilation that causes timeouts on Windows.
 fn env_has_build_timeout(summary: &ValidationSummary) -> bool {
-    summary
-        .attempts
-        .iter()
-        .any(|a| a.status == "build-timeout")
+    summary.attempts.iter().any(|a| a.status == "build-timeout")
+}
+
+fn should_retry_failed_env_validation_in_docker(
+    summary: &ValidationSummary,
+    requirements_txt: &str,
+) -> bool {
+    if summary.succeeded {
+        return false;
+    }
+    if summary.attempts.is_empty() {
+        return false;
+    }
+    let reqs_have_sys_deps =
+        !system_deps::infer_system_deps_from_requirements(requirements_txt).is_empty();
+    reqs_have_sys_deps
+        || env_has_system_dep_failure(summary)
+        || env_has_interpreter_failure(summary)
+        || env_has_build_timeout(summary)
+        || summary
+            .attempts
+            .iter()
+            .any(|attempt| attempt.validation_backend == VALIDATION_BACKEND_ENV)
+}
+
+fn env_failure_reason_for_docker_retry(
+    summary: &ValidationSummary,
+    requirements_txt: &str,
+) -> &'static str {
+    let reqs_have_sys_deps =
+        !system_deps::infer_system_deps_from_requirements(requirements_txt).is_empty();
+    if env_has_interpreter_failure(summary) {
+        "missing local Python interpreter"
+    } else if env_has_build_timeout(summary) {
+        "build timeout (Docker has pre-built wheels)"
+    } else if reqs_have_sys_deps {
+        "packages require system libraries"
+    } else if env_has_system_dep_failure(summary) {
+        "system-dep build errors"
+    } else {
+        "env validation failed"
+    }
 }
 
 fn command_on_path(command: &str) -> bool {
@@ -2157,9 +2197,7 @@ fn known_python_interpreter_paths(python_version: &str) -> Vec<PathBuf> {
     ];
 
     // ~/.local/bin/ — common on both Unix and Windows (uv, pipx, etc.)
-    if let Some(home) = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-    {
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         let home = PathBuf::from(home);
         let local_bin = home.join(".local").join("bin");
         paths.push(local_bin.join(format!("python{python_version}")));
@@ -2444,7 +2482,7 @@ fn create_env(
         let mut uv_cmd = Command::new("uv");
         uv_cmd
             .arg("venv")
-            .arg("--seed")          // install pip+setuptools so fallback `python -m pip` works
+            .arg("--seed") // install pip+setuptools so fallback `python -m pip` works
             .arg("--python")
             .arg(python_version)
             .arg(env_dir);
@@ -2812,5 +2850,45 @@ mod tests {
     #[test]
     fn normalized_command_output_path_rejects_empty_output() {
         assert_eq!(normalized_command_output_path(" \r\n\t "), None);
+    }
+
+    #[test]
+    fn retries_failed_env_validation_in_docker_for_generic_env_failure() {
+        let summary = ValidationSummary {
+            attempts: vec![ValidationAttempt {
+                status: "build-failed".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                log_excerpt: "some pip failure".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert!(should_retry_failed_env_validation_in_docker(
+            &summary,
+            "scrapy==1.8.3"
+        ));
+        assert_eq!(
+            env_failure_reason_for_docker_retry(&summary, "scrapy==1.8.3"),
+            "env validation failed"
+        );
+    }
+
+    #[test]
+    fn does_not_retry_successful_env_validation_in_docker() {
+        let summary = ValidationSummary {
+            succeeded: true,
+            attempts: vec![ValidationAttempt {
+                status: "passed".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert!(!should_retry_failed_env_validation_in_docker(
+            &summary,
+            "scrapy==1.8.3"
+        ));
     }
 }

@@ -1,0 +1,19 @@
+snippet: hard-gists/1218932/snippet.py
+selected_python: 3.9
+python_version_min: 2.7
+python_version_max: 2.7
+confidence: 0.72
+
+imports:
+- mosquitto
+- serial
+
+import_paths:
+- mosquitto
+- serial
+
+config_dependencies:
+- none
+
+scanned_files:
+- hard-gists/1218932/snippet.py

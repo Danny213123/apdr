@@ -1,0 +1,29 @@
+FROM qwen3.5:9b
+
+# === GPU Offload: all layers on GPU (RTX 5070 Ti 16GB) ===
+PARAMETER num_gpu 99
+
+# === Batch size for prompt processing (default 512, increase for faster prefill) ===
+PARAMETER num_batch 1024
+
+# === CPU threads for any CPU-side work (set to physical core count) ===
+PARAMETER num_thread 8
+
+# === Context window ===
+PARAMETER num_ctx 32768
+
+# === Deterministic output for dependency resolution ===
+PARAMETER temperature 0
+
+# === Disable sampling randomness for structured output ===
+PARAMETER top_k 1
+PARAMETER top_p 0.0
+
+# === Keep model loaded for 30 minutes between requests ===
+PARAMETER keep_alive 30m
+
+# === Stop sequences ===
+PARAMETER stop <|im_end|>
+PARAMETER stop <|endoftext|>
+
+SYSTEM """You are a Python dependency resolution assistant. You map Python import names to PyPI package names accurately and concisely. Always respond with valid JSON."""

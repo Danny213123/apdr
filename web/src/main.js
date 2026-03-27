@@ -36,6 +36,12 @@ const state = {
   sseConnectionState: "disconnected", // "connecting" | "connected" | "disconnected"
   ssePendingUpdates: [],
   sseUpdateScheduled: false,
+  renderCache: {
+    deterministicCasesKey: "",
+    llmCasesKey: "",
+    deterministicCaseIds: [],
+    llmCaseIds: [],
+  },
 };
 
 const ui = {
@@ -253,10 +259,21 @@ function renderDropdownOptions(dropdown) {
 }
 
 function setDropdownOptions(dropdown, options, value = dropdown.value) {
-  dropdown.options = options.map((option) => ({
+  const normalized = options.map((option) => ({
     value: String(option.value ?? ""),
     label: String(option.label ?? option.value ?? ""),
   }));
+  const sameOptions =
+    dropdown.options.length === normalized.length &&
+    dropdown.options.every(
+      (option, index) =>
+        option.value === normalized[index]?.value && option.label === normalized[index]?.label,
+    );
+  const nextValue = String(value ?? "");
+  if (sameOptions && dropdown.value === nextValue) {
+    return;
+  }
+  dropdown.options = normalized;
   setDropdownValue(dropdown, value, { emit: false });
   renderDropdownOptions(dropdown);
 }
@@ -310,6 +327,10 @@ function createDropdown(root, options = {}) {
     } else {
       openDropdown(dropdown);
     }
+  });
+
+  root.addEventListener("click", (event) => {
+    event.stopPropagation();
   });
 
   trigger.addEventListener("keydown", (event) => {
@@ -434,19 +455,19 @@ function setupLLMFilters() {
   // Status filter
   setupCustomSelect(ui.llmStatusFilter, (value) => {
     state.llmFilters.status = value;
-    applyLLMFilters();
+    applyLLMFilters({ force: true });
   });
 
   // Confidence filter
   setupCustomSelect(ui.llmConfidenceFilter, (value) => {
     state.llmFilters.confidence = value;
-    applyLLMFilters();
+    applyLLMFilters({ force: true });
   });
 
   // Python filter
   setupCustomSelect(ui.llmPythonFilter, (value) => {
     state.llmFilters.python = value;
-    applyLLMFilters();
+    applyLLMFilters({ force: true });
   });
 
   // Search input (debounced 150ms)
@@ -455,15 +476,16 @@ function setupLLMFilters() {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => {
       state.llmFilters.search = e.target.value.toLowerCase();
-      applyLLMFilters();
+      applyLLMFilters({ force: true });
     }, 150);
   });
 }
 
-function applyLLMFilters() {
+function applyLLMFilters(options = {}) {
+  const { force = false } = options;
   const run = displayRun();
   if (!run || !run.completedCases) {
-    renderLlmCases([]);
+    renderLlmCases([], { force });
     return;
   }
 
@@ -511,26 +533,26 @@ function applyLLMFilters() {
     return true;
   });
 
-  renderLlmCases(filtered);
+  renderLlmCases(filtered, { force });
 }
 
 function setupDeterministicFilters() {
   // Status filter
   setupCustomSelect(ui.detStatusFilter, (value) => {
     state.deterministicFilters.status = value;
-    applyDeterministicFilters();
+    applyDeterministicFilters({ force: true });
   });
 
   // Tier filter
   setupCustomSelect(ui.detTierFilter, (value) => {
     state.deterministicFilters.tier = value;
-    applyDeterministicFilters();
+    applyDeterministicFilters({ force: true });
   });
 
   // Python filter
   setupCustomSelect(ui.detPythonFilter, (value) => {
     state.deterministicFilters.python = value;
-    applyDeterministicFilters();
+    applyDeterministicFilters({ force: true });
   });
 
   // Search input (debounced 150ms per UI-SPEC performance contract)
@@ -539,15 +561,16 @@ function setupDeterministicFilters() {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => {
       state.deterministicFilters.search = e.target.value.toLowerCase();
-      applyDeterministicFilters();
+      applyDeterministicFilters({ force: true });
     }, 150);
   });
 }
 
-function applyDeterministicFilters() {
+function applyDeterministicFilters(options = {}) {
+  const { force = false } = options;
   const run = displayRun();
   if (!run || !run.completedCases) {
-    renderDeterministicCases([]);
+    renderDeterministicCases([], { force });
     return;
   }
 
@@ -589,7 +612,7 @@ function applyDeterministicFilters() {
     return true;
   });
 
-  renderDeterministicCases(filtered);
+  renderDeterministicCases(filtered, { force });
 }
 
 function renderConfidenceBadge(confidence, skipReason) {
@@ -707,6 +730,17 @@ function switchPage(pageId, options = {}) {
     window.history.replaceState({ pageId }, "", path);
   } else if (pushHistory && currentPath !== path) {
     window.history.pushState({ pageId }, "", path);
+  }
+  if (pageId === "home") {
+    renderHome();
+  } else if (pageId === "run") {
+    renderRunPage();
+  } else if (pageId === "configure") {
+    renderConfigure();
+  } else if (pageId === "loadouts") {
+    renderLoadouts();
+  } else if (pageId === "doctor") {
+    renderDoctor();
   }
   syncDocumentTitle();
 }
@@ -1088,6 +1122,7 @@ function filteredCases() {
 function buildCaseRow(item, openIds) {
   const node = ui.caseRowTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.caseId = item.caseId || "";
+  const summaryButton = node.querySelector(".case-summary");
   const stat = node.querySelector(".case-stat");
   stat.textContent = item.status || "-";
   stat.classList.add(statusToneClass(item.status));
@@ -1125,12 +1160,15 @@ function buildCaseRow(item, openIds) {
   node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
 
   if (openIds.has(item.caseId)) {
-    node.open = true;
+    node.classList.add("expanded");
+    summaryButton.setAttribute("aria-expanded", "true");
     renderCaseDetails(node.querySelector(".case-detail"), item);
   }
 
-  node.addEventListener("toggle", () => {
-    if (node.open) {
+  summaryButton.addEventListener("click", () => {
+    const isOpen = node.classList.toggle("expanded");
+    summaryButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (isOpen) {
       openIds.add(item.caseId);
       renderCaseDetails(node.querySelector(".case-detail"), item);
     } else {
@@ -1146,11 +1184,73 @@ function renderCases() {
   applyDeterministicFilters();
 }
 
-function renderDeterministicCases(filtered) {
+function caseRenderKey(items, fields) {
+  return items
+    .map((item) =>
+      fields
+        .map((field) => {
+          const value = item[field];
+          return value === undefined || value === null ? "" : String(value);
+        })
+        .join("~"),
+    )
+    .join("|");
+}
+
+function canAppendCases(previousIds, nextIds) {
+  if (!previousIds.length || nextIds.length < previousIds.length) {
+    return false;
+  }
+  for (let index = 0; index < previousIds.length; index += 1) {
+    if (previousIds[index] !== nextIds[index]) {
+      return false;
+    }
+  }
+  return nextIds.length > previousIds.length;
+}
+
+function renderDeterministicCases(filtered, options = {}) {
+  const { force = false } = options;
+  const nextIds = filtered.map((item) => item.caseId || "");
+  const nextKey = caseRenderKey(filtered, [
+    "caseId",
+    "status",
+    "tier",
+    "python",
+    "tries",
+    "seconds",
+    "result",
+    "dependencies",
+    "pllm",
+    "legacy",
+    "readpy",
+  ]);
+  ui.casesCount.textContent = `(${filtered.length})`;
+  if (!force && state.renderCache.deterministicCasesKey === nextKey) {
+    return;
+  }
+  if (
+    !force &&
+    canAppendCases(state.renderCache.deterministicCaseIds, nextIds) &&
+    ui.casesScroll.children.length > 0
+  ) {
+    const previousScrollTop = ui.casesScroll.scrollTop;
+    const fragment = document.createDocumentFragment();
+    for (const item of filtered.slice(state.renderCache.deterministicCaseIds.length)) {
+      fragment.appendChild(buildCaseRow(item, state.openCaseIds));
+    }
+    ui.casesScroll.appendChild(fragment);
+    ui.casesScroll.scrollTop = previousScrollTop;
+    state.renderCache.deterministicCasesKey = nextKey;
+    state.renderCache.deterministicCaseIds = nextIds;
+    return;
+  }
+  state.renderCache.deterministicCasesKey = nextKey;
+  state.renderCache.deterministicCaseIds = nextIds;
   const previousScrollTop = ui.casesScroll.scrollTop;
   ui.casesScroll.innerHTML = "";
-  ui.casesCount.textContent = `(${filtered.length})`;
   if (!filtered.length) {
+    state.renderCache.deterministicCaseIds = [];
     ui.casesScroll.innerHTML = `<div class="empty-line">No deterministic cases match current filters.</div>`;
     return;
   }
@@ -1165,6 +1265,7 @@ function renderDeterministicCases(filtered) {
 function buildLLMCaseRow(item, openIds) {
   const node = ui.caseRowTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.caseId = item.caseId || "";
+  const summaryButton = node.querySelector(".case-summary");
   const stat = node.querySelector(".case-stat");
 
   // Add confidence badge + cache badge to status column
@@ -1200,16 +1301,17 @@ function buildLLMCaseRow(item, openIds) {
   node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
 
   if (openIds.has(item.caseId)) {
-    node.open = true;
+    node.classList.add("expanded");
+    summaryButton.setAttribute("aria-expanded", "true");
     renderCaseDetails(node.querySelector(".case-detail"), item);
   }
 
-  node.addEventListener("toggle", () => {
-    if (node.open) {
+  summaryButton.addEventListener("click", () => {
+    const isOpen = node.classList.toggle("expanded");
+    summaryButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (isOpen) {
       openIds.add(item.caseId);
-      // Use renderCaseDetail for LLM-specific expandable content
-      const detailContainer = node.querySelector(".case-detail");
-      detailContainer.innerHTML = renderCaseDetail(item);
+      renderCaseDetails(node.querySelector(".case-detail"), item);
     } else {
       openIds.delete(item.caseId);
     }
@@ -1218,12 +1320,51 @@ function buildLLMCaseRow(item, openIds) {
   return node;
 }
 
-function renderLlmCases(filtered = null) {
+function renderLlmCases(filtered = null, options = {}) {
+  const { force = false } = options;
+  const llmCases = filtered !== null ? filtered : llmCasesForRun();
+  const nextIds = llmCases.map((item) => item.caseId || "");
+  ui.llmCasesCount.textContent = `(${llmCases.length})`;
+  const nextKey = caseRenderKey(llmCases, [
+    "caseId",
+    "status",
+    "confidence",
+    "skipReason",
+    "cached",
+    "python",
+    "tries",
+    "seconds",
+    "result",
+    "dependencies",
+    "pllm",
+    "legacy",
+    "readpy",
+  ]);
+  if (!force && state.renderCache.llmCasesKey === nextKey) {
+    return;
+  }
+  if (
+    !force &&
+    canAppendCases(state.renderCache.llmCaseIds, nextIds) &&
+    ui.llmCasesScroll.children.length > 0
+  ) {
+    const previousScrollTop = ui.llmCasesScroll.scrollTop;
+    const fragment = document.createDocumentFragment();
+    for (const item of llmCases.slice(state.renderCache.llmCaseIds.length)) {
+      fragment.appendChild(buildLLMCaseRow(item, state.openLlmCaseIds));
+    }
+    ui.llmCasesScroll.appendChild(fragment);
+    ui.llmCasesScroll.scrollTop = previousScrollTop;
+    state.renderCache.llmCasesKey = nextKey;
+    state.renderCache.llmCaseIds = nextIds;
+    return;
+  }
+  state.renderCache.llmCasesKey = nextKey;
+  state.renderCache.llmCaseIds = nextIds;
   const previousScrollTop = ui.llmCasesScroll.scrollTop;
   ui.llmCasesScroll.innerHTML = "";
-  const llmCases = filtered !== null ? filtered : llmCasesForRun();
-  ui.llmCasesCount.textContent = `(${llmCases.length})`;
   if (!llmCases.length) {
+    state.renderCache.llmCaseIds = [];
     const message = filtered !== null ? "No LLM cases match current filters." : "No LLM cases yet.";
     ui.llmCasesScroll.innerHTML = `<div class="empty-line">${message}</div>`;
     return;
@@ -1637,13 +1778,13 @@ function updateSuccessRateDashboard() {
 
 function formatSuccessRate(succeeded, failed, passed, total) {
   return `
-    <span style="color: #50fa7b; font-weight: bold;" title="Cases that passed validation">✓ ${succeeded}</span>
+    <span style="color: #50fa7b;">Successes: <span style="font-weight: bold;">${succeeded}</span></span>
     <span style="color: #6272a4;"> / </span>
-    <span style="color: #ff5555; font-weight: bold;" title="Cases that failed validation">✗ ${failed}</span>
+    <span style="color: #ff5555;">Failures: <span style="font-weight: bold;">${failed}</span></span>
     <span style="color: #6272a4;"> / </span>
-    <span style="color: #8be9fd; font-weight: bold;" title="Total passed (PASS + SKIP)">⊕ ${passed}</span>
+    <span style="color: #8be9fd;">Passed: <span style="font-weight: bold;">${passed}</span></span>
     <span style="color: #6272a4;"> / </span>
-    <span style="color: #f8f8f2;" title="Total cases">∑ ${total}</span>
+    <span style="color: #f8f8f2;">Total: <span style="font-weight: bold;">${total}</span></span>
   `;
 }
 
@@ -1658,8 +1799,12 @@ async function pollStatus() {
     state.currentRun = payload.currentRun;
     state.doctor = payload.doctor;
     renderHome();
-    renderRunPage();
-    renderDoctor();
+    if (state.activePage === "run") {
+      renderRunPage();
+    }
+    if (state.activePage === "doctor") {
+      renderDoctor();
+    }
 
     // Setup SSE when runId becomes available for active run
     const newRunId = state.currentRun?.runId || "";
@@ -1993,6 +2138,7 @@ function wireDoctor() {
 async function initialize() {
   // Start performance timer
   console.time("ui-interactive");
+  const initialPage = pathToPage(window.location.pathname);
 
   setupDropdowns();
   setupLLMFilters();
@@ -2016,10 +2162,14 @@ async function initialize() {
   populateToolSelect();
   syncControlsFromForm();
   renderHome();
-  renderRunPage();
-  renderConfigure();
-  renderDoctor();
-  switchPage(pathToPage(window.location.pathname), { pushHistory: false, replaceHistory: true });
+  if (initialPage === "run") {
+    renderRunPage();
+  } else if (initialPage === "configure") {
+    renderConfigure();
+  } else if (initialPage === "doctor") {
+    renderDoctor();
+  }
+  switchPage(initialPage, { pushHistory: false, replaceHistory: true });
 
   // Initialize SSE status indicator
   updateSSEStatusIndicator();
@@ -2040,10 +2190,8 @@ async function initialize() {
       state.selectedLoadoutSlug = state.loadouts[0]?.slug || "";
       renderLoadouts();
 
-      // Load run history (potentially large dataset)
-      state.runs = payload.runs || [];
-      state.selectedHistoryRunId = state.runs[0]?.runId || "";
-      populateRunHistorySelect();
+      // Load run history after first paint; this can be expensive on large repos.
+      await refreshRuns();
     } catch (err) {
       console.error("Deferred load failed:", err);
       // Non-fatal: UI still functional, just missing history/loadouts

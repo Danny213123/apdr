@@ -213,7 +213,10 @@ fn compress_and_extract_roundtrip() {
     fs::write(src.join("bin").join("python"), b"#!/usr/bin/env python\n").unwrap();
     fs::create_dir_all(src.join("lib").join("python3.10").join("site-packages")).unwrap();
     fs::write(
-        src.join("lib").join("python3.10").join("site-packages").join("hello.py"),
+        src.join("lib")
+            .join("python3.10")
+            .join("site-packages")
+            .join("hello.py"),
         b"print('hello')\n",
     )
     .unwrap();
@@ -231,7 +234,10 @@ fn compress_and_extract_roundtrip() {
     // Verify files
     assert!(dst.join("bin").join("python").exists());
     let content = fs::read_to_string(
-        dst.join("lib").join("python3.10").join("site-packages").join("hello.py"),
+        dst.join("lib")
+            .join("python3.10")
+            .join("site-packages")
+            .join("hello.py"),
     )
     .unwrap();
     assert_eq!(content, "print('hello')\n");
@@ -271,11 +277,7 @@ fn prune_handles_mixed_archive_and_dir_entries() {
     fs::write(archive_src.join("bin").join("python"), b"python").unwrap();
     let archive_path = envs_dir.join("build-new-archive.tar.zst");
     apdr::cache::maintenance::compress_env_to_archive(&archive_src, &archive_path).unwrap();
-    fs::write(
-        envs_dir.join("build-new-archive.tar.zst.last-used"),
-        "200",
-    )
-    .unwrap();
+    fs::write(envs_dir.join("build-new-archive.tar.zst.last-used"), "200").unwrap();
 
     // Prune to max 1 entry
     let summary = apdr::cache::maintenance::prune_validated_env_cache(&envs_dir, 1, None).unwrap();

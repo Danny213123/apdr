@@ -1,0 +1,6 @@
+resolved:
+- import=gi.repository package=PyGObject version=-- strategy=cache:seed confidence=0.97
+- import=youtube_dl package=youtube_dl version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

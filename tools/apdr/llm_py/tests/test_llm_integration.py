@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from unittest.mock import patch
 from pathlib import Path
 
 import pytest
@@ -126,17 +127,14 @@ def test_cache_behavior_across_calls(ollama_available):
     resp1 = handle(req)
     duration1 = time.time() - start1
 
-    # Second call (should hit cache)
+    # Second call should be served from the prompt-versioned JSON cache.
+    # If the cache misses, requests.post will raise and the test will fail.
     start2 = time.time()
-    resp2 = handle(req)
+    with patch("requests.post", side_effect=AssertionError("cache miss triggered network call")):
+        resp2 = handle(req)
     duration2 = time.time() - start2
 
-    # Cache hit should be MUCH faster (<100ms vs multiple seconds)
     print(f"First call: {duration1:.2f}s, Second call: {duration2:.2f}s")
-
-    # Assert second call is faster (cache hit)
-    assert duration2 < duration1 * 0.5, \
-        f"Second call should be faster (cache hit). First: {duration1:.2f}s, Second: {duration2:.2f}s"
 
     # Results should be identical (cache hit returns same response)
     assert resp1.fix_possible == resp2.fix_possible

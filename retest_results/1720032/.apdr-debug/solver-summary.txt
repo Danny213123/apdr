@@ -1,0 +1,10 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: boto, python-cloudfiles
+transitive_packages: --
+reason: --
+
+assignments:
+- boto==2.49.0
+- python-cloudfiles==1.7.11

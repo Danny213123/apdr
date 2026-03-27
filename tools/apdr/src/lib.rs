@@ -136,6 +136,14 @@ pub struct ValidationSummary {
     pub succeeded: bool,
     pub status: String,
     pub reason: Option<String>,
+    pub failure_bucket: String,
+    pub root_cause: Option<String>,
+    pub missing_module: Option<String>,
+    pub failing_package: Option<String>,
+    pub repair_strategy_applied: Option<String>,
+    pub skip_candidate: bool,
+    pub escalated_backend: Option<String>,
+    pub repeat_failure_signature: Option<String>,
     pub validation_backend: String,
     pub solve_duration_ms: u128,
     pub validation_duration_ms: u128,
@@ -356,7 +364,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\nsmoke_duration_ms: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\nsmoke_duration_ms: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfailure_bucket: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -400,6 +408,24 @@ impl ResolveResult {
                 &self.validation.status
             },
             self.validation.reason.as_deref().unwrap_or("--"),
+            if self.validation.failure_bucket.is_empty() {
+                "--"
+            } else {
+                &self.validation.failure_bucket
+            },
+            self.validation.root_cause.as_deref().unwrap_or("--"),
+            self.validation.missing_module.as_deref().unwrap_or("--"),
+            self.validation.failing_package.as_deref().unwrap_or("--"),
+            self.validation
+                .repair_strategy_applied
+                .as_deref()
+                .unwrap_or("--"),
+            self.validation.skip_candidate,
+            self.validation.escalated_backend.as_deref().unwrap_or("--"),
+            self.validation
+                .repeat_failure_signature
+                .as_deref()
+                .unwrap_or("--"),
             self.validation.selected_python_version.as_deref().unwrap_or("--"),
             self.build_image_id.as_deref().unwrap_or("--"),
             self.validation.lockfile_key.as_deref().unwrap_or("--"),
@@ -456,7 +482,6 @@ impl ResolveResult {
             }
         )
     }
-
 }
 
 /// Extract a short error hint (≤120 chars) from a log excerpt.
@@ -498,7 +523,7 @@ fn extract_error_hint(log: &str) -> String {
 impl ResolveResult {
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nSMOKE_DURATION_MS={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nSMOKE_DURATION_MS={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nFAILURE_BUCKET={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -540,6 +565,20 @@ impl ResolveResult {
                 &self.validation.status
             },
             self.validation.reason.as_deref().unwrap_or(""),
+            self.validation.failure_bucket.as_str(),
+            self.validation.root_cause.as_deref().unwrap_or(""),
+            self.validation.missing_module.as_deref().unwrap_or(""),
+            self.validation.failing_package.as_deref().unwrap_or(""),
+            self.validation
+                .repair_strategy_applied
+                .as_deref()
+                .unwrap_or(""),
+            self.validation.skip_candidate,
+            self.validation.escalated_backend.as_deref().unwrap_or(""),
+            self.validation
+                .repeat_failure_signature
+                .as_deref()
+                .unwrap_or(""),
             self.validation.selected_python_version.as_deref().unwrap_or(""),
             self.build_image_id.as_deref().unwrap_or(""),
             self.validation.lockfile_key.as_deref().unwrap_or(""),

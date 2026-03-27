@@ -42,6 +42,12 @@ pub fn resolve(
             continue;
         }
         if let Some((record, strategy)) = lookup_import_record(parse_result, &import_name, store) {
+            let record = apply_version_aware_seed_overrides(
+                parse_result,
+                &import_name,
+                &record,
+                python_version,
+            );
             if record.source == "heuristic:fuzzy" {
                 unresolved.push(import_name);
                 continue;
@@ -78,6 +84,40 @@ pub fn resolve(
         unresolved,
         cache_hits,
     }
+}
+
+fn apply_version_aware_seed_overrides(
+    parse_result: &ParseResult,
+    import_name: &str,
+    record: &crate::cache::store::PackageRecord,
+    python_version: &str,
+) -> crate::cache::store::PackageRecord {
+    let import_norm = crate::cache::store::normalize(import_name);
+    let package_norm = crate::cache::store::normalize(&record.package_name);
+
+    if record.source == "seed" && import_norm == "johnny" && package_norm == "johnny" {
+        let uses_johnny_cache_api = parse_result.import_paths.iter().any(|path| {
+            let normalized = crate::cache::store::normalize(path);
+            normalized == "johnny-cache" || normalized.starts_with("johnny-cache-")
+        });
+        if uses_johnny_cache_api {
+            let mut overridden = record.clone();
+            overridden.package_name = "johnny-cache".to_string();
+            return overridden;
+        }
+    }
+
+    if record.source == "seed"
+        && import_norm == "mecab"
+        && package_norm == "mecab-python3"
+        && python_version.starts_with("2.")
+    {
+        let mut overridden = record.clone();
+        overridden.package_name = "mecab-python".to_string();
+        return overridden;
+    }
+
+    record.clone()
 }
 
 fn candidate_imports(parse_result: &ParseResult, store: &CacheStore) -> Vec<String> {
@@ -178,7 +218,21 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
     // `config`/`conf` are project-local configuration modules.
     if matches!(
         normalized.as_str(),
-        "input-data" | "settings" | "config" | "conf" | "constants" | "urls" | "api" | "app" | "apps" | "views" | "models" | "forms" | "admin" | "tests" | "manage"
+        "input-data"
+            | "settings"
+            | "config"
+            | "conf"
+            | "constants"
+            | "urls"
+            | "api"
+            | "app"
+            | "apps"
+            | "views"
+            | "models"
+            | "forms"
+            | "admin"
+            | "tests"
+            | "manage"
     ) {
         return true;
     }

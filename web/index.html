@@ -426,8 +426,8 @@
     </main>
 
     <template id="case-row-template">
-      <details class="case-row">
-        <summary class="case-summary">
+      <article class="case-row">
+        <button class="case-summary" type="button" aria-expanded="false">
           <span class="case-stat"></span>
           <span class="case-tier"></span>
           <span class="case-id"></span>
@@ -439,13 +439,13 @@
           <span class="case-readpy"></span>
           <span class="case-result"></span>
           <span class="case-dependencies"></span>
-        </summary>
+        </button>
         <div class="case-detail">
           <div class="case-critical"></div>
           <div class="attempt-list"></div>
           <div class="file-list"></div>
         </div>
-      </details>
+      </article>
     </template>
 
     <script type="module" src="/src/main.js"></script>

@@ -1,0 +1,20 @@
+snippet: hard-gists/11405336/snippet.py
+selected_python: 3.9
+python_version_min: 3.9
+python_version_max: --
+confidence: 0.72
+
+imports:
+- gi
+
+import_paths:
+- gi.repository
+- gi.repository.Gio
+- gi.repository.Granite
+- gi.repository.Gtk
+
+config_dependencies:
+- none
+
+scanned_files:
+- hard-gists/11405336/snippet.py

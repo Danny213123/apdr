@@ -169,7 +169,8 @@ pub fn solve_dependency_graph(
 
     // For multiple Python versions, use parallel solving for faster resolution.
     // Each thread gets a cloned CacheStore (cheap since all data is already prefetched).
-    let success = Arc::new(Mutex::new(None::<SolveOutcome>));
+    let candidate_order = python_candidates.clone();
+    let successes = Arc::new(Mutex::new(BTreeMap::<String, SolveOutcome>::new()));
     let hard_failures = Arc::new(Mutex::new(Vec::new()));
     let incomplete_failures = Arc::new(Mutex::new(Vec::new()));
 
@@ -178,24 +179,19 @@ pub fn solve_dependency_graph(
         for python_version in python_candidates {
             let state_clone = state.clone();
             let mut store_clone = store.clone();
-            let success_ref = Arc::clone(&success);
+            let success_ref = Arc::clone(&successes);
             let hard_ref = Arc::clone(&hard_failures);
             let incomplete_ref = Arc::clone(&incomplete_failures);
 
             let handle = scope.spawn(move || {
-                // Check if another thread already succeeded
-                if success_ref.lock().unwrap().is_some() {
-                    return;
-                }
-
                 let mut budget = 12_000usize;
                 match solve_for_python(&mut store_clone, &state_clone, &python_version, &mut budget)
                 {
                     Ok(outcome) => {
-                        let mut success_guard = success_ref.lock().unwrap();
-                        if success_guard.is_none() {
-                            *success_guard = Some(outcome);
-                        }
+                        success_ref
+                            .lock()
+                            .unwrap()
+                            .insert(python_version.clone(), outcome);
                     }
                     Err(SolveError::Hard(reason)) => {
                         hard_ref
@@ -219,7 +215,11 @@ pub fn solve_dependency_graph(
         }
     });
 
-    if let Some(outcome) = Arc::try_unwrap(success).unwrap().into_inner().unwrap() {
+    let mut successes = Arc::try_unwrap(successes).unwrap().into_inner().unwrap();
+    if let Some(outcome) = candidate_order
+        .iter()
+        .find_map(|python_version| successes.remove(python_version))
+    {
         let (requirements, transitive_packages) =
             render_lockfile(&outcome.selected, &direct_packages);
         result.satisfiable = true;
@@ -350,7 +350,11 @@ fn solve_for_python(
     budget: &mut usize,
 ) -> Result<SolveOutcome, SolveError> {
     // Tier 1: Try PubGrub CDCL solver (context-aware conflict learning).
-    let constraints_btree: BTreeMap<String, String> = state.constraints.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let constraints_btree: BTreeMap<String, String> = state
+        .constraints
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     match super::pubgrub_solver::solve_with_pubgrub(store, &constraints_btree, python_version) {
         Ok(selected) => {
             return Ok(SolveOutcome {
@@ -500,8 +504,7 @@ fn propagate_forced(
             if state.selected.contains_key(&package) {
                 continue;
             }
-            let (count, forced_version) =
-                domain_info(store, state, &package, python_version)?;
+            let (count, forced_version) = domain_info(store, state, &package, python_version)?;
             if count == 0 {
                 let constraint = state
                     .constraints
@@ -650,8 +653,7 @@ fn domain_info(
 
     // Cache miss — clone constraint only now.
     let constraint = current_cst.to_string();
-    let versions =
-        compatible_versions_for_constraint(store, package, &constraint, python_version)?;
+    let versions = compatible_versions_for_constraint(store, package, &constraint, python_version)?;
     let len = versions.len();
     let forced = if len == 1 {
         Some(versions[0].clone())
@@ -705,11 +707,13 @@ fn compatible_versions_for_constraint(
     if let Some(pinned) = constraint.strip_prefix("==") {
         let pinned = pinned.trim();
         if !pinned.contains('*') && !pinned.contains(',') {
-            return Ok(if all_versions.iter().any(|v| v == pinned) {
-                vec![pinned.to_string()]
+            return if all_versions.iter().any(|v| v == pinned) {
+                Ok(vec![pinned.to_string()])
             } else {
-                Vec::new()
-            });
+                Err(SolveError::Incomplete(format!(
+                    "package `{package}` exact pin `{pinned}` is not present in cached solver metadata"
+                )))
+            };
         }
     }
     Ok(all_versions

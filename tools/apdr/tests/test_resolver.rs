@@ -1,5 +1,14 @@
 use std::path::PathBuf;
 
+fn resolve_fixture(snippet_name: &str, output_name: &str) -> apdr::ResolveResult {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures").join(snippet_name);
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target").join(output_name);
+    config.validate = false;
+    apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap()
+}
+
 #[test]
 fn resolver_maps_seeded_imports_to_packages() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -632,6 +641,81 @@ fn pre_solver_reports_unsat_without_validation_attempts() {
     std::fs::remove_dir_all(cache_path).unwrap();
 }
 
+#[test]
+fn pre_solver_treats_missing_exact_pin_as_incomplete_metadata() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-pre-solver-exact-pin-metadata-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    store
+        .save_pypi_versions("django", &["1.11.29".into()])
+        .unwrap();
+    store
+        .save_pypi_versions("johnny-cache", &["1.4".into()])
+        .unwrap();
+
+    let parse_result = apdr::ParseResult {
+        imports: vec!["django".to_string(), "johnny".to_string()],
+        import_paths: vec![
+            "django.core.management.base".to_string(),
+            "johnny.cache".to_string(),
+        ],
+        config_deps: vec![],
+        python_version_min: "2.7".to_string(),
+        python_version_max: Some("2.7".to_string()),
+        confidence: 0.9,
+        scanned_files: vec!["snippet.py".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
+    };
+    let resolved = vec![
+        apdr::ResolvedDependency {
+            import_name: "django".to_string(),
+            package_name: "Django".to_string(),
+            version: Some("1.8.19".to_string()),
+            strategy: "family:legacy-johnny-cache".to_string(),
+            confidence: 1.0,
+        },
+        apdr::ResolvedDependency {
+            import_name: "johnny".to_string(),
+            package_name: "johnny-cache".to_string(),
+            version: Some("1.4".to_string()),
+            strategy: "family:legacy-johnny-cache".to_string(),
+            confidence: 1.0,
+        },
+    ];
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.parallel_versions = false;
+
+    let result = apdr::resolver::pre_solve::solve_dependency_graph(
+        &parse_result,
+        &resolved,
+        "2.7",
+        &mut store,
+        &config,
+    );
+
+    assert!(result.attempted);
+    assert!(!result.satisfiable);
+    assert!(
+        !result.hard_unsat,
+        "exact pin missing from solver metadata should not be treated as hard UNSAT"
+    );
+    assert!(
+        result
+            .reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("exact pin `1.8.19`")
+            || result
+                .reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("exact pin `django==1.8.19`")
+    );
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // New fixture-based tests for recent bugfix scenarios
 // ---------------------------------------------------------------------------
@@ -653,7 +737,10 @@ fn py2_memcache_maps_to_python_memcached_with_version_cap() {
     assert_eq!(result.python_version, "2.7");
     // memcache import must resolve to python-memcached (not left unresolved)
     assert!(
-        result.requirements_txt.to_lowercase().contains("python-memcached"),
+        result
+            .requirements_txt
+            .to_lowercase()
+            .contains("python-memcached"),
         "Expected python-memcached in requirements, got: {}",
         result.requirements_txt,
     );
@@ -699,7 +786,16 @@ fn scrapy_peewee_resolves_both_packages() {
         "Expected pinned scrapy version for Py2, got: {}",
         result.requirements_txt,
     );
-    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+    assert!(
+        result.requirements_txt.contains("lxml==4.6.5"),
+        "Expected Py2-compatible lxml pin for scrapy bundle, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        result.unresolved.is_empty(),
+        "Unexpected unresolved: {:?}",
+        result.unresolved
+    );
 }
 
 #[test]
@@ -718,7 +814,10 @@ fn protobuf_tensorflow_includes_protobuf_dep() {
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
     assert!(
-        result.requirements_txt.to_lowercase().contains("tensorflow"),
+        result
+            .requirements_txt
+            .to_lowercase()
+            .contains("tensorflow"),
         "Expected tensorflow in requirements, got: {}",
         result.requirements_txt,
     );
@@ -766,7 +865,11 @@ fn flask_extensions_resolve_with_flask_prefix() {
         "Expected redis, got: {}",
         result.requirements_txt,
     );
-    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+    assert!(
+        result.unresolved.is_empty(),
+        "Unexpected unresolved: {:?}",
+        result.unresolved
+    );
 }
 
 #[test]
@@ -802,7 +905,11 @@ fn cv2_serial_maps_to_correct_pypi_packages() {
         "Expected numpy, got: {}",
         result.requirements_txt,
     );
-    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+    assert!(
+        result.unresolved.is_empty(),
+        "Unexpected unresolved: {:?}",
+        result.unresolved
+    );
 }
 
 #[test]
@@ -1029,5 +1136,138 @@ fn geospatial_fiona_resolves_key_packages() {
         "Expected geopandas in requirements, got: {}",
         result.requirements_txt,
     );
-    assert!(result.unresolved.is_empty(), "Unexpected unresolved: {:?}", result.unresolved);
+    assert!(
+        result.unresolved.is_empty(),
+        "Unexpected unresolved: {:?}",
+        result.unresolved
+    );
+}
+
+#[test]
+fn resolver_marks_opendirectory_as_host_runtime_skip() {
+    let result = resolve_fixture(
+        "skip_opendirectory_snippet.py",
+        "test-skip-opendirectory-output",
+    );
+    assert_eq!(result.validation.status, "skipped-host-runtime");
+}
+
+#[test]
+fn resolver_marks_microbit_as_host_runtime_skip() {
+    let result = resolve_fixture("skip_microbit_snippet.py", "test-skip-microbit-output");
+    assert_eq!(result.validation.status, "skipped-host-runtime");
+}
+
+#[test]
+fn resolver_marks_binaryninja_as_host_runtime_skip() {
+    let result = resolve_fixture(
+        "skip_binaryninja_snippet.py",
+        "test-skip-binaryninja-output",
+    );
+    assert_eq!(result.validation.status, "skipped-host-runtime");
+}
+
+#[test]
+fn resolver_marks_pythonista_clipboard_camera_as_host_runtime_skip() {
+    let result = resolve_fixture(
+        "skip_pythonista_clipboard_camera_snippet.py",
+        "test-skip-pythonista-output",
+    );
+    assert_eq!(result.validation.status, "skipped-host-runtime");
+}
+
+#[test]
+fn namespace_validation_rejects_invalid_swaps() {
+    assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed("PySide", "PySide6",));
+    assert!(
+        !apdr::resolver::family_knowledge::namespace_mapping_allowed("mosquitto", "paho-mqtt",)
+    );
+    assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed("ldap", "ldap3",));
+    assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed("oaipmh", "a",));
+    assert!(
+        !apdr::resolver::family_knowledge::namespace_mapping_allowed("Levenshtein", "fuzzywuzzy",)
+    );
+}
+
+#[test]
+fn resolver_applies_legacy_flask_bundle() {
+    let result = resolve_fixture(
+        "legacy_flask_stack_snippet.py",
+        "test-legacy-flask-bundle-output",
+    );
+    assert!(result.requirements_txt.contains("Flask==1.1.4"));
+    assert!(result.requirements_txt.contains("Jinja2==2.11.3"));
+    assert!(result.requirements_txt.contains("MarkupSafe==1.1.1"));
+    assert!(result.requirements_txt.contains("Werkzeug==1.0.1"));
+}
+
+#[test]
+fn resolver_applies_cfscrape_bundle() {
+    let result = resolve_fixture("cfscrape_snippet.py", "test-cfscrape-bundle-output");
+    assert!(result.requirements_txt.contains("cfscrape==1.2.1"));
+    assert!(result.requirements_txt.contains("urllib3==1.26.18"));
+}
+
+#[test]
+fn resolver_applies_legacy_ggplot_bundle() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/legacy_ggplot_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-ggplot-bundle-output");
+    config.validate = false;
+    config.python_version = Some("3.8".to_string());
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+    assert!(result.requirements_txt.contains("ggplot==0.11.5"));
+    assert!(result.requirements_txt.contains("pandas==0.24.2"));
+}
+
+#[test]
+fn resolver_applies_simplecv_bundle() {
+    let result = resolve_fixture("simplecv_snippet.py", "test-simplecv-bundle-output");
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(req_lower.contains("simplecv==1.3"));
+    assert!(req_lower.contains("opencv-python-headless==4.5.5.64"));
+}
+
+#[test]
+fn resolver_skips_vendor_caffe_case() {
+    let result = resolve_fixture("vendor_caffe_snippet.py", "test-vendor-caffe-output");
+    assert_eq!(result.validation.status, "skipped-unsolvable");
+}
+
+#[test]
+fn resolver_maps_johnny_cache_imports_to_johnny_cache_package() {
+    let result = resolve_fixture("johnny_cache_snippet.py", "test-johnny-cache-output");
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("johnny-cache"),
+        "Expected johnny-cache in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        !req_lower.contains("\njohnny\n") && !req_lower.starts_with("johnny\n"),
+        "Did not expect bare johnny package in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        req_lower.contains("django==1.8.19"),
+        "Expected legacy Django pin for johnny-cache snippet, got: {}",
+        result.requirements_txt,
+    );
+}
+
+#[test]
+fn resolver_prefers_mecab_python_for_python2_snippets() {
+    let result = resolve_fixture("python2_mecab_snippet.py", "test-python2-mecab-output");
+    let req_lower = result.requirements_txt.to_lowercase();
+    assert!(
+        req_lower.contains("mecab-python"),
+        "Expected mecab-python in requirements, got: {}",
+        result.requirements_txt,
+    );
+    assert!(
+        !req_lower.contains("mecab-python3"),
+        "Did not expect mecab-python3 for Python 2 snippet, got: {}",
+        result.requirements_txt,
+    );
 }

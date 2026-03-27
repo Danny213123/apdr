@@ -1,0 +1,9 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: paho-mqtt
+transitive_packages: --
+reason: --
+
+assignments:
+- paho-mqtt==2.1.0

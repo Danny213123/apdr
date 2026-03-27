@@ -1,0 +1,9 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: word2vec
+transitive_packages: --
+reason: --
+
+assignments:
+- word2vec==0.11.1

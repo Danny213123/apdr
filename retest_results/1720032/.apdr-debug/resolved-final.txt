@@ -1,0 +1,6 @@
+resolved:
+- import=boto package=boto version=-- strategy=cache:seed confidence=0.97
+- import=cloudfiles package=python-cloudfiles version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

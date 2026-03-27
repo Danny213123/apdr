@@ -1,0 +1,6 @@
+resolved:
+- import=mosquitto package=paho-mqtt version=-- strategy=cache:seed confidence=0.97
+- import=serial package=pyserial version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

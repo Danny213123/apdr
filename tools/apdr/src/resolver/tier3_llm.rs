@@ -57,7 +57,9 @@ fn find_python() -> String {
         // Common Windows install locations (newest first)
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
             for ver in &["312", "311", "310", "39"] {
-                candidates.push(format!("{local}\\Programs\\Python\\Python{ver}\\python.exe"));
+                candidates.push(format!(
+                    "{local}\\Programs\\Python\\Python{ver}\\python.exe"
+                ));
             }
         }
     }
@@ -414,11 +416,11 @@ pub fn resolve(
             .unwrap_or_default();
 
     // Build attribute_usage as JSON
-    let attr_usage: serde_json::Value = serde_json::json!(
-        parse_result.attribute_usage.iter().map(|(k, v)| {
-            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
-        }).collect::<std::collections::BTreeMap<_, _>>()
-    );
+    let attr_usage: serde_json::Value = serde_json::json!(parse_result
+        .attribute_usage
+        .iter()
+        .map(|(k, v)| { (k.clone(), v.iter().cloned().collect::<Vec<_>>()) })
+        .collect::<std::collections::BTreeMap<_, _>>());
 
     // Build tier2 candidates for each import (#3: KGraph-grounded)
     let tier2_candidates = build_tier2_candidates(store, &llm_candidates, python_version);
@@ -542,7 +544,12 @@ pub fn resolve(
         .collect();
 
     let batch_versions = if !packages_needing_versions.is_empty() {
-        batch_pick_versions(config, &packages_needing_versions, python_version, &benchmark_context)
+        batch_pick_versions(
+            config,
+            &packages_needing_versions,
+            python_version,
+            &benchmark_context,
+        )
     } else {
         HashMap::new()
     };
@@ -557,7 +564,12 @@ pub fn resolve(
                 .or_else(|| version_sampler::equally_distanced_sample(&entry.versions, &[]))
         };
 
-        let _ = store.save_import_mapping(&entry.import_name, &entry.package_name, version.as_deref(), "llm");
+        let _ = store.save_import_mapping(
+            &entry.import_name,
+            &entry.package_name,
+            version.as_deref(),
+            "llm",
+        );
         resolved.push(ResolvedDependency {
             import_name: entry.import_name.clone(),
             package_name: entry.package_name.clone(),
@@ -565,7 +577,10 @@ pub fn resolve(
             strategy: "llm".to_string(),
             confidence: llm_confidence,
         });
-        notes.push(format!("LLM resolved {} -> {}.", entry.import_name, entry.package_name));
+        notes.push(format!(
+            "LLM resolved {} -> {}.",
+            entry.import_name, entry.package_name
+        ));
     }
 
     StageResult {
@@ -627,11 +642,11 @@ pub fn resolve_with_context(
         context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
-    let attr_usage: serde_json::Value = serde_json::json!(
-        parse_result.attribute_usage.iter().map(|(k, v)| {
-            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
-        }).collect::<std::collections::BTreeMap<_, _>>()
-    );
+    let attr_usage: serde_json::Value = serde_json::json!(parse_result
+        .attribute_usage
+        .iter()
+        .map(|(k, v)| { (k.clone(), v.iter().cloned().collect::<Vec<_>>()) })
+        .collect::<std::collections::BTreeMap<_, _>>());
 
     let tier2_candidates = build_tier2_candidates(store, &llm_candidates, python_version);
 
@@ -769,13 +784,14 @@ pub fn single_package_hint(
         context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
             .unwrap_or_default();
 
-    let attr_usage: serde_json::Value = serde_json::json!(
-        parse_result.attribute_usage.iter().map(|(k, v)| {
-            (k.clone(), v.iter().cloned().collect::<Vec<_>>())
-        }).collect::<std::collections::BTreeMap<_, _>>()
-    );
+    let attr_usage: serde_json::Value = serde_json::json!(parse_result
+        .attribute_usage
+        .iter()
+        .map(|(k, v)| { (k.clone(), v.iter().cloned().collect::<Vec<_>>()) })
+        .collect::<std::collections::BTreeMap<_, _>>());
 
-    let tier2_candidates = build_tier2_candidates(store, &[import_name.to_string()], python_version);
+    let tier2_candidates =
+        build_tier2_candidates(store, &[import_name.to_string()], python_version);
 
     let mut request = build_base_request(config);
     request["action"] = "single".into();
@@ -786,7 +802,12 @@ pub fn single_package_hint(
     request["attribute_usage"] = attr_usage;
     request["tier2_candidates"] = tier2_candidates;
 
-    persist_trace(config, &format!("single-package-{import_name}"), &request, None);
+    persist_trace(
+        config,
+        &format!("single-package-{import_name}"),
+        &request,
+        None,
+    );
 
     let response = call_python(&request)?;
     persist_trace(
@@ -809,7 +830,13 @@ pub fn single_package_hint(
     let version = if versions.is_empty() {
         None
     } else {
-        let llm_v = pick_version_via_python(config, &mapped, &versions, python_version, &benchmark_context);
+        let llm_v = pick_version_via_python(
+            config,
+            &mapped,
+            &versions,
+            python_version,
+            &benchmark_context,
+        );
         llm_v.or_else(|| version_sampler::equally_distanced_sample(&versions, &[]))
     };
 
@@ -1010,7 +1037,9 @@ fn batch_pick_versions(
     // For single package, fall back to single-package call
     if packages.len() == 1 {
         let (pkg, versions) = &packages[0];
-        if let Some(v) = pick_version_via_python(config, pkg, versions, python_version, benchmark_context) {
+        if let Some(v) =
+            pick_version_via_python(config, pkg, versions, python_version, benchmark_context)
+        {
             let mut map = HashMap::new();
             map.insert(pkg.clone(), v);
             return map;
@@ -1143,20 +1172,81 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
     // Expanded local module list matching Python-side local_detector.py (#4)
     if matches!(
         normalized.as_str(),
-        "input-data" | "settings" | "config" | "conf" | "constants" | "urls" | "api" | "app" | "apps"
-        | "views" | "models" | "forms" | "admin" | "tests" | "manage" | "wsgi" | "asgi"
-        | "conftest" | "tasks" | "celery-tasks"
-        | "util" | "utils" | "helper" | "helpers" | "common" | "shared" | "base" | "core"
-        | "main" | "run" | "setup" | "version"
-        | "db" | "database" | "middleware" | "serializers" | "permissions" | "signals"
-        | "routers" | "schemas" | "exceptions" | "mixins" | "decorators"
-        | "context-processors" | "templatetags" | "management" | "fixtures" | "migrations"
-        | "factory" | "factories" | "mocks" | "stubs" | "testutils" | "test-helpers"
-        | "local-settings" | "production-settings" | "development-settings"
-        | "celeryconfig" | "gunicorn-config" | "uwsgi"
-        | "input" | "output" | "data" | "result" | "results"
-        | "solution" | "answer" | "submission" | "benchmark" | "train" | "test"
-        | "evaluate" | "predict" | "preprocess" | "postprocess"
+        "input-data"
+            | "settings"
+            | "config"
+            | "conf"
+            | "constants"
+            | "urls"
+            | "api"
+            | "app"
+            | "apps"
+            | "views"
+            | "models"
+            | "forms"
+            | "admin"
+            | "tests"
+            | "manage"
+            | "wsgi"
+            | "asgi"
+            | "conftest"
+            | "tasks"
+            | "celery-tasks"
+            | "util"
+            | "utils"
+            | "helper"
+            | "helpers"
+            | "common"
+            | "shared"
+            | "base"
+            | "core"
+            | "main"
+            | "run"
+            | "setup"
+            | "version"
+            | "db"
+            | "database"
+            | "middleware"
+            | "serializers"
+            | "permissions"
+            | "signals"
+            | "routers"
+            | "schemas"
+            | "exceptions"
+            | "mixins"
+            | "decorators"
+            | "context-processors"
+            | "templatetags"
+            | "management"
+            | "fixtures"
+            | "migrations"
+            | "factory"
+            | "factories"
+            | "mocks"
+            | "stubs"
+            | "testutils"
+            | "test-helpers"
+            | "local-settings"
+            | "production-settings"
+            | "development-settings"
+            | "celeryconfig"
+            | "gunicorn-config"
+            | "uwsgi"
+            | "input"
+            | "output"
+            | "data"
+            | "result"
+            | "results"
+            | "solution"
+            | "answer"
+            | "submission"
+            | "benchmark"
+            | "train"
+            | "test"
+            | "evaluate"
+            | "predict"
+            | "preprocess"
+            | "postprocess"
     ) {
         return true;
     }

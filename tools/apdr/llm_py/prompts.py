@@ -268,6 +268,11 @@ You can:
 4. Remove a wrong package: set remove_package (for local modules or wrong PyPI packages)
 5. Any combination of the above.
 If no fix is possible, set fix_possible=false.
+
+CRITICAL: only suggest package swaps that preserve the imported namespace.
+VALID: ldap -> python-ldap, Levenshtein -> python-Levenshtein, psycopg2 -> psycopg2-binary
+INVALID: PySide -> PySide6, mosquitto -> paho-mqtt, ldap -> ldap3, oaipmh -> a, Levenshtein -> fuzzywuzzy
+If the replacement would not provide the same import path, do not suggest it.
 """
 
 # ---------------------------------------------------------------------------

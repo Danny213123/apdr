@@ -40,7 +40,9 @@ pub fn classify_log(log: &str, store: &CacheStore) -> ClassifierResult {
     } else if lowercase.contains("command not found")
         || lowercase.contains("cannot find -l")
         || lowercase.contains("no such file or directory")
-            && (lowercase.contains(".so") || lowercase.contains(".dylib") || lowercase.contains(".h"))
+            && (lowercase.contains(".so")
+                || lowercase.contains(".dylib")
+                || lowercase.contains(".h"))
         || lowercase.contains("pkg-config")
     {
         "SystemDependency"

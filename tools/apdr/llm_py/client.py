@@ -20,6 +20,8 @@ import logging
 import math
 import os
 import re
+import tempfile
+import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -45,21 +47,42 @@ os.environ.setdefault("OLLAMA_KEEP_ALIVE", "-1")
 
 # --- #7: Enable LiteLLM disk caching ---
 _cache_initialized = False
+_json_completion_cache: dict[str, str] = {}
+_json_completion_cache_lock = threading.Lock()
 
 
 def _init_cache(cache_dir: str = "") -> None:
     global _cache_initialized
     if _cache_initialized:
         return
-    _cache_initialized = True
-    try:
-        from litellm.caching.caching import Cache
-        disk_dir = cache_dir or str(Path.home() / ".apdr-cache" / "llm-cache")
-        Path(disk_dir).mkdir(parents=True, exist_ok=True)
-        litellm.cache = Cache(type="disk", disk_cache_dir=disk_dir)
-        logger.info("LiteLLM disk cache enabled at %s", disk_dir)
-    except Exception as e:
-        logger.warning("Failed to enable LiteLLM cache: %s", e)
+    from litellm.caching.caching import Cache
+
+    candidate_dirs: list[Path] = []
+    if cache_dir:
+        candidate_dirs.append(Path(cache_dir))
+
+    repo_cache_dir = Path(__file__).resolve().parents[3] / ".apdr-cache" / "llm-cache"
+    candidate_dirs.extend(
+        [
+            Path.home() / ".apdr-cache" / "llm-cache",
+            repo_cache_dir,
+            Path(tempfile.gettempdir()) / "apdr-cache" / "llm-cache",
+        ]
+    )
+
+    last_error: Exception | None = None
+    for disk_path in candidate_dirs:
+        try:
+            disk_path.mkdir(parents=True, exist_ok=True)
+            litellm.cache = Cache(type="disk", disk_cache_dir=str(disk_path))
+            _cache_initialized = True
+            logger.info("LiteLLM disk cache enabled at %s", disk_path)
+            return
+        except Exception as e:
+            last_error = e
+            logger.debug("LiteLLM cache init failed at %s: %s", disk_path, e)
+
+    logger.warning("Failed to enable LiteLLM cache: %s", last_error)
 
 
 _prewarm_done = False
@@ -229,6 +252,40 @@ class LlmClient:
             # Fallback: use function name if source unavailable
             return prompt_fn.__name__
 
+    def _action_name_for_prompt(self, system_prompt: str) -> str:
+        """Classify the invoking workflow for per-action cache metrics."""
+        from . import prompts
+
+        if system_prompt == prompts.RECOVERY_SYSTEM:
+            return "recovery"
+        if system_prompt == getattr(prompts, "SOLVABILITY_SYSTEM", ""):
+            return "solvability"
+        if system_prompt == getattr(prompts, "RESOLUTION_SYSTEM", ""):
+            return "resolve"
+        return "unknown"
+
+    def _json_cache_key(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        num_ctx: int,
+    ) -> str:
+        payload = {
+            "provider": self.provider,
+            "model": self.model,
+            "base_url": self.base_url,
+            "prompt_version": self._prompt_version_hash,
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "num_ctx": num_ctx,
+        }
+        canonical = json.dumps(payload, sort_keys=True)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     def _init_cache_with_versioning(self):
         """Configure LiteLLM cache with prompt version injection.
 
@@ -239,8 +296,11 @@ class LlmClient:
             return
 
         cache = litellm.cache
-        original_get_key = cache.get_cache_key
+        original_get_key = getattr(cache, "_apdr_original_get_cache_key", cache.get_cache_key)
         prompt_hash = self._prompt_version_hash
+
+        if getattr(cache, "_apdr_prompt_hash", None) == prompt_hash:
+            return
 
         def versioned_get_cache_key(*args, **kwargs):
             """Inject prompt version into cache key."""
@@ -248,6 +308,8 @@ class LlmClient:
             # Prepend prompt version to ensure invalidation on prompt change
             return f"v{prompt_hash}:{base_key}"
 
+        cache._apdr_original_get_cache_key = original_get_key
+        cache._apdr_prompt_hash = prompt_hash
         cache.get_cache_key = versioned_get_cache_key
         logger.debug("LiteLLM cache configured with prompt version %s", prompt_hash)
 
@@ -418,6 +480,7 @@ class LlmClient:
         """
         import time
         started = time.time()
+        action_name = self._action_name_for_prompt(system_prompt)
 
         schema_instructions = _format_schema_instructions(response_model)
         augmented_prompt = f"{user_prompt}\n\n{schema_instructions}"
@@ -457,6 +520,7 @@ class LlmClient:
                     "LLM completion finished",
                     extra={
                         "event": "llm_completion",
+                        "action": action_name,
                         "cache_hit": cache_hit,
                         "duration_ms": duration_ms,
                         "model": self.model,
@@ -487,6 +551,17 @@ class LlmClient:
     ) -> str | None:
         """Get raw JSON text from the LLM, using format=json for Ollama."""
         if self.provider == "ollama":
+            cache_key = self._json_cache_key(
+                system_prompt,
+                user_prompt,
+                temperature,
+                max_tokens,
+                num_ctx,
+            )
+            with _json_completion_cache_lock:
+                cached = _json_completion_cache.get(cache_key)
+            if cached is not None:
+                return cached
             try:
                 import requests as req_lib
                 effective_ctx = num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384"))
@@ -520,7 +595,10 @@ class LlmClient:
                     data = resp.json()
                     content = data.get("message", {}).get("content", "")
                     if content:
-                        return content.strip()
+                        cleaned = content.strip()
+                        with _json_completion_cache_lock:
+                            _json_completion_cache[cache_key] = cleaned
+                        return cleaned
             except Exception as e:
                 logger.warning("Ollama JSON call failed: %s", e)
         # Non-Ollama or Ollama failed: use raw text completion

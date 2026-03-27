@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::cache::store::{normalize, CacheStore};
+use crate::resolver::family_knowledge;
 use crate::resolver::pypi_client;
 use crate::resolver::version_sampler;
 use crate::{ParseResult, ResolvedDependency};
@@ -48,7 +49,10 @@ const NAMESPACE_PACKAGES: &[(&str, &str)] = &[
     ("azure.keyvault", "azure-keyvault"),
     ("azure.servicebus", "azure-servicebus"),
     ("azure.eventhub", "azure-eventhub"),
-    ("azure.cognitiveservices", "azure-cognitiveservices-vision-computervision"),
+    (
+        "azure.cognitiveservices",
+        "azure-cognitiveservices-vision-computervision",
+    ),
     ("azure.mgmt", "azure-mgmt-core"),
     ("azure.core", "azure-core"),
     ("zope.interface", "zope.interface"),
@@ -243,6 +247,10 @@ pub fn resolve(
             unresolved.push(import_name.clone());
             continue;
         }
+        if is_known_unsolvable_import(store, import_name) {
+            unresolved.push(import_name.clone());
+            continue;
+        }
         let normalized = normalize(import_name);
 
         if config_packages.contains(&normalized) {
@@ -282,7 +290,10 @@ pub fn resolve(
                     // This prevents falling through to exact-match which would
                     // find the wrong package (e.g., `freetype` on PyPI != `freetype-py`).
                     let is_different_name = normalize(prefix) != pkg_norm;
-                    if is_different_name || pypi_client::package_exists(store, &pkg_norm, python_version) {
+                    if (is_different_name
+                        || pypi_client::package_exists(store, &pkg_norm, python_version))
+                        && family_knowledge::namespace_mapping_allowed(import_name, package)
+                    {
                         let versions =
                             pypi_client::compatible_versions(store, &pkg_norm, python_version);
                         let version = version_sampler::equally_distanced_sample(&versions, &[]);
@@ -310,7 +321,9 @@ pub fn resolve(
             }
         }
 
-        if pypi_client::package_exists(store, &normalized, python_version) {
+        if pypi_client::package_exists(store, &normalized, python_version)
+            && family_knowledge::namespace_mapping_allowed(import_name, &normalized)
+        {
             let versions = pypi_client::compatible_versions(store, &normalized, python_version);
             let version = version_sampler::equally_distanced_sample(&versions, &[]);
             let _ = store.save_import_mapping(
@@ -355,7 +368,9 @@ pub fn resolve(
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
             if let Some((candidate, _sim)) = best_trigram {
-                if pypi_client::package_exists(store, &candidate, python_version) {
+                if pypi_client::package_exists(store, &candidate, python_version)
+                    && family_knowledge::namespace_mapping_allowed(import_name, &candidate)
+                {
                     let versions =
                         pypi_client::compatible_versions(store, &candidate, python_version);
                     let version = version_sampler::equally_distanced_sample(&versions, &[]);
@@ -410,6 +425,10 @@ pub fn resolve(
             });
 
         if let Some((candidate, _distance)) = best_match {
+            if !family_knowledge::namespace_mapping_allowed(import_name, &candidate) {
+                unresolved.push(import_name.clone());
+                continue;
+            }
             let versions = pypi_client::compatible_versions(store, &candidate, python_version);
             let version = version_sampler::equally_distanced_sample(&versions, &[]);
             resolved.push(ResolvedDependency {
@@ -518,9 +537,23 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
     // project-local module names.
     if matches!(
         normalized.as_str(),
-        "input-data" | "settings" | "config" | "conf" | "constants" | "urls"
-            | "api" | "app" | "apps" | "views" | "models" | "forms" | "admin"
-            | "tests" | "manage" | "wsgi" | "asgi"
+        "input-data"
+            | "settings"
+            | "config"
+            | "conf"
+            | "constants"
+            | "urls"
+            | "api"
+            | "app"
+            | "apps"
+            | "views"
+            | "models"
+            | "forms"
+            | "admin"
+            | "tests"
+            | "manage"
+            | "wsgi"
+            | "asgi"
     ) {
         return true;
     }
@@ -535,4 +568,12 @@ fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str)
                 && np.starts_with(normalized.as_str())
                 && np.as_bytes()[normalized.len()] == b'-'
         })
+}
+
+fn is_known_unsolvable_import(store: &CacheStore, import_name: &str) -> bool {
+    store
+        .unsolvable_modules
+        .get(&normalize(import_name))
+        .map(|record| record.confidence >= 0.95)
+        .unwrap_or(false)
 }

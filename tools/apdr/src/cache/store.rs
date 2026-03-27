@@ -166,7 +166,12 @@ impl CacheStore {
         let mut rows = self
             .import_map
             .values()
-            .filter(|item| item.source != "seed" && item.source != "discrepancy" && item.source != "harvest" && item.source != "pipreqs")
+            .filter(|item| {
+                item.source != "seed"
+                    && item.source != "discrepancy"
+                    && item.source != "harvest"
+                    && item.source != "pipreqs"
+            })
             .map(|item| {
                 format!(
                     "{}\t{}\t{}\t{}",
@@ -371,8 +376,7 @@ impl CacheStore {
         if filtered.is_empty() {
             return Ok(());
         }
-        self.pypi_index
-            .insert(normalize(package_name), filtered);
+        self.pypi_index.insert(normalize(package_name), filtered);
         let rows = self
             .pypi_index
             .iter()
@@ -748,9 +752,7 @@ impl CacheStore {
     }
 
     fn load_unsolvable_modules(&mut self) -> io::Result<()> {
-        self.load_unsolvable_module_file(
-            &self.tool_root.join("data/seed/unsolvable_modules.tsv"),
-        )
+        self.load_unsolvable_module_file(&self.tool_root.join("data/seed/unsolvable_modules.tsv"))
     }
 
     fn load_unsolvable_module_file(&mut self, path: &Path) -> io::Result<()> {
@@ -882,8 +884,8 @@ impl CacheStore {
             "requirements_txt": requirements_txt,
             "resolved": resolved_json,
         });
-        let json_bytes = serde_json::to_vec(&json)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let json_bytes =
+            serde_json::to_vec(&json).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         // Compress with zstd level 3 (fast)
         let compressed = zstd::encode_all(json_bytes.as_slice(), 3)

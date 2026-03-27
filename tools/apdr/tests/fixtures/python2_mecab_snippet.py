@@ -1,0 +1,3 @@
+import MeCab
+
+print MeCab

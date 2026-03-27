@@ -1,0 +1,10 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: pygobject, youtube-dl
+transitive_packages: --
+reason: --
+
+assignments:
+- pygobject==3.56.1
+- youtube-dl==2021.12.17

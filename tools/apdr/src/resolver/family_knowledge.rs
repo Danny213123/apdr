@@ -465,6 +465,24 @@ pub static FAMILIES: &[PackageFamily] = &[
         ],
     },
     PackageFamily {
+        name: "pygobject",
+        modules: &["gi"],
+        conflict_kind: ConflictKind::Namespace,
+        notes: "PyGObject provides the gi namespace for GTK/GObject bindings.",
+        members: &[member!("PyGObject", &["gi"], preferred)],
+    },
+    PackageFamily {
+        name: "pyside",
+        modules: &["PySide", "PySide2", "PySide6"],
+        conflict_kind: ConflictKind::Variant,
+        notes: "Qt bindings use version-specific top-level namespaces and are not drop-in interchangeable.",
+        members: &[
+            member!("PySide", &["PySide"], Active),
+            member!("PySide2", &["PySide2"], Active),
+            member!("PySide6", &["PySide6"], preferred),
+        ],
+    },
+    PackageFamily {
         name: "pywin32",
         modules: &["win32api", "win32con", "win32com", "win32gui", "pywintypes"],
         conflict_kind: ConflictKind::Namespace,
@@ -685,6 +703,30 @@ pub static FAMILIES: &[PackageFamily] = &[
     },
 ];
 
+const EXPLICIT_NAMESPACE_MAPPINGS: &[(&str, &str)] = &[
+    ("pkg_resources", "setuptools"),
+    ("PIL", "Pillow"),
+    ("Image", "Pillow"),
+    ("ImageDraw", "Pillow"),
+    ("ImageFont", "Pillow"),
+    ("ImageEnhance", "Pillow"),
+    ("ImageGrab", "Pillow"),
+    ("yaml", "PyYAML"),
+    ("cv2", "opencv-python"),
+    ("gi", "PyGObject"),
+    ("gi.repository", "PyGObject"),
+    ("rest_framework", "djangorestframework"),
+    ("sklearn", "scikit-learn"),
+    ("bs4", "beautifulsoup4"),
+    ("serial", "pyserial"),
+    ("usb", "pyusb"),
+    ("psycopg2", "psycopg2-binary"),
+    (
+        "SystemConfiguration",
+        "pyobjc-framework-SystemConfiguration",
+    ),
+];
+
 pub struct FamilyRegistry {
     by_package: BTreeMap<String, usize>,
     by_module: BTreeMap<String, Vec<usize>>,
@@ -761,6 +803,24 @@ pub fn apply_family_knowledge(
         notes.push(note);
     }
     if let Some(note) = apply_legacy_pillow_pin(parse_result, resolved, selected_python) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_legacy_flask_bundle(parse_result, resolved, selected_python) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_legacy_johnny_cache_bundle(parse_result, resolved, selected_python) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_legacy_scrapy_bundle(parse_result, resolved, selected_python) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_cfscrape_bundle(parse_result, resolved) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_legacy_ggplot_bundle(parse_result, resolved, selected_python) {
+        notes.push(note);
+    }
+    if let Some(note) = apply_simplecv_bundle(parse_result, resolved) {
         notes.push(note);
     }
     notes
@@ -855,6 +915,53 @@ pub fn recover_family_knowledge(
             "Family-aware recovery kept the legacy TensorFlow/Keras stack pinned at the curated Python {bundle_python} bundle."
         ));
     }
+
+    if uses_legacy_flask_stack(parse_result, resolved)
+        && (lowercase.contains("soft_unicode")
+            || lowercase.contains("markupsafe")
+            || lowercase.contains("werkzeug")
+            || lowercase.contains("jinja2")
+            || lowercase.contains("itsdangerous")
+            || lowercase.contains("flask-security")
+            || lowercase.contains("flask_principal")
+            || lowercase.contains("mongoengine")
+            || lowercase.contains("cannot import name 'url_quote'")
+            || lowercase.contains("cannot import name 'escape'"))
+    {
+        return apply_legacy_flask_bundle(parse_result, resolved, selected_python)
+            .map(|note| format!("Family-aware recovery applied the legacy Flask bundle. {note}"));
+    }
+
+    if uses_cfscrape_stack(parse_result, resolved)
+        && (lowercase.contains("urllib3")
+            || lowercase.contains("cipher suite")
+            || lowercase.contains("cannot import name 'appengine'")
+            || lowercase.contains("requests"))
+    {
+        return apply_cfscrape_bundle(parse_result, resolved).map(|note| {
+            format!("Family-aware recovery applied the cfscrape/urllib3 bundle. {note}")
+        });
+    }
+
+    if uses_legacy_ggplot_stack(parse_result, resolved)
+        && (lowercase.contains("pandas")
+            || lowercase.contains("ggplot")
+            || lowercase.contains("cannot import name")
+            || lowercase.contains("attributeerror"))
+    {
+        return apply_legacy_ggplot_bundle(parse_result, resolved, selected_python)
+            .map(|note| format!("Family-aware recovery applied the legacy ggplot bundle. {note}"));
+    }
+
+    if uses_simplecv_stack(parse_result, resolved)
+        && (lowercase.contains("cv2")
+            || lowercase.contains("opencv")
+            || lowercase.contains("simplecv"))
+    {
+        return apply_simplecv_bundle(parse_result, resolved).map(|note| {
+            format!("Family-aware recovery applied the SimpleCV/OpenCV bundle. {note}")
+        });
+    }
     None
 }
 
@@ -947,6 +1054,30 @@ pub fn validation_candidate_versions(
     }
 
     None
+}
+
+pub fn namespace_mapping_allowed(import_name: &str, package_name: &str) -> bool {
+    let import_norm = normalize(import_name);
+    let package_norm = normalize(package_name);
+    if import_norm.is_empty() || package_norm.is_empty() {
+        return false;
+    }
+    if import_norm == package_norm {
+        return true;
+    }
+
+    let registry = FamilyRegistry::new();
+    if let Some(family) = registry.family_for_package(package_name) {
+        if family_member_provides_import(family, &package_norm, import_name) {
+            return true;
+        }
+    }
+
+    EXPLICIT_NAMESPACE_MAPPINGS
+        .iter()
+        .any(|(import_alias, package_alias)| {
+            normalize(import_alias) == import_norm && normalize(package_alias) == package_norm
+        })
 }
 
 fn prune_family_conflicts(resolved: &mut Vec<ResolvedDependency>) -> Vec<String> {
@@ -1050,6 +1181,261 @@ fn apply_legacy_pymc3_bundle(
     ))
 }
 
+fn apply_legacy_flask_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+) -> Option<String> {
+    if !uses_legacy_flask_stack(parse_result, resolved) {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    let needs_core = resolved.iter().any(|dep| {
+        matches!(
+            normalize(&dep.package_name).as_str(),
+            "flask_security"
+                | "flask_principal"
+                | "flask_admin"
+                | "flask_sqlalchemy"
+                | "mongoengine"
+                | "flask"
+        )
+    }) || parse_result.imports.iter().any(|item| {
+        matches!(
+            normalize(item).as_str(),
+            "flask_security" | "flask_principal" | "flask_admin" | "flask_sqlalchemy" | "flask"
+        )
+    });
+
+    for (import_name, package_name, version, essential) in legacy_flask_bundle(selected_python) {
+        let already_present = resolved.iter().any(|dep| {
+            dep.import_name.eq_ignore_ascii_case(import_name)
+                || normalize(&dep.package_name) == normalize(package_name)
+        });
+        if !essential && !already_present {
+            continue;
+        }
+        if !needs_core && *essential {
+            continue;
+        }
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:legacy-flask",
+            0.95,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned a legacy Flask compatibility bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
+fn apply_legacy_johnny_cache_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+) -> Option<String> {
+    if !selected_python.starts_with("2.") || !uses_legacy_johnny_cache_stack(parse_result, resolved)
+    {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    for (import_name, package_name, version, essential) in
+        legacy_johnny_cache_bundle(selected_python)
+    {
+        let already_present = resolved.iter().any(|dep| {
+            dep.import_name.eq_ignore_ascii_case(import_name)
+                || normalize(&dep.package_name) == normalize(package_name)
+        });
+        if !essential && !already_present {
+            continue;
+        }
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:legacy-johnny-cache",
+            0.95,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned a legacy johnny-cache/Django bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
+fn apply_legacy_scrapy_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+) -> Option<String> {
+    if !selected_python.starts_with("2.") || !uses_legacy_scrapy_stack(parse_result, resolved) {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    for (import_name, package_name, version, essential) in legacy_scrapy_bundle(selected_python) {
+        let already_present = resolved.iter().any(|dep| {
+            dep.import_name.eq_ignore_ascii_case(import_name)
+                || normalize(&dep.package_name) == normalize(package_name)
+        });
+        if !essential && !already_present {
+            continue;
+        }
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:legacy-scrapy",
+            0.94,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned a legacy Scrapy compatibility bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
+fn apply_cfscrape_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+) -> Option<String> {
+    if !uses_cfscrape_stack(parse_result, resolved) {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    for (import_name, package_name, version) in [
+        ("cfscrape", "cfscrape", "1.2.1"),
+        ("urllib3", "urllib3", "1.26.18"),
+    ] {
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:cfscrape",
+            0.94,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned the cfscrape compatibility bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
+fn apply_legacy_ggplot_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+    selected_python: &str,
+) -> Option<String> {
+    if !uses_legacy_ggplot_stack(parse_result, resolved)
+        || !(selected_python.starts_with("2.")
+            || selected_python.starts_with("3.7")
+            || selected_python.starts_with("3.8"))
+    {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    for (import_name, package_name, version) in [
+        ("ggplot", "ggplot", "0.11.5"),
+        ("pandas", "pandas", "0.24.2"),
+        ("matplotlib", "matplotlib", "2.2.5"),
+        ("numpy", "numpy", "1.16.6"),
+    ] {
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:legacy-ggplot",
+            0.93,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned the legacy ggplot/pandas bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
+fn apply_simplecv_bundle(
+    parse_result: &ParseResult,
+    resolved: &mut Vec<ResolvedDependency>,
+) -> Option<String> {
+    if !uses_simplecv_stack(parse_result, resolved) {
+        return None;
+    }
+
+    let mut changes = Vec::new();
+    for (import_name, package_name, version) in [
+        ("SimpleCV", "SimpleCV", "1.3"),
+        ("cv2", "opencv-python-headless", "4.5.5.64"),
+    ] {
+        if pin_dependency(
+            resolved,
+            import_name,
+            package_name,
+            Some(version),
+            "family:simplecv",
+            0.92,
+        ) {
+            changes.push(format!("{package_name}=={version}"));
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Family knowledge pinned the SimpleCV/OpenCV compatibility bundle: {}.",
+            changes.join(", ")
+        ))
+    }
+}
+
 fn apply_legacy_tensorflow_bundle(
     parse_result: &ParseResult,
     resolved: &mut Vec<ResolvedDependency>,
@@ -1135,10 +1521,7 @@ fn ensure_keras_backend(
 
     let has_backend = resolved.iter().any(|d| {
         let pkg = normalize(&d.package_name);
-        pkg == "tensorflow"
-            || pkg == "torch"
-            || pkg == "jax"
-            || pkg.starts_with("tensorflow-")
+        pkg == "tensorflow" || pkg == "torch" || pkg == "jax" || pkg.starts_with("tensorflow-")
     });
     if has_backend {
         return None;
@@ -1404,8 +1787,7 @@ fn uses_legacy_tensorflow_stack(
     let has_tensorflow = imports.contains("tensorflow")
         || imports.iter().any(|item| item.starts_with("tensorflow."))
         || resolved.iter().any(|dep| {
-            normalize(&dep.package_name) == "tensorflow"
-                && dep.strategy != "family:keras-backend"
+            normalize(&dep.package_name) == "tensorflow" && dep.strategy != "family:keras-backend"
         });
     let has_standalone_keras = imports.contains("keras")
         || imports.iter().any(|item| item.starts_with("keras."))
@@ -1418,6 +1800,158 @@ fn uses_legacy_tensorflow_stack(
             .unwrap_or(false);
 
     has_tensorflow && (has_standalone_keras || py2_target)
+}
+
+fn uses_legacy_flask_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    let (imports, packages) = collect_markers(parse_result, resolved);
+    let legacy_markers = [
+        "flask_security",
+        "flask_principal",
+        "flask_admin",
+        "flask_sqlalchemy",
+        "mongoengine",
+        "jinja2",
+        "markupsafe",
+        "werkzeug",
+        "itsdangerous",
+    ];
+    let has_flask = imports.contains("flask")
+        || imports.iter().any(|item| item.starts_with("flask."))
+        || packages.contains("flask");
+    let has_legacy_marker = legacy_markers.iter().any(|item| {
+        imports.contains(*item)
+            || imports
+                .iter()
+                .any(|value| value.starts_with(&format!("{item}.")))
+            || packages.contains(*item)
+    });
+    has_flask && has_legacy_marker
+}
+
+fn uses_cfscrape_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    let (imports, packages) = collect_markers(parse_result, resolved);
+    imports.contains("cfscrape") || packages.contains("cfscrape")
+}
+
+fn uses_legacy_ggplot_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    let (imports, packages) = collect_markers(parse_result, resolved);
+    imports.contains("ggplot") || packages.contains("ggplot")
+}
+
+fn uses_simplecv_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    let (imports, packages) = collect_markers(parse_result, resolved);
+    imports.contains("simplecv") || packages.contains("simplecv")
+}
+
+fn collect_markers(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> (BTreeSet<String>, BTreeSet<String>) {
+    let imports = parse_result
+        .imports
+        .iter()
+        .chain(parse_result.import_paths.iter())
+        .map(|item| item.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let packages = resolved
+        .iter()
+        .map(|dependency| normalize(&dependency.package_name))
+        .collect::<BTreeSet<_>>();
+    (imports, packages)
+}
+
+fn family_member_provides_import(
+    family: &PackageFamily,
+    package_norm: &str,
+    import_name: &str,
+) -> bool {
+    let requested = normalize(import_name);
+    let top_level = normalize(import_name.split('.').next().unwrap_or(import_name));
+    family.members.iter().any(|member| {
+        normalize(member.package) == package_norm
+            && member.modules.iter().any(|module| {
+                let module_norm = normalize(module);
+                module_norm == requested || module_norm == top_level
+            })
+    })
+}
+
+fn legacy_flask_bundle(
+    selected_python: &str,
+) -> &'static [(&'static str, &'static str, &'static str, bool)] {
+    if selected_python.starts_with("2.") {
+        &[
+            ("flask", "Flask", "1.1.4", true),
+            ("jinja2", "Jinja2", "2.11.3", true),
+            ("markupsafe", "MarkupSafe", "1.1.1", true),
+            ("werkzeug", "Werkzeug", "1.0.1", true),
+            ("itsdangerous", "itsdangerous", "1.1.0", true),
+            ("flask_sqlalchemy", "Flask-SQLAlchemy", "2.5.1", false),
+            ("flask_security", "Flask-Security", "3.0.0", false),
+            ("flask_principal", "Flask-Principal", "0.4.0", false),
+            ("flask_admin", "Flask-Admin", "1.6.1", false),
+            ("mongoengine", "mongoengine", "0.24.2", false),
+        ]
+    } else {
+        &[
+            ("flask", "Flask", "1.1.4", true),
+            ("jinja2", "Jinja2", "2.11.3", true),
+            ("markupsafe", "MarkupSafe", "1.1.1", true),
+            ("werkzeug", "Werkzeug", "1.0.1", true),
+            ("itsdangerous", "itsdangerous", "1.1.0", true),
+            ("flask_sqlalchemy", "Flask-SQLAlchemy", "2.5.1", false),
+            ("flask_security", "Flask-Security", "3.0.0", false),
+            ("flask_principal", "Flask-Principal", "0.4.0", false),
+            ("flask_admin", "Flask-Admin", "1.6.1", false),
+            ("mongoengine", "mongoengine", "0.29.1", false),
+        ]
+    }
+}
+
+fn legacy_scrapy_bundle(
+    selected_python: &str,
+) -> &'static [(&'static str, &'static str, &'static str, bool)] {
+    if selected_python.starts_with("2.") {
+        &[
+            ("scrapy", "scrapy", "1.8.3", true),
+            ("lxml", "lxml", "4.6.5", true),
+        ]
+    } else {
+        &[]
+    }
+}
+
+fn legacy_johnny_cache_bundle(
+    selected_python: &str,
+) -> &'static [(&'static str, &'static str, &'static str, bool)] {
+    if selected_python.starts_with("2.") {
+        &[
+            ("django", "Django", "1.8.19", true),
+            ("johnny", "johnny-cache", "1.4", true),
+        ]
+    } else {
+        &[]
+    }
+}
+
+fn uses_legacy_johnny_cache_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
+    let (imports, packages) = collect_markers(parse_result, resolved);
+    imports.contains("johnny")
+        || imports.iter().any(|item| item.starts_with("johnny."))
+        || packages.contains("johnny_cache")
+}
+
+fn uses_legacy_scrapy_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+    resolved
+        .iter()
+        .any(|dep| normalize(&dep.package_name) == "scrapy")
+        || parse_result
+            .imports
+            .iter()
+            .any(|import_name| normalize(import_name) == "scrapy")
 }
 
 fn pin_dependency(

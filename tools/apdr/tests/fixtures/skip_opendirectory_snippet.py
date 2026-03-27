@@ -1,0 +1,2 @@
+from OpenDirectory import *
+from SystemConfiguration import SCDynamicStoreCopyComputerName

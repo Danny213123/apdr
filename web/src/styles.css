@@ -618,7 +618,7 @@ code {
   border-bottom: 1px solid rgba(122, 127, 138, 0.28);
 }
 
-.case-row[open] {
+.case-row.expanded {
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -646,13 +646,20 @@ code {
 }
 
 .case-summary {
-  list-style: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
   cursor: pointer;
   padding: 8px 0;
 }
 
-.case-summary::-webkit-details-marker {
-  display: none;
+.case-summary:focus-visible {
+  outline: 2px solid rgba(255, 217, 94, 0.55);
+  outline-offset: 2px;
 }
 
 .case-summary span {

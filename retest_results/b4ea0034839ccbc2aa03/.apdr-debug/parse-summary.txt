@@ -1,0 +1,18 @@
+snippet: hard-gists/b4ea0034839ccbc2aa03/snippet.py
+selected_python: 3.9
+python_version_min: 3.9
+python_version_max: --
+confidence: 0.72
+
+imports:
+- mosquitto
+
+import_paths:
+- mosquitto
+- mosquitto.Mosquitto
+
+config_dependencies:
+- none
+
+scanned_files:
+- hard-gists/b4ea0034839ccbc2aa03/snippet.py

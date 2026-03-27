@@ -1,0 +1,5 @@
+resolved:
+- import=word2vec package=word2vec version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

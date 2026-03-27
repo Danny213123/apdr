@@ -28,9 +28,7 @@ pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
         "h5py" => &["libhdf5-dev"],
         "shapely" | "fiona" => &["libgeos-dev", "libgdal-dev"],
         "geopandas" => &["libgeos-dev", "libgdal-dev"],
-        "opencv-python" | "opencv-python-headless" | "cv2" => {
-            &["libgl1-mesa-glx", "libglib2.0-0"]
-        }
+        "opencv-python" | "opencv-python-headless" | "cv2" => &["libgl1-mesa-glx", "libglib2.0-0"],
         "greenlet" | "gevent" => &["libevent-dev"],
         "uwsgi" => &["libpcre3-dev"],
         "grpcio" => &["libssl-dev"],
@@ -50,11 +48,16 @@ pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
             "pkg-config",
             "libcairo2-dev",
         ],
+        "pyjnius" | "jnius" => &["default-jdk", "pkg-config"],
         "pygtk" => &["python-gtk2-dev", "libgtk2.0-dev"],
         "dbus-python" => &["libdbus-1-dev", "libdbus-glib-1-dev", "pkg-config"],
         "dlib" => &["cmake", "libopenblas-dev"],
         "pylibmc" => &["libmemcached-dev"],
-        "mecab" | "mecab-python" | "mecab-python3" => &["mecab", "libmecab-dev", "mecab-ipadic-utf8"],
+        "mecab" | "mecab-python" | "mecab-python3" => {
+            &["mecab", "libmecab-dev", "mecab-ipadic-utf8"]
+        }
+        "m2crypto" => &["libssl-dev", "swig"],
+        "rpy2" => &["r-base-dev"],
         "evdev" => &["linux-headers-generic"],
         "imposm" => &[
             "libgeos-dev",
@@ -98,7 +101,9 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     let lower = log.to_lowercase();
     let mut deps = BTreeSet::new();
 
-    if lower.contains("python.h: no such file or directory") || lower.contains("python.h: no such file") {
+    if lower.contains("python.h: no such file or directory")
+        || lower.contains("python.h: no such file")
+    {
         deps.insert("python3-dev".to_string());
     }
     if lower.contains("libxml/xmlversion.h") || lower.contains("libxml/parser.h") {
@@ -110,7 +115,10 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     if lower.contains("ffi.h: no such file") || lower.contains("ffi.h:") {
         deps.insert("libffi-dev".to_string());
     }
-    if lower.contains("openssl/ssl.h") || lower.contains("openssl/evp.h") || lower.contains("openssl/crypto.h") {
+    if lower.contains("openssl/ssl.h")
+        || lower.contains("openssl/evp.h")
+        || lower.contains("openssl/crypto.h")
+    {
         deps.insert("libssl-dev".to_string());
     }
     if lower.contains("libpq-fe.h") || lower.contains("pg_config executable not found") {
@@ -134,6 +142,9 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     if lower.contains("geos_c.h") {
         deps.insert("libgeos-dev".to_string());
     }
+    if lower.contains("geos_c.dll") || lower.contains("lib geos_c") {
+        deps.insert("libgeos-dev".to_string());
+    }
     if lower.contains("cairo.h") || lower.contains("cairo/cairo.h") {
         deps.insert("libcairo2-dev".to_string());
     }
@@ -155,6 +166,9 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     if lower.contains("girepository.h") || lower.contains("girepository-1.0") {
         deps.insert("libgirepository1.0-dev".to_string());
     }
+    if lower.contains("gtk+-3.0") || lower.contains("granite") || lower.contains("libgranite") {
+        deps.insert("gir1.2-gtk-3.0".to_string());
+    }
     if lower.contains("glib.h") || lower.contains("glib-2.0") && lower.contains("not found") {
         deps.insert("libglib2.0-dev".to_string());
     }
@@ -164,10 +178,26 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     if lower.contains("memcached.h") || lower.contains("libmemcached") {
         deps.insert("libmemcached-dev".to_string());
     }
+    if lower.contains("java_home")
+        || lower.contains("unable to find java_home")
+        || lower.contains("jni.h")
+    {
+        deps.insert("default-jdk".to_string());
+    }
+    if lower.contains("r_home") || lower.contains("unable to determine r home") {
+        deps.insert("r-base-dev".to_string());
+    }
+    if lower.contains("swig") && lower.contains("m2crypto") {
+        deps.insert("swig".to_string());
+        deps.insert("libssl-dev".to_string());
+    }
     if lower.contains("cmake") && (lower.contains("not found") || lower.contains("is required")) {
         deps.insert("cmake".to_string());
     }
-    if lower.contains("gdal-config") || lower.contains("gdal_config") || lower.contains("gdal api version") {
+    if lower.contains("gdal-config")
+        || lower.contains("gdal_config")
+        || lower.contains("gdal api version")
+    {
         deps.insert("libgdal-dev".to_string());
     }
     if lower.contains("geos-config") || lower.contains("geos_config") || lower.contains("geos_c") {
@@ -175,6 +205,16 @@ pub fn extract_system_deps_from_log(log: &str) -> Vec<String> {
     }
 
     deps.into_iter().collect()
+}
+
+pub fn requires_external_runtime_from_log(log: &str) -> bool {
+    let lower = log.to_lowercase();
+    lower.contains("java_home")
+        || lower.contains("unable to find java_home")
+        || lower.contains("no java runtime present")
+        || lower.contains("r_home")
+        || lower.contains("unable to determine r home")
+        || lower.contains("r was not found")
 }
 
 #[cfg(test)]
@@ -263,5 +303,21 @@ mod tests {
         let deps = infer_system_deps_from_requirements(reqs);
         assert!(deps.contains(&"libgdal-dev".to_string()));
         assert!(deps.contains(&"libgeos-dev".to_string()));
+    }
+
+    #[test]
+    fn extract_java_home_error() {
+        let log = "Exception: Unable to find JAVA_HOME";
+        let deps = extract_system_deps_from_log(log);
+        assert!(deps.contains(&"default-jdk".to_string()));
+        assert!(requires_external_runtime_from_log(log));
+    }
+
+    #[test]
+    fn infer_system_deps_for_pyjnius_and_rpy2() {
+        let reqs = "pyjnius==1.6.1\nrpy2==3.5.17\n";
+        let deps = infer_system_deps_from_requirements(reqs);
+        assert!(deps.contains(&"default-jdk".to_string()));
+        assert!(deps.contains(&"r-base-dev".to_string()));
     }
 }

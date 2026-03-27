@@ -559,13 +559,17 @@ fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect();
         if !versions.is_empty() {
-            versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+            versions.sort_by(|a, b| {
+                super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
+            });
             return versions;
         }
     }
     if let Some(versions_obj) = json.get("versions").and_then(|v| v.as_object()) {
         let mut versions: Vec<String> = versions_obj.keys().cloned().collect();
-        versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+        versions.sort_by(|a, b| {
+            super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
+        });
         return versions;
     }
     // Fallback: parse version from filenames in "files" array
@@ -579,7 +583,9 @@ fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
             }
         }
         let mut versions: Vec<String> = version_set.into_iter().collect();
-        versions.sort_by(|a, b| super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b)));
+        versions.sort_by(|a, b| {
+            super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
+        });
         return versions;
     }
     Vec::new()
@@ -597,11 +603,16 @@ fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<S
     let rest = &filename[prefix.len()..].replace(&normalized, "");
     // For wheel: name-version-py-abi-platform.whl
     // For sdist: name-version.tar.gz or name-version.zip
-    let version_end = rest.find(|c: char| c == '-' || c == '.')
+    let version_end = rest
+        .find(|c: char| c == '-' || c == '.')
         .filter(|&pos| pos > 0)
         .unwrap_or(rest.len());
     let candidate = &rest[..version_end];
-    if candidate.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if candidate
+        .chars()
+        .next()
+        .map_or(false, |c| c.is_ascii_digit())
+    {
         Some(candidate.to_string())
     } else {
         None
@@ -1087,8 +1098,16 @@ fn compare_versions(left: &str, right: &str) -> Ordering {
     let (rp, rl) = tokenize_cached(right);
     let max_len = std::cmp::max(ll, rl);
     for i in 0..max_len {
-        let left_part = if i < ll { lp[i] } else { VersionPart::Number(0) };
-        let right_part = if i < rl { rp[i] } else { VersionPart::Number(0) };
+        let left_part = if i < ll {
+            lp[i]
+        } else {
+            VersionPart::Number(0)
+        };
+        let right_part = if i < rl {
+            rp[i]
+        } else {
+            VersionPart::Number(0)
+        };
         let ordering = match (left_part, right_part) {
             (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(&b),
             (VersionPart::Text(a, al), VersionPart::Text(b, bl)) => {

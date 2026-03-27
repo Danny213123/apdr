@@ -220,11 +220,7 @@ pub fn db_available(db_path: &Path) -> bool {
 /// #3: Find KGraph packages whose normalized name contains or matches a pattern.
 /// Used to build tier2 candidates for LLM prompt injection.
 /// Returns up to `limit` package names that are similar to the import name.
-pub fn kgraph_candidate_packages(
-    db_path: &Path,
-    import_name: &str,
-    limit: usize,
-) -> Vec<String> {
+pub fn kgraph_candidate_packages(db_path: &Path, import_name: &str, limit: usize) -> Vec<String> {
     let Some(conn) = get_pool(db_path).get() else {
         return Vec::new();
     };
@@ -236,9 +232,9 @@ pub fn kgraph_candidate_packages(
     let mut candidates = Vec::new();
 
     // Strategy 1: Exact match (import_name == package_name after normalization)
-    if let Ok(mut stmt) = conn.prepare_cached(
-        "SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1",
-    ) {
+    if let Ok(mut stmt) =
+        conn.prepare_cached("SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1")
+    {
         if let Ok(rows) = stmt.query_map([&norm], |row| row.get::<_, String>(0)) {
             for row in rows.flatten() {
                 if !candidates.contains(&row) {
@@ -260,9 +256,9 @@ pub fn kgraph_candidate_packages(
         if candidates.len() >= limit {
             break;
         }
-        if let Ok(mut stmt) = conn.prepare_cached(
-            "SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1",
-        ) {
+        if let Ok(mut stmt) =
+            conn.prepare_cached("SELECT DISTINCT package FROM versions WHERE package = ?1 LIMIT 1")
+        {
             if let Ok(rows) = stmt.query_map([pattern], |row| row.get::<_, String>(0)) {
                 for row in rows.flatten() {
                     if !candidates.contains(&row) {
@@ -276,14 +272,15 @@ pub fn kgraph_candidate_packages(
     // Strategy 3: LIKE containment search (e.g. "cv2" -> "opencv-python-headless")
     if candidates.len() < limit {
         let like_pattern = format!("%{}%", norm);
-        if let Ok(mut stmt) = conn.prepare_cached(
-            "SELECT DISTINCT package FROM versions WHERE package LIKE ?1 LIMIT ?2",
-        ) {
+        if let Ok(mut stmt) = conn
+            .prepare_cached("SELECT DISTINCT package FROM versions WHERE package LIKE ?1 LIMIT ?2")
+        {
             let remaining = (limit - candidates.len()) as i64;
-            if let Ok(rows) = stmt.query_map(
-                rusqlite::params![&like_pattern, remaining + 5],
-                |row| row.get::<_, String>(0),
-            ) {
+            if let Ok(rows) = stmt
+                .query_map(rusqlite::params![&like_pattern, remaining + 5], |row| {
+                    row.get::<_, String>(0)
+                })
+            {
                 for row in rows.flatten() {
                     if candidates.len() >= limit {
                         break;

@@ -66,7 +66,9 @@ class BenchmarkService:
             "homePreview": self.preview(default_config),
             "modelConfigs": self._model_configs_payload(),
             "loadouts": self.state.load_loadouts(),
-            "runs": self.runs(),
+            # Saved-run history can be large on Windows; keep bootstrap fast and
+            # let the UI fetch the run list after first paint.
+            "runs": [],
             "doctor": self._doctor_snapshot(),
             "currentRun": self._run_snapshot(),
         }
@@ -674,7 +676,8 @@ class BenchmarkService:
                 self._accumulate_phase_metrics(self._current_run, result)
                 case_succeeded = self._result_succeeded(result)
                 case_skipped = self._result_skipped(result)
-                is_llm_case = self._result_int_metric(result, "llm_calls") > 0
+                # Use tier instead of llm_calls to match frontend categorization
+                is_llm_case = result.get("tier") == "tier3"
                 self._current_run["completed"] = int(message["completed"])
                 self._current_run["total"] = int(message["total"])
                 if case_succeeded:
@@ -910,9 +913,10 @@ class BenchmarkService:
         successes = sum(1 for item in results if self._result_succeeded(item))
         skipped = sum(1 for item in results if self._result_skipped(item))
         failures = completed - successes - skipped
-        # Split by regular vs LLM cases
-        llm_results = [r for r in results if self._result_int_metric(r, "llm_calls") > 0]
-        regular_results = [r for r in results if self._result_int_metric(r, "llm_calls") <= 0]
+        # Split by deterministic (tier1/tier2) vs LLM (tier3) cases
+        # Use tier instead of llm_calls to match frontend categorization logic
+        llm_results = [r for r in results if r.get("tier") == "tier3"]
+        regular_results = [r for r in results if r.get("tier") in ("tier1", "tier2")]
         regular_successes = sum(1 for r in regular_results if self._result_succeeded(r))
         regular_skipped = sum(1 for r in regular_results if self._result_skipped(r))
         regular_failures = len(regular_results) - regular_successes - regular_skipped
@@ -1442,13 +1446,15 @@ class BenchmarkService:
     def _llm_case_rows(self, results: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
         llm_cases: list[dict[str, Any]] = []
         for result in reversed(results):
-            if self._result_int_metric(result, "llm_calls") <= 0:
+            # Use tier to match frontend categorization
+            if result.get("tier") != "tier3":
                 continue
             llm_cases.append(self._build_case_row(result, config))
         return llm_cases
 
     def _record_llm_case(self, run: dict[str, Any], case_row: dict[str, Any]) -> None:
-        if int(case_row.get("llmCalls") or 0) <= 0:
+        # Use tier to match frontend categorization
+        if case_row.get("tier") != "tier3":
             return
         llm_cases = [
             item

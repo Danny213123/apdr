@@ -1,0 +1,55 @@
+snippet: hard-gists/2358089/snippet.py
+python_version: 3.9
+solvability_decision: --
+solvability_confidence: 0.00
+solvability_reason: --
+solvability_source: --
+cache_hits: 1
+heuristic_hits: 0
+llm_calls: 0
+env_builds: 0
+retries: 0
+min_confidence: 0.97
+mean_confidence: 0.97
+duration_ms: 2530
+solve_duration_ms: 2519
+validation_duration_ms: 0
+env_create_duration_ms: 0
+install_duration_ms: 0
+smoke_duration_ms: 0
+validation_backend: env
+validation_succeeded: true
+validation_status: passed
+validation_reason: --
+failure_bucket: passed
+root_cause: --
+missing_module: --
+failing_package: PyGObject
+repair_strategy_applied: --
+skip_candidate: false
+escalated_backend: --
+repeat_failure_signature: --
+validation_python: 3.9
+build_image_id: --
+lockfile_key: 9a515cae6ec21241
+debug_dir: ./retest_results/2358089\.apdr-debug
+attempts_dir: ./retest_results/2358089\.apdr-debug\attempts
+llm_trace_dir: ./retest_results/2358089\.apdr-debug\llm
+context_log: ./retest_results/2358089\.apdr-debug\benchmark-context.log
+iterations_dir: ./retest_results/2358089\.apdr-debug\iterations
+
+resolved_dependencies:
+- gi.repository -> PyGObject [cache:seed | confidence 0.97]
+
+config_dependencies:
+- none
+
+unresolved:
+- none
+
+notes:
+- SMT pre-solve candidate Python versions: 3.9, 3.10.
+- SMT pre-solve pinned 1 packages for Python 3.9 (1 direct, 0 transitive).
+
+validation_attempts:
+- none

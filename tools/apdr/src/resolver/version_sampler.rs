@@ -47,7 +47,10 @@ pub fn equally_distanced_sample(
         return Some(target_version.clone());
     }
     // Target was already tried; pick the nearest untried candidate
-    let target_pos = versions.iter().position(|v| v == target_version).unwrap_or(0);
+    let target_pos = versions
+        .iter()
+        .position(|v| v == target_version)
+        .unwrap_or(0);
     candidates
         .iter()
         .min_by_key(|c| {
@@ -123,15 +126,8 @@ mod tests {
 
     #[test]
     fn skips_already_tried() {
-        let versions: Vec<String> = vec![
-            "1.0".to_string(),
-            "2.0".to_string(),
-            "3.0".to_string(),
-        ];
-        let pick = equally_distanced_sample(
-            &versions,
-            &["2.0".to_string()],
-        );
+        let versions: Vec<String> = vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()];
+        let pick = equally_distanced_sample(&versions, &["2.0".to_string()]);
         // attempt 1 → 75th percentile of 3 items → target index 2 → "3.0"
         // "2.0" already tried, "3.0" is untried and closest
         assert!(pick == Some("1.0".to_string()) || pick == Some("3.0".to_string()));
@@ -146,10 +142,7 @@ mod tests {
     #[test]
     fn all_exhausted_returns_latest() {
         let versions = vec!["1.0".to_string(), "2.0".to_string()];
-        let pick = equally_distanced_sample(
-            &versions,
-            &["1.0".to_string(), "2.0".to_string()],
-        );
+        let pick = equally_distanced_sample(&versions, &["1.0".to_string(), "2.0".to_string()]);
         assert_eq!(pick, Some("2.0".to_string()));
     }
 
@@ -168,6 +161,10 @@ mod tests {
         let indices: Vec<usize> = picks.iter().map(|p| p.parse::<usize>().unwrap()).collect();
         let min = *indices.iter().min().unwrap();
         let max = *indices.iter().max().unwrap();
-        assert!(max - min >= 10, "Picks should span at least half the range: {:?}", indices);
+        assert!(
+            max - min >= 10,
+            "Picks should span at least half the range: {:?}",
+            indices
+        );
     }
 }

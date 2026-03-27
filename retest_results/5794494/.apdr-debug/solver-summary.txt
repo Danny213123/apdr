@@ -1,0 +1,9 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: pygobject
+transitive_packages: --
+reason: --
+
+assignments:
+- pygobject==3.56.1

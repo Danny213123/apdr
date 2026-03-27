@@ -12,7 +12,9 @@ use apdr::cache::store::CacheStore;
 use apdr::context;
 use apdr::recovery::classifier;
 use apdr::resolver;
-use apdr::{ResolveConfig, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM};
+use apdr::{
+    ResolveConfig, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
+};
 
 fn main() {
     if let Err(error) = run() {

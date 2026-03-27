@@ -1,0 +1,5 @@
+resolved:
+- import=gi.repository package=PyGObject version=-- strategy=cache:seed confidence=0.97
+
+unresolved:
+- none

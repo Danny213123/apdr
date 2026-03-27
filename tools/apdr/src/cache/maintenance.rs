@@ -60,7 +60,10 @@ pub fn compress_env_to_archive(env_dir: &Path, archive_path: &Path) -> io::Resul
     // instead of the intended "build-xxx.tar.zst.tmp".
     let tmp_path = archive_path.with_file_name(format!(
         "{}.tmp",
-        archive_path.file_name().unwrap_or_default().to_string_lossy()
+        archive_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
     ));
     let file = fs::File::create(&tmp_path)?;
     let encoder = zstd::Encoder::new(file, 6)?; // level 6: ~30% better ratio than 3, <1s extra
@@ -95,10 +98,7 @@ pub fn touch_archive_marker(archive_path: &Path) -> io::Result<()> {
 }
 
 fn archive_marker_path(archive_path: &Path) -> PathBuf {
-    let mut name = archive_path
-        .file_name()
-        .unwrap_or_default()
-        .to_os_string();
+    let mut name = archive_path.file_name().unwrap_or_default().to_os_string();
     name.push(".last-used");
     archive_path.with_file_name(name)
 }
@@ -223,10 +223,8 @@ pub fn prune_cache(
     summary.removed_bytes += env_summary.removed_bytes;
     summary.removed_validated_envs = env_summary.removed_validated_envs;
 
-    let wheelhouse_removed = prune_wheelhouse(
-        &cache_path.join("wheelhouse"),
-        options.max_wheelhouse_bytes,
-    )?;
+    let wheelhouse_removed =
+        prune_wheelhouse(&cache_path.join("wheelhouse"), options.max_wheelhouse_bytes)?;
     summary.removed_wheelhouse_bytes = wheelhouse_removed;
     summary.removed_bytes += wheelhouse_removed;
 
@@ -249,7 +247,11 @@ pub fn prune_validated_env_cache(
     if let Ok(dir_iter) = fs::read_dir(validated_envs_dir) {
         for entry in dir_iter.flatten() {
             let path = entry.path();
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
 
             // Remove all .tmp files (stale compression artifacts)
             if name.ends_with(".tmp") {
@@ -323,10 +325,7 @@ pub fn prune_validated_env_cache(
     Ok(summary)
 }
 
-pub fn prune_wheelhouse(
-    wheelhouse_dir: &Path,
-    max_bytes: Option<u64>,
-) -> io::Result<u64> {
+pub fn prune_wheelhouse(wheelhouse_dir: &Path, max_bytes: Option<u64>) -> io::Result<u64> {
     let Some(max_bytes) = max_bytes else {
         return Ok(0);
     };

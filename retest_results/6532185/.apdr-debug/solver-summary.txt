@@ -1,0 +1,10 @@
+attempted: true
+satisfiable: true
+selected_python: 3.9
+direct_packages: mysqlclient, paho-mqtt
+transitive_packages: --
+reason: --
+
+assignments:
+- mysqlclient==2.2.8
+- paho-mqtt==2.1.0

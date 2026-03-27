@@ -129,7 +129,10 @@ fn looks_like_python_27(source: &str) -> bool {
             }
         }
 
-        if trimmed.starts_with("print ") && !trimmed.starts_with("print(") && !trimmed.starts_with("print (") {
+        if trimmed.starts_with("print ")
+            && !trimmed.starts_with("print(")
+            && !trimmed.starts_with("print (")
+        {
             return true;
         }
         if trimmed.contains("xrange(")
