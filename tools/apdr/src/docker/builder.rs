@@ -17,6 +17,8 @@ use crate::{
     VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
 };
 
+static DOCKER_AGENT_IMPORTABLE: OnceLock<bool> = OnceLock::new();
+
 struct CommandResult {
     success: bool,
     combined_output: String,
@@ -709,15 +711,7 @@ fn attempt_langgraph_agent(
     // up from the binary's directory or from CARGO_MANIFEST_DIR at test time.
     let agent_parent = find_docker_agent_parent()?;
 
-    // Check that python3 can import the module
-    let check = Command::new("python3")
-        .args(["-c", "import docker_agent"])
-        .env("PYTHONPATH", &agent_parent)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .ok()?;
-    if !check.status.success() {
+    if !docker_agent_importable(&agent_parent) {
         eprintln!("[docker-agent] python3 cannot import docker_agent, skipping LLM agent");
         return None;
     }
@@ -799,6 +793,34 @@ fn attempt_langgraph_agent(
     parse_agent_result(json_line)
 }
 
+fn docker_agent_importable(agent_parent: &Path) -> bool {
+    docker_agent_importable_with_probe(&DOCKER_AGENT_IMPORTABLE, agent_parent, |path| {
+        run_docker_agent_import_probe(path)
+    })
+}
+
+fn docker_agent_importable_with_probe<F>(
+    cache: &OnceLock<bool>,
+    agent_parent: &Path,
+    probe: F,
+) -> bool
+where
+    F: FnOnce(&Path) -> bool,
+{
+    *cache.get_or_init(|| probe(agent_parent))
+}
+
+fn run_docker_agent_import_probe(agent_parent: &Path) -> bool {
+    Command::new("python3")
+        .args(["-c", "import docker_agent"])
+        .env("PYTHONPATH", agent_parent)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 fn find_docker_agent_parent() -> Option<PathBuf> {
     // At test/dev time, CARGO_MANIFEST_DIR points to tools/apdr/
     if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -826,15 +848,8 @@ fn find_docker_agent_parent() -> Option<PathBuf> {
 }
 
 fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
-    // Minimal JSON parsing without pulling in serde for this one spot.
-    // The agent output is: {"status":"passed","selected_python_version":"3.11",
-    //   "final_requirements":"...","confidence":0.85,"attempts":[...],"total_duration_ms":123}
-    let trimmed = json_str.trim();
-    if !trimmed.starts_with('{') {
-        return None;
-    }
-
-    let status = extract_json_string(trimmed, "status")?;
+    let value = serde_json::from_str::<serde_json::Value>(json_str).ok()?;
+    let status = value.get("status")?.as_str()?;
     if status != "passed" {
         eprintln!("[docker-agent] agent returned status={status}, falling back to deterministic");
         return None;
@@ -843,12 +858,15 @@ fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
     let mut summary = ValidationSummary {
         succeeded: true,
         validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
-        selected_python_version: extract_json_string(trimmed, "selected_python_version"),
+        selected_python_version: value
+            .get("selected_python_version")
+            .and_then(|item| item.as_str())
+            .map(|item| item.to_string()),
         ..ValidationSummary::default()
     };
 
-    if let Some(dur) = extract_json_number(trimmed, "total_duration_ms") {
-        summary.validation_duration_ms = dur as u128;
+    if let Some(dur) = value.get("total_duration_ms").and_then(json_value_as_u128) {
+        summary.validation_duration_ms = dur;
     }
 
     // The agent may have modified requirements; we record that info but
@@ -856,32 +874,14 @@ fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
     Some(summary)
 }
 
-fn extract_json_string(json: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{}\"", key);
-    let pos = json.find(&needle)?;
-    let after_key = &json[pos + needle.len()..];
-    // Skip whitespace and colon
-    let after_colon = after_key.trim_start().strip_prefix(':')?;
-    let after_ws = after_colon.trim_start();
-    if after_ws.starts_with("null") {
-        return None;
+fn json_value_as_u128(value: &serde_json::Value) -> Option<u128> {
+    if let Some(number) = value.as_u64() {
+        return Some(number as u128);
     }
-    let value_start = after_ws.strip_prefix('"')?;
-    let end = value_start.find('"')?;
-    Some(value_start[..end].to_string())
-}
-
-fn extract_json_number(json: &str, key: &str) -> Option<f64> {
-    let needle = format!("\"{}\"", key);
-    let pos = json.find(&needle)?;
-    let after_key = &json[pos + needle.len()..];
-    let after_colon = after_key.trim_start().strip_prefix(':')?;
-    let after_ws = after_colon.trim_start();
-    // Read digits, dots, minus
-    let end = after_ws
-        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-        .unwrap_or(after_ws.len());
-    after_ws[..end].parse::<f64>().ok()
+    value
+        .as_f64()
+        .filter(|number| *number >= 0.0)
+        .map(|number| number as u128)
 }
 
 fn validate_requirements_docker(
@@ -3187,5 +3187,32 @@ mod tests {
             VALIDATION_BACKEND_DOCKER
         );
         assert!(docker_summary.succeeded);
+    }
+
+    #[test]
+    fn validation_pipeline_caches_docker_agent_probe() {
+        use std::sync::Mutex;
+
+        let probe_cache = OnceLock::new();
+        let probe_calls = Mutex::new(0usize);
+        let agent_parent = PathBuf::from("D:/apdr/tools/apdr");
+
+        assert!(docker_agent_importable_with_probe(
+            &probe_cache,
+            &agent_parent,
+            |_| {
+                *probe_calls.lock().unwrap() += 1;
+                true
+            }
+        ));
+        assert!(docker_agent_importable_with_probe(
+            &probe_cache,
+            &agent_parent,
+            |_| {
+                *probe_calls.lock().unwrap() += 1;
+                false
+            }
+        ));
+        assert_eq!(*probe_calls.lock().unwrap(), 1);
     }
 }

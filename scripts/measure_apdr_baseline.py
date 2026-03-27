@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -16,6 +17,14 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEST_EXECUTOR = REPO_ROOT / "tools" / "apdr" / "test_executor.py"
+REPORT_SECTIONS = {
+    "resolved_dependencies",
+    "config_dependencies",
+    "unresolved",
+    "notes",
+    "validation_attempts",
+}
+ATTEMPT_FIELD_RE = re.compile(r'([A-Za-z_]+)=(".*?"|\S+)')
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +76,8 @@ def shell_join(parts: list[str]) -> str:
 
 def normalize_path_text(value: str) -> str:
     text = str(value or "").strip()
+    if text in {"", "--", "none", "None"}:
+        return ""
     return str(Path(text).expanduser()) if text else ""
 
 
@@ -163,6 +174,115 @@ def parse_int(value: Any) -> int:
         return 0
 
 
+def parse_resolution_report(path: Path) -> tuple[dict[str, str], list[str], list[dict[str, str]]]:
+    metadata: dict[str, str] = {}
+    notes: list[str] = []
+    attempts: list[dict[str, str]] = []
+    if not path.exists():
+        return metadata, notes, attempts
+    section = ""
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.endswith(":") and stripped[:-1] in REPORT_SECTIONS:
+            section = stripped[:-1]
+            continue
+        if not section:
+            if ":" not in stripped:
+                continue
+            key, value = stripped.split(":", 1)
+            metadata[key.strip()] = value.strip()
+            continue
+        if section == "notes" and stripped.startswith("- "):
+            notes.append(stripped[2:])
+            continue
+        if section == "validation_attempts" and stripped.startswith("- "):
+            attempts.append(parse_attempt_fields(stripped[2:]))
+    return metadata, notes, attempts
+
+
+def parse_attempt_fields(line: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for key, raw_value in ATTEMPT_FIELD_RE.findall(line):
+        fields[key] = raw_value.strip('"')
+    return fields
+
+
+def metadata_value(primary: dict[str, str], fallback: dict[str, str], key: str) -> str:
+    primary_value = str(primary.get(key) or "").strip()
+    if primary_value:
+        return primary_value
+    return str(fallback.get(key) or "").strip()
+
+
+def dedupe_preserve_order(values: list[str]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
+def summarize_backend_path(validation_backend: str, attempts: list[dict[str, str]]) -> str:
+    backends = dedupe_preserve_order([attempt.get("backend", "") for attempt in attempts])
+    if validation_backend and validation_backend not in backends:
+        backends.append(validation_backend)
+    if not backends:
+        return validation_backend or "--"
+    return " -> ".join(backends)
+
+
+def derive_cache_context(
+    validation_backend: str,
+    validation_status: str,
+    notes: list[str],
+    attempts: list[dict[str, str]],
+) -> dict[str, Any]:
+    used_cached_env = any(parse_bool(attempt.get("cached_env")) for attempt in attempts)
+    validated_env_cache_hit = any(parse_bool(attempt.get("env_cache_hit")) for attempt in attempts)
+    used_cached_lockfile = any(parse_bool(attempt.get("cached_lockfile")) for attempt in attempts)
+    import_set_cache_hit = (
+        validation_backend == "import-set-cache"
+        or validation_status == "passed-cached"
+        or any("import-set cache hit" in note.lower() for note in notes)
+    )
+    validated_env_reused = used_cached_env or validated_env_cache_hit
+    cache_labels: list[str] = []
+    if import_set_cache_hit:
+        cache_labels.append("import-set")
+    if validated_env_reused:
+        cache_labels.append("validated-env")
+    if used_cached_lockfile:
+        cache_labels.append("lockfile")
+    return {
+        "import_set_cache_hit": import_set_cache_hit,
+        "used_cached_env": used_cached_env,
+        "validated_env_cache_hit": validated_env_cache_hit,
+        "validated_env_reused": validated_env_reused,
+        "used_cached_lockfile": used_cached_lockfile,
+        "cache_summary": ", ".join(cache_labels) if cache_labels else "none",
+    }
+
+
+def yes_no(value: bool) -> str:
+    return "Yes" if value else "No"
+
+
+def report_title(report: dict[str, Any]) -> str:
+    target = str(report.get("output_md") or report.get("output_json") or "").lower()
+    if "validation-candidate" in target:
+        return "Validation candidate capture"
+    if "resolver-candidate" in target:
+        return "Resolver candidate capture"
+    return "Pre-optimization baseline"
+
+
 def is_skipped(metadata: dict[str, str]) -> bool:
     status = str(metadata.get("validation_status") or "").strip().lower()
     return status.startswith("skipped") or status == "host-runtime-required"
@@ -205,7 +325,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# Pre-optimization baseline",
+        f"# {report_title(report)}",
         "",
         f"Created: {report['created_at']}",
         f"Validation backend: `{report['validation_backend']}`",
@@ -216,6 +336,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Env create duration: {report['env_create_duration_ms']} ms total",
         f"Install duration: {report['install_duration_ms']} ms total",
         f"Smoke duration: {report['smoke_duration_ms']} ms total",
+        f"LLM calls: {report['llm_calls']}",
+        f"Env builds: {report['env_builds']}",
+        f"Retries: {report['retries']}",
         "Peak memory: See the companion memory profile artifact for this phase.",
         "",
         "## Command",
@@ -224,30 +347,47 @@ def render_markdown(report: dict[str, Any]) -> str:
         report["command"],
         "```",
         "",
-        "## Sample Rule",
+        "## Notes",
         "",
-        f"- Deterministic lexicographic ordering across provided roots",
-        f"- Limit: {report['sample_count']} case(s)",
-        "",
-        "## Totals",
-        "",
-        f"- Passed: {report['passed']}",
-        f"- Failed: {report['failed']}",
-        f"- Skipped: {report['skipped']}",
-        "",
-        "## Samples",
-        "",
-        "| # | Snippet | Source | Status | Python | Solve ms | Validate ms |",
-        "|---|---------|--------|--------|--------|----------|-------------|",
     ]
+    if report.get("force_validate"):
+        lines.append("- This capture was recorded with `--force-validate`.")
+    else:
+        lines.append("- This capture used the default validation path without `--force-validate`.")
+    lines.extend(
+        [
+            "- Per-sample rows include backend, cache, and validation-stage detail for review.",
+            "",
+            "## Sample Rule",
+            "",
+            f"- Deterministic lexicographic ordering across provided roots",
+            f"- Limit: {report['sample_count']} case(s)",
+            "",
+            "## Totals",
+            "",
+            f"- Passed: {report['passed']}",
+            f"- Failed: {report['failed']}",
+            f"- Skipped: {report['skipped']}",
+            "",
+            "## Samples",
+            "",
+            "| # | Snippet | Source | Status | Python | Backend | Validated env cache | Env create ms | Install ms | Smoke ms | Solve ms | Validate ms |",
+            "|---|---------|--------|--------|--------|---------|---------------------|---------------|------------|----------|----------|-------------|",
+        ]
+    )
     for sample in report["samples"]:
         lines.append(
-            "| {index} | `{snippet}` | {source} | {status} | {python_version} | {solve_duration_ms} | {validation_duration_ms} |".format(
+            "| {index} | `{snippet}` | {source} | {status} | {python_version} | {backend_path} | {validated_env_reused} | {env_create_duration_ms} | {install_duration_ms} | {smoke_duration_ms} | {solve_duration_ms} | {validation_duration_ms} |".format(
                 index=sample["index"],
                 snippet=sample["relative_path"],
                 source=sample["source"],
                 status=sample["status"].upper(),
                 python_version=sample["python_version"] or "--",
+                backend_path=sample["backend_path"] or "--",
+                validated_env_reused=yes_no(sample["validated_env_reused"]),
+                env_create_duration_ms=sample["env_create_duration_ms"],
+                install_duration_ms=sample["install_duration_ms"],
+                smoke_duration_ms=sample["smoke_duration_ms"],
                 solve_duration_ms=sample["solve_duration_ms"],
                 validation_duration_ms=sample["validation_duration_ms"],
             )
@@ -263,6 +403,23 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"### {sample['index']}. {sample['relative_path']}",
+                "",
+                f"- Status: `{sample['status']}`",
+                f"- Python: `{sample['python_version'] or '--'}`",
+                f"- Backend: `{sample['validation_backend'] or '--'}`",
+                f"- Backend path: `{sample['backend_path'] or '--'}`",
+                f"- Validated env cache reused: {yes_no(sample['validated_env_reused'])}",
+                f"- Cache detail: `{sample['cache_summary']}`",
+                f"- Import-set cache hit: {yes_no(sample['import_set_cache_hit'])}",
+                f"- Cached lockfile: {yes_no(sample['used_cached_lockfile'])}",
+                f"- Env create ms: `{sample['env_create_duration_ms']}`",
+                f"- Install ms: `{sample['install_duration_ms']}`",
+                f"- Smoke ms: `{sample['smoke_duration_ms']}`",
+                f"- LLM calls: `{sample['llm_calls']}`",
+                f"- Env builds: `{sample['env_builds']}`",
+                f"- Retries: `{sample['retries']}`",
+                f"- Validation reason: `{sample['validation_reason'] or '--'}`",
+                f"- Resolution report: `{sample['report_path']}`",
                 "",
                 "```text",
                 sample["command"],
@@ -316,9 +473,21 @@ def main() -> int:
 
         output_path = find_latest_output(case_output_dir)
         metadata = parse_simple_yaml(output_path) if output_path else {}
-        requirements_path = Path(normalize_path_text(metadata.get("requirements_path"))) if metadata.get("requirements_path") else case_output_dir / "requirements.txt"
-        report_path = Path(normalize_path_text(metadata.get("report_path"))) if metadata.get("report_path") else case_output_dir / "resolution-report.txt"
+        requirements_text = normalize_path_text(metadata.get("requirements_path"))
+        report_text = normalize_path_text(metadata.get("report_path"))
+        requirements_path = Path(requirements_text) if requirements_text else case_output_dir / "requirements.txt"
+        report_path = Path(report_text) if report_text else case_output_dir / "resolution-report.txt"
+        report_metadata, report_notes, report_attempts = parse_resolution_report(report_path)
         status = classify_status(completed.returncode, metadata, output_path is not None)
+        validation_backend = metadata_value(metadata, report_metadata, "validation_backend")
+        validation_status = metadata_value(metadata, report_metadata, "validation_status")
+        validation_reason = metadata_value(metadata, report_metadata, "validation_reason")
+        cache_context = derive_cache_context(
+            validation_backend,
+            validation_status,
+            report_notes,
+            report_attempts,
+        )
         cases.append(
             {
                 "index": index,
@@ -332,23 +501,28 @@ def main() -> int:
                 "python_version": output_path.stem[len("output_data_") :] if output_path else "",
                 "returncode": completed.returncode,
                 "status": status,
-                "validation_status": str(metadata.get("validation_status") or "").strip(),
-                "validation_reason": str(metadata.get("validation_reason") or "").strip(),
-                "validation_succeeded": parse_bool(metadata.get("validation_succeeded")),
-                "solve_duration_ms": parse_int(metadata.get("solve_duration_ms")),
-                "validation_duration_ms": parse_int(metadata.get("validation_duration_ms")),
-                "env_create_duration_ms": parse_int(metadata.get("env_create_duration_ms")),
-                "install_duration_ms": parse_int(metadata.get("install_duration_ms")),
-                "smoke_duration_ms": parse_int(metadata.get("smoke_duration_ms")),
-                "llm_calls": parse_int(metadata.get("llm_calls")),
-                "env_builds": parse_int(metadata.get("env_builds")),
-                "retries": parse_int(metadata.get("retries")),
+                "validation_backend": validation_backend,
+                "backend_path": summarize_backend_path(validation_backend, report_attempts),
+                "validation_status": validation_status,
+                "validation_reason": validation_reason,
+                "validation_succeeded": parse_bool(metadata_value(metadata, report_metadata, "validation_succeeded")),
+                "solve_duration_ms": parse_int(metadata_value(metadata, report_metadata, "solve_duration_ms")),
+                "validation_duration_ms": parse_int(metadata_value(metadata, report_metadata, "validation_duration_ms")),
+                "env_create_duration_ms": parse_int(metadata_value(metadata, report_metadata, "env_create_duration_ms")),
+                "install_duration_ms": parse_int(metadata_value(metadata, report_metadata, "install_duration_ms")),
+                "smoke_duration_ms": parse_int(metadata_value(metadata, report_metadata, "smoke_duration_ms")),
+                "llm_calls": parse_int(metadata_value(metadata, report_metadata, "llm_calls")),
+                "env_builds": parse_int(metadata_value(metadata, report_metadata, "env_builds")),
+                "retries": parse_int(metadata_value(metadata, report_metadata, "retries")),
                 "wall_duration_ms": wall_duration_ms,
                 "requirements_path": str(requirements_path),
                 "report_path": str(report_path),
                 "requirements": load_requirements(requirements_path),
+                "report_notes": report_notes,
+                "validation_attempts": report_attempts,
                 "stdout_tail": "\n".join(completed.stdout.splitlines()[-10:]),
                 "stderr_tail": "\n".join(completed.stderr.splitlines()[-10:]),
+                **cache_context,
             }
         )
 
@@ -363,6 +537,9 @@ def main() -> int:
         "fixtures_root": str(Path(args.fixtures_root).expanduser().resolve()) if args.fixtures_root else "",
         "dataset_root": str(Path(args.dataset_root).expanduser().resolve()) if args.dataset_root else "",
         "validation_backend": args.validation_backend,
+        "force_validate": bool(args.force_validate),
+        "output_json": str(output_json),
+        "output_md": str(output_md) if output_md is not None else "",
         "context_log": args.context_log,
         "sample_count": sample_count,
         "passed": passed,
