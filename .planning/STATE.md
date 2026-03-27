@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 05
 current_plan: Not started
-status: unknown
-last_updated: "2026-03-27T18:25:38.955Z"
+status: ready_to_plan
+last_updated: "2026-03-27T22:51:55.8217962Z"
 progress:
   total_phases: 6
   completed_phases: 4
@@ -18,6 +18,17 @@ progress:
 **Last Updated:** 2026-03-27
 **Current Phase:** 05
 **Current Plan:** Not started
+**Current Phase Name:** Documentation, Error Handling & Review Readiness
+**Total Phases:** 6
+**Total Plans in Phase:** 0
+**Status:** Ready to plan
+**Progress:** 0%
+**Last Activity:** Phase 5 context gathered
+**Last Activity Description:** Captured `05-CONTEXT.md` and `05-DISCUSSION-LOG.md` with decisions for docs placement, panic cleanup policy, and reviewer guide scope.
+**Paused At:** Phase 5 planning handoff
+**Last Date:** 2026-03-27T22:51:55.8217962Z
+**Stopped At:** Phase 5 context gathered
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md
 
 ---
 
@@ -90,6 +101,14 @@ Plan: Not started
 
 ---
 
+## Session
+
+**Last Date:** 2026-03-27T22:51:55.8217962Z
+**Stopped At:** Phase 5 context gathered
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md
+
+---
+
 ## Session Continuity
 
 ### What Just Happened
@@ -108,10 +127,11 @@ Plan: Not started
 - Completed `04-02` by splitting `docker/builder.rs` into env, Docker, agent, process, and runtime modules
 - Completed `04-03` by turning `family_knowledge`, `pypi_client`, and `tier3_llm` into directory-backed facades with named support modules
 - Stabilized full-suite verification by making wheelhouse cache pruning deterministic when file mtimes tie on Windows
+- Captured `05-CONTEXT.md` and `05-DISCUSSION-LOG.md` for Phase 5, locking the docs placement, panic cleanup policy, and reviewer-guide scope for the planning handoff
 
 ### What's Next
 
-**Immediate:** Plan Phase 5
+**Immediate:** Plan Phase 5 from `05-CONTEXT.md`
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
@@ -119,10 +139,11 @@ Plan: Not started
 
 ### Context for Next Session
 
-1. Read `PROJECT.md` for active scope and boundaries
-2. Read `REQUIREMENTS.md` for milestone REQ IDs
-3. Read `ROADMAP.md` for phase structure
-4. Run `$gsd-plan-phase 5`, using the completed Phase 4 summaries as the module-boundary reference
+1. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` for the locked decisions from discuss-phase
+2. Read `PROJECT.md` for active scope and boundaries
+3. Read `REQUIREMENTS.md` for milestone REQ IDs
+4. Read `ROADMAP.md` for phase structure
+5. Run `$gsd-plan-phase 5`, using the completed Phase 4 summaries as the module-boundary reference
 
 ---
 
@@ -152,6 +173,8 @@ Plan: Not started
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-02-SUMMARY.md` - validation builder decomposition summary
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-PLAN.md` - support module boundary cleanup plan
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-SUMMARY.md` - support module boundary cleanup and full-suite verification summary
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` - locked Phase 5 decisions for documentation surface, panic cleanup, and reviewer-guide scope
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-DISCUSSION-LOG.md` - audit trail of the Phase 5 discuss-phase choices
 
 **Key Commands:**
 
@@ -162,5 +185,5 @@ Plan: Not started
 
 ---
 
-*State updated after Phase 4 completion on 2026-03-27*
+*State updated after Phase 5 context capture on 2026-03-27*
 
