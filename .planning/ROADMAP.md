@@ -32,8 +32,8 @@
 5. Every later optimization phase has an explicit regression check to protect correctness
 
 **Plans**:
-- `01-01` - Baseline Harness & Memory Capture
-- `01-02` - Regression Gate, Hotspot Audit & Guardrails
+- [x] `01-01` - Baseline Harness & Memory Capture
+- [ ] `01-02` - Regression Gate, Hotspot Audit & Guardrails
 
 ---
 
@@ -131,7 +131,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Baseline & Guardrails | 0/2 | Planned | - |
+| 1. Baseline & Guardrails | 1/2 | In progress | `01-01` |
 | 2. Resolver Memory & Algorithm Efficiency | 0/TBD | Not started | - |
 | 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
