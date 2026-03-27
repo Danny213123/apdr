@@ -18,14 +18,14 @@ The benchmark UI must stay responsive and show real-time progress during runs. U
 - ✓ Web UI benchmark dashboard — existing
 - ✓ Parallel worker execution — existing
 - ✓ PyPI metadata caching — existing
+- ✓ UI splits results into deterministic vs LLM sections (two separate views) — Validated in Phase 1-2: Real-time streaming and categorization
+- ✓ UI updates in real-time as cases complete (no waiting for entire run) — Validated in Phase 1: SSE streaming infrastructure
+- ✓ Browser stays responsive during benchmark runs (no hangs/freezes) — Validated in Phase 1: Non-blocking UI
+- ✓ Startup database loading is non-blocking (show UI immediately) — Validated in Phase 1: Progressive loading
+- ✓ LLM recovery suggestions improve accuracy (better pattern matching, validation) — Validated in Phase 3: PyPI validation, RAG patterns, cache invalidation
 
 ### Active
 
-- [ ] UI splits results into deterministic vs LLM sections (two separate views)
-- [ ] UI updates in real-time as cases complete (no waiting for entire run)
-- [ ] Browser stays responsive during benchmark runs (no hangs/freezes)
-- [ ] Startup database loading is non-blocking (show UI immediately)
-- [ ] LLM recovery suggestions improve accuracy (better pattern matching, validation)
 - [ ] LLM inference performance improves (batching, caching, prompt optimization)
 - [ ] Docker validation performance improves (parallel builds, layer caching)
 - [ ] Overall accuracy increases from 75% baseline
@@ -105,4 +105,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after initialization*
+*Last updated: 2026-03-27 after Phase 3 (LLM Recovery Accuracy) completion*
