@@ -190,5 +190,185 @@ def test_prompt_version_hash_generation(ollama_available):
     print(f"Prompt version hash: {client1._prompt_version_hash}")
 
 
+@pytest.mark.integration
+def test_module_not_found_mosquitto(ollama_available):
+    """Test LLM recovery for missing module 'mosquitto' (common MQTT case)."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=["mosquitto (import: mosquitto)"],
+        error_log="""
+        ModuleNotFoundError: No module named 'mosquitto'
+        Runtime import failed: missing module `mosquitto`.
+        """,
+        snippet_source="import mosquitto",
+        python_version="2.7",
+        error_type="ModuleNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should suggest paho-mqtt (the correct package for MQTT)
+    if resp.fix_possible and resp.correct_package:
+        assert "paho" in resp.correct_package.lower() or "mqtt" in resp.correct_package.lower(), \
+            f"Expected paho-mqtt or similar MQTT library, got: {resp.correct_package}"
+
+
+@pytest.mark.integration
+def test_build_failure_lxml_windows(ollama_available):
+    """Test LLM recovery for lxml build failure on Windows (missing MSVC)."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=["lxml==4.6.5 (import: lxml)"],
+        error_log="""
+        building 'lxml.etree' extension
+        error: Microsoft Visual C++ 9.0 is required. Get it from http://aka.ms/vcpython27
+        ERROR: Command errored out with exit status 1
+        """,
+        snippet_source="from lxml import etree",
+        python_version="2.7",
+        error_type="BuildFailure",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM might suggest skipping (needs C compiler) or using pre-built wheels
+    # The response should indicate understanding that build tools are missing
+    if resp.fix_possible:
+        # If a fix is suggested, it should either be a wheel version or skip
+        pass  # Just verify it doesn't crash
+
+
+@pytest.mark.integration
+def test_version_not_found_opencv(ollama_available):
+    """Test LLM recovery for opencv version constraints."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=["opencv-python-headless (import: cv2)"],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement opencv-python-headless>=4.5.0,<5.0.0
+        ERROR: No matching distribution found for opencv-python-headless
+        """,
+        snippet_source="import cv2",
+        python_version="2.7",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should either relax version constraint or suggest alternative
+    if resp.fix_possible and resp.correct_package:
+        assert "opencv" in resp.correct_package.lower(), \
+            f"Expected opencv package variant, got: {resp.correct_package}"
+
+
+@pytest.mark.integration
+def test_module_not_found_stdlib_deepcopy(ollama_available):
+    """Test LLM should recognize deepcopy is from stdlib, not a package."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=["deepcopy (import: deepcopy)"],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement deepcopy
+        ERROR: No matching distribution found for deepcopy
+        """,
+        snippet_source="from copy import deepcopy",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # deepcopy is stdlib - LLM should either skip it or recognize it's not needed
+    if resp.fix_possible:
+        # If fix suggested, it should NOT be "deepcopy" package
+        if resp.correct_package:
+            assert resp.correct_package.lower() != "deepcopy", \
+                "LLM should not suggest 'deepcopy' as a package (it's stdlib)"
+
+
+@pytest.mark.integration
+def test_oscillating_requirements_django(ollama_available):
+    """Test LLM recovery when requirements oscillate between versions."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Django==1.8.19 (import: django)",
+            "johnny-cache==1.4 (import: johnny)",
+        ],
+        error_log="""
+        Stopped validation because requirements began oscillating.
+        ERROR: django 1.8.19 has requirement setuptools<45, but you have setuptools 69.5.1
+        """,
+        snippet_source="import django\nimport johnny",
+        python_version="2.7",
+        error_type="DependencyConflict",
+        previous_attempts=[
+            ["Django", "Django==1.11.0", "still-failing"],
+            ["Django", "Django==1.8.19", "dependency-conflict"],
+        ],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # With previous attempts shown, LLM should try something different
+    # (e.g., adjust setuptools or suggest compatible versions)
+    if resp.fix_possible and resp.correct_package:
+        # Verify it's not repeating previous attempts
+        assert resp.correct_package != "Django==1.11.0", \
+            "LLM should not repeat failed attempt Django==1.11.0"
+        assert resp.correct_package != "Django==1.8.19", \
+            "LLM should not repeat failed attempt Django==1.8.19"
+
+
+@pytest.mark.integration
+def test_pyobjc_platform_specific(ollama_available):
+    """Test LLM recognizes pyobjc-framework packages are macOS-only."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=["pyobjc-framework-CoreFoundation (import: CoreFoundation)"],
+        error_log="""
+        Package `pyobjc-framework-CoreFoundation` does not exist on PyPI. Skipping validation.
+        """,
+        snippet_source="from CoreFoundation import CFRunLoopRun",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize this is platform-specific and suggest skipping
+    # or recognize it needs the umbrella pyobjc package
+    if resp.fix_possible and resp.remove_package:
+        # Correctly identified as skippable/removable
+        pass
+    elif resp.fix_possible and resp.correct_package:
+        # Might suggest the umbrella package
+        assert "pyobjc" in resp.correct_package.lower(), \
+            f"Expected pyobjc-related suggestion, got: {resp.correct_package}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
