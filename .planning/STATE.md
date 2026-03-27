@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
-current_phase: 03
-current_plan: 3
+current_phase: 04
+current_plan: 0
 status: active
-last_updated: "2026-03-27T16:29:24.000Z"
+last_updated: "2026-03-27T16:36:54.000Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-27
-**Current Phase:** 03
-**Current Plan:** 3
+**Current Phase:** 04
+**Current Plan:** 0
 
 ---
 
@@ -25,14 +25,14 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 03 — validation-pipeline-throughput
+**Current Focus:** Phase 04 - module-layout-and-boundary-cleanup
 
 ---
 
 ## Current Position
 
-Phase: 03 (validation-pipeline-throughput) — EXECUTING
-Plan: 3 of 3
+Phase: 04 (module-layout-and-boundary-cleanup) - READY TO PLAN
+Plan: 0 of TBD
 
 ## Milestone Snapshot
 
@@ -50,7 +50,7 @@ Plan: 3 of 3
 
 - Large Rust modules remain in critical paths: `resolver/mod.rs`, `docker/builder.rs`, `resolver/family_knowledge.rs`, `resolver/pypi_client.rs`, `resolver/tier3_llm.rs`
 - Codebase analysis identified 329 `.clone()` occurrences across Rust source, with heavy concentration in resolver flows
-- Validation throughput remains constrained by fallback, retry, and environment creation overhead
+- Phase 3 confirmed that forced validation on this Windows host still bottlenecks on Docker buildx access rather than on the new telemetry layer
 - Some production error paths still rely on `unwrap()`, `expect()`, or brittle string-matching logic
 
 ## Accumulated Context
@@ -60,12 +60,13 @@ Plan: 3 of 3
 - Rust core lives under `tools/apdr/src/`
 - Python LLM bridge lives under `tools/apdr/llm_py/`
 - Correctness still depends on reproducible env and Docker validation
-- Phase 2 ended with a clean `cargo clippy --all-targets -- -D warnings` gate
+- Phase 3 now has warm-vs-forced validation benchmark artifacts and a documented Windows Docker variance note
 
 ### Completed Milestone Work
 
 - Phase 1 established the baseline harness, memory profile, hotspot audit, and benchmark regression guardrails
 - Phase 2 reduced resolver hot-path ownership churn and recomputation, added retry-loop regression coverage, and captured a bounded before/after candidate benchmark
+- Phase 3 improved validation telemetry, captured warm and forced validation candidates, and closed with a regression-gated delta note against the original baseline
 
 ### Carried-Forward Constraints
 
@@ -75,13 +76,13 @@ Plan: 3 of 3
 
 ## Current Blockers
 
-*None - 03-02 is complete and Phase 3 is continuing into 03-03.*
+*None - Phase 3 is complete and Phase 4 planning is next.*
 
 ## Active TODOs
 
-- [ ] Execute Plan `03-03` (`Validation Candidate Benchmark & Delta Report`)
-- [ ] Capture both the warm and forced validation candidate artifacts with the updated benchmark harness
-- [ ] Run the Phase 3 regression comparison against `01-baseline.json` before closing the phase
+- [ ] Plan Phase `04` (`Module Layout & Boundary Cleanup`)
+- [ ] Split oversized validation and resolver Rust modules behind clearer boundaries without losing the current regression gates
+- [ ] Preserve the Phase 3 benchmark artifacts as the reference point for later benchmark-verification work
 
 ## Deferred Items
 
@@ -101,21 +102,22 @@ Plan: 3 of 3
 - Planned Phase 3 with `03-RESEARCH.md`, `03-VALIDATION.md`, and three execution plans focused on validation throughput, backend telemetry, and candidate benchmarking
 - Completed `03-01` with explicit env-attempt path staging, validated-env cache-source helpers, ordered env-to-Docker retry history, and passing validation-pipeline tests
 - Completed `03-02` with cached Docker-agent probing, JSON-backed agent-result parsing, richer per-sample validation benchmark reporting, and optional env-create or install or smoke regression thresholds
+- Completed `03-03` with warm and forced validation candidate artifacts, a passing continuity regression gate, and a delta note that keeps the Windows Docker constraint explicit
 
 ### What's Next
 
-**Immediate:** Continue Phase 3 with Plan `03-03`
+**Immediate:** Plan Phase 4
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Capture warm and forced validation candidates, run the regression gate, and write the Phase 3 validation delta note
+**Next Phase:** Split oversized Rust modules and tighten module boundaries for reviewability without breaking the current benchmark and lint guardrails
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Read `03-03-PLAN.md`, then continue execution in Phase 3
+4. Run `$gsd-plan-phase 4`, then continue the milestone with the Phase 3 benchmark artifacts in hand
 
 ---
 
@@ -130,23 +132,21 @@ Plan: 3 of 3
 - `.planning/phases/01-baseline-and-guardrails/01-baseline.json` - committed timing and pass-rate baseline
 - `.planning/phases/01-baseline-and-guardrails/01-memory-profile.json` - representative memory snapshot
 - `.planning/phases/01-baseline-and-guardrails/01-HOTSPOT-AUDIT.md` - ranked Rust optimization targets
-- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-02-SUMMARY.md` - retry-loop and lint-gate cleanup summary
-- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-03-SUMMARY.md` - bounded candidate capture summary
+- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-03-SUMMARY.md` - bounded resolver candidate capture summary
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` - Phase 2 benchmark comparison
-- `.planning/phases/03-validation-pipeline-throughput/03-RESEARCH.md` - validation hotspot and measurement guidance for Phase 3
-- `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION.md` - verification contract for validation-throughput work
-- `.planning/phases/03-validation-pipeline-throughput/03-01-SUMMARY.md` - Wave 1 env-attempt staging and cache-source cleanup summary
 - `.planning/phases/03-validation-pipeline-throughput/03-02-SUMMARY.md` - Wave 2 backend telemetry and benchmark-reporting summary
-- `.planning/phases/03-validation-pipeline-throughput/03-02-PLAN.md` - backend telemetry and benchmark-reporting work
-- `.planning/phases/03-validation-pipeline-throughput/03-03-PLAN.md` - candidate capture and delta closeout
+- `.planning/phases/03-validation-pipeline-throughput/03-03-SUMMARY.md` - Wave 3 validation candidate capture and delta summary
+- `.planning/phases/03-validation-pipeline-throughput/03-validation-candidate.json` - warm continuity candidate for validation throughput
+- `.planning/phases/03-validation-pipeline-throughput/03-validation-candidate-forced.json` - forced-validation artifact for the same bounded sample
+- `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md` - validation delta note with warm-vs-forced interpretation
 
 **Key Commands:**
 
-- `$gsd-execute-phase 3` - continue the remaining validation-throughput plans
-- `$gsd-progress` - review milestone state after Phase 2 completion
+- `$gsd-plan-phase 4` - plan the next structural cleanup phase
+- `$gsd-progress` - review milestone state after Phase 3 completion
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after 03-02 execution on 2026-03-27*
+*State updated after Phase 3 completion on 2026-03-27*
