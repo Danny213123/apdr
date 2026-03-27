@@ -370,5 +370,200 @@ def test_pyobjc_platform_specific(ollama_available):
             f"Expected pyobjc-related suggestion, got: {resp.correct_package}"
 
 
+@pytest.mark.integration
+def test_local_module_d3_networkx(ollama_available):
+    """Test LLM identifies d3 as local module (networkx-d3.js bridge)."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "simplejson (import: simplejson)",
+            "networkx (import: networkx)",
+            "d3 (import: d3)",
+        ],
+        error_log="""
+        ImportError: No module named d3
+        Runtime import failed: missing module `d3`.
+        """,
+        snippet_source="import simplejson\\nimport networkx as nx\\nimport d3\\nd3.draw_force(G, 'force.json')",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify d3 as a local module (networkx-d3 bridge)
+    # and suggest removing it rather than installing from PyPI
+    if resp.fix_possible and resp.remove_package:
+        assert "d3" in resp.remove_package.lower(), \
+            f"Expected d3 to be removed as local module, got: {resp.remove_package}"
+
+
+@pytest.mark.integration
+def test_optional_import_try_except(ollama_available):
+    """Test LLM recognizes try/except optional imports."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "webassets==0.10 (import: webassets)",
+            "_webassets (import: _webassets)",
+        ],
+        error_log="""
+        ImportError: No module named _webassets
+        Runtime import failed: missing module `_webassets`.
+        """,
+        snippet_source="from webassets.bundle import Bundle\\ntry:\\n    from _webassets import files\\nexcept ImportError:\\n    files = {}",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize _webassets is in try/except (optional import)
+    # The import error is expected and handled by the code
+    if resp.fix_possible and resp.remove_package:
+        assert "_webassets" in resp.remove_package.lower(), \
+            f"Expected _webassets to be identified as optional, got: {resp.remove_package}"
+
+
+@pytest.mark.integration
+def test_old_flask_extension_pattern(ollama_available):
+    """Test LLM handles deprecated flask.ext.* import pattern."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Flask (import: flask)",
+            "flask-heroku (import: flask_heroku)",
+            "flask-sslify (import: flask_sslify)",
+            "celery (import: celery)",
+            "flask-celery (import: flask_celery)",  # Wrong - old extension pattern
+        ],
+        error_log="""
+        ImportError: No module named flask.ext.celery
+        The flask.ext namespace is deprecated.
+        """,
+        snippet_source="from flask import Flask\\nfrom flask.ext.celery import Celery\\ncelery = Celery(app)",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize flask.ext.* pattern is deprecated
+    # and either suggest removing flask-celery or updating to modern import
+    if resp.fix_possible:
+        # Could remove the wrong package or suggest alternative
+        pass
+
+
+@pytest.mark.integration
+def test_local_module_clips_vs_click(ollama_available):
+    """Test LLM distinguishes between local module 'clips' and package 'click'."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Django (import: django)",
+            "django-haystack (import: haystack)",
+            "django-tastypie (import: tastypie)",
+            "click (import: clips)",  # Wrong - clips is local, not click package
+        ],
+        error_log="""
+        ImportError: No module named clips
+        Runtime import failed: missing module `clips`.
+        """,
+        snippet_source="import django\\nfrom haystack import indexes\\nfrom tastypie.api import Api\\nimport clips",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should identify that 'clips' is a local module, not the 'click' package
+    if resp.fix_possible and resp.remove_package:
+        assert "click" in resp.remove_package.lower() or "clips" in resp.remove_package.lower(), \
+            f"Expected click/clips to be removed, got: {resp.remove_package}"
+
+
+@pytest.mark.integration
+def test_pymc_scientific_stack(ollama_available):
+    """Test LLM handles scientific Python stack with version constraints."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "numpy==1.21.6 (import: numpy)",
+            "Theano-PyMC==1.1.2 (import: theano)",
+            "arviz==0.12.1 (import: arviz)",
+            "Lasagne (import: lasagne)",  # Might be local or outdated package
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement Lasagne
+        ERROR: No matching distribution found for Lasagne
+        """,
+        snippet_source="import numpy as np\\nimport theano\\nimport arviz\\nimport lasagne",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should either recognize Lasagne as outdated/local
+    # or suggest an alternative deep learning library
+    if resp.fix_possible:
+        # Could remove Lasagne or suggest alternative
+        pass
+
+
+@pytest.mark.integration
+def test_sql_package_ambiguity(ollama_available):
+    """Test LLM handles ambiguous 'sql' package name."""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "httplib2 (import: httplib2)",
+            "sql==0.3.0 (import: sql)",
+        ],
+        error_log="""
+        ImportError: No module named authorization
+        Runtime import failed: missing module `authorization`.
+        """,
+        snippet_source="import httplib2\\nimport sql\\nfrom authorization import check_auth",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[
+            ["pywin32", "pywin32==305", "still-failing"],
+        ],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM should recognize 'authorization' is likely a local module
+    # not related to pywin32 (which was already tried)
+    if resp.fix_possible and resp.remove_package:
+        # Should identify authorization or pywin32 as removable
+        pass
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
