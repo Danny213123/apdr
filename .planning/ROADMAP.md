@@ -93,7 +93,10 @@
 4. Reviewers can follow the main control flow without tracing giant monolithic files
 5. Targeted tests still pass after the structural refactor
 
-**Plans**: TBD
+**Plans**:
+- [ ] `04-01` - Resolver Orchestrator Module Split
+- [ ] `04-02` - Validation Builder Module Split
+- [ ] `04-03` - Support Module Boundary Cleanup
 
 ---
 
@@ -140,7 +143,7 @@
 | 1. Baseline & Guardrails | 2/2 | Complete | 2026-03-27 |
 | 2. Resolver Memory & Algorithm Efficiency | 3/3 | Complete | 2026-03-27 |
 | 3. Validation Pipeline Throughput | 3/3 | Complete | 2026-03-27 |
-| 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
+| 4. Module Layout & Boundary Cleanup | 0/3 | Planned | - |
 | 5. Documentation, Error Handling & Review Readiness | 0/TBD | Not started | - |
 | 6. Benchmark Verification & v2 Closeout | 0/TBD | Not started | - |
 
@@ -166,4 +169,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 3 completion*
+*Last updated: 2026-03-27 after Phase 4 planning*

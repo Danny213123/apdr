@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 04
-current_plan: 0
+current_plan: 1
 status: active
-last_updated: "2026-03-27T16:36:54.000Z"
+last_updated: "2026-03-27T17:15:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 8
+  total_plans: 11
   completed_plans: 8
 ---
 
@@ -17,7 +17,7 @@ progress:
 
 **Last Updated:** 2026-03-27
 **Current Phase:** 04
-**Current Plan:** 0
+**Current Plan:** 1
 
 ---
 
@@ -31,8 +31,8 @@ progress:
 
 ## Current Position
 
-Phase: 04 (module-layout-and-boundary-cleanup) - READY TO PLAN
-Plan: 0 of TBD
+Phase: 04 (module-layout-and-boundary-cleanup) - READY TO EXECUTE
+Plan: 1 of 3
 
 ## Milestone Snapshot
 
@@ -76,11 +76,11 @@ Plan: 0 of TBD
 
 ## Current Blockers
 
-*None - Phase 3 is complete and Phase 4 planning is next.*
+*None - Phase 4 is planned and execution is next.*
 
 ## Active TODOs
 
-- [ ] Plan Phase `04` (`Module Layout & Boundary Cleanup`)
+- [ ] Execute Phase `04` (`Module Layout & Boundary Cleanup`)
 - [ ] Split oversized validation and resolver Rust modules behind clearer boundaries without losing the current regression gates
 - [ ] Preserve the Phase 3 benchmark artifacts as the reference point for later benchmark-verification work
 
@@ -103,10 +103,11 @@ Plan: 0 of TBD
 - Completed `03-01` with explicit env-attempt path staging, validated-env cache-source helpers, ordered env-to-Docker retry history, and passing validation-pipeline tests
 - Completed `03-02` with cached Docker-agent probing, JSON-backed agent-result parsing, richer per-sample validation benchmark reporting, and optional env-create or install or smoke regression thresholds
 - Completed `03-03` with warm and forced validation candidate artifacts, a passing continuity regression gate, and a delta note that keeps the Windows Docker constraint explicit
+- Planned Phase 4 with `04-RESEARCH.md`, `04-VALIDATION.md`, and three execution plans focused on resolver decomposition, validation-builder decomposition, and support-module boundary cleanup
 
 ### What's Next
 
-**Immediate:** Plan Phase 4
+**Immediate:** Execute Phase 4
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
@@ -117,7 +118,7 @@ Plan: 0 of TBD
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Run `$gsd-plan-phase 4`, then continue the milestone with the Phase 3 benchmark artifacts in hand
+4. Run `$gsd-execute-phase 4`, then continue the milestone with the Phase 3 benchmark artifacts in hand
 
 ---
 
@@ -139,14 +140,19 @@ Plan: 0 of TBD
 - `.planning/phases/03-validation-pipeline-throughput/03-validation-candidate.json` - warm continuity candidate for validation throughput
 - `.planning/phases/03-validation-pipeline-throughput/03-validation-candidate-forced.json` - forced-validation artifact for the same bounded sample
 - `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md` - validation delta note with warm-vs-forced interpretation
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-RESEARCH.md` - structural split targets and module-boundary recommendations
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-VALIDATION.md` - structural and behavioral verification contract for Phase 4
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-01-PLAN.md` - resolver orchestrator split plan
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-02-PLAN.md` - validation builder split plan
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-PLAN.md` - support module boundary cleanup plan
 
 **Key Commands:**
 
-- `$gsd-plan-phase 4` - plan the next structural cleanup phase
-- `$gsd-progress` - review milestone state after Phase 3 completion
+- `$gsd-execute-phase 4` - execute the structural cleanup phase
+- `$gsd-progress` - review milestone state after Phase 4 planning
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 3 completion on 2026-03-27*
+*State updated after Phase 4 planning on 2026-03-27*
