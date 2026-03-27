@@ -9,7 +9,7 @@
 ## Phases
 
 - [x] **Phase 1: Baseline & Guardrails** - Establish measurement, profiling, and regression gates before refactoring
-- [ ] **Phase 2: Resolver Memory & Algorithm Efficiency** - Reduce hot-path allocation, clone churn, and avoidable work in core solve flows
+- [x] **Phase 2: Resolver Memory & Algorithm Efficiency** - Reduce hot-path allocation, clone churn, and avoidable work in core solve flows
 - [ ] **Phase 3: Validation Pipeline Throughput** - Improve env and Docker validation efficiency, cache reuse, and retry cost
 - [ ] **Phase 4: Module Layout & Boundary Cleanup** - Split oversized Rust modules and make responsibilities easier to review
 - [ ] **Phase 5: Documentation, Error Handling & Review Readiness** - Raise clarity, docs, and standards compliance in touched Rust code
@@ -53,8 +53,8 @@
 
 **Plans**:
 - [x] `02-01` - Pre-solve Ownership & Metadata Prefetch Cleanup
-- [ ] `02-02` - Resolver Retry Loop & Dependency Mutation Cleanup
-- [ ] `02-03` - Resolver Candidate Benchmark & Delta Report
+- [x] `02-02` - Resolver Retry Loop & Dependency Mutation Cleanup
+- [x] `02-03` - Resolver Candidate Benchmark & Delta Report
 
 ---
 
@@ -135,7 +135,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Baseline & Guardrails | 2/2 | Complete | 2026-03-27 |
-| 2. Resolver Memory & Algorithm Efficiency | 1/3 | In Progress | - |
+| 2. Resolver Memory & Algorithm Efficiency | 3/3 | Complete | 2026-03-27 |
 | 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
 | 5. Documentation, Error Handling & Review Readiness | 0/TBD | Not started | - |
@@ -163,4 +163,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after 02-01 execution*
+*Last updated: 2026-03-27 after 02-03 execution*

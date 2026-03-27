@@ -9,18 +9,18 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 ### Baseline & Guardrails
 
-- [ ] **BASE-01**: Benchmark baseline captures end-to-end runtime, validation runtime, and pass rate before optimization work begins
-- [ ] **BASE-02**: Benchmark baseline captures memory-sensitive indicators for key Rust workflows
-- [ ] **BASE-03**: The repo has a repeatable command set for fmt, clippy, targeted tests, and benchmark comparison
-- [ ] **BASE-04**: High-risk performance hotspots are ranked from measured evidence, not only code inspection
-- [ ] **BASE-05**: Each optimization phase defines a regression check before refactoring begins
+- [x] **BASE-01**: Benchmark baseline captures end-to-end runtime, validation runtime, and pass rate before optimization work begins
+- [x] **BASE-02**: Benchmark baseline captures memory-sensitive indicators for key Rust workflows
+- [x] **BASE-03**: The repo has a repeatable command set for fmt, clippy, targeted tests, and benchmark comparison
+- [x] **BASE-04**: High-risk performance hotspots are ranked from measured evidence, not only code inspection
+- [x] **BASE-05**: Each optimization phase defines a regression check before refactoring begins
 
 ### Memory & Algorithm Efficiency
 
 - [x] **EFF-01**: Hot-path Rust code reduces unnecessary cloning and allocation in resolver and cache flows
 - [x] **EFF-02**: Shared-state contention in benchmark-critical paths is reduced with a better ownership or aggregation strategy
 - [x] **EFF-03**: Repeated metadata lookups or recomputation in solve and validate paths are reduced or eliminated
-- [ ] **EFF-04**: Candidate-selection and retry logic use clearer, cheaper algorithms in the hottest Rust paths
+- [x] **EFF-04**: Candidate-selection and retry logic use clearer, cheaper algorithms in the hottest Rust paths
 - [x] **EFF-05**: Performance-oriented refactors preserve deterministic behavior and benchmark correctness
 
 ### Validation Throughput
@@ -80,15 +80,15 @@ Deferred to a later milestone after the core modernization work lands.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BASE-01 | Phase 1 | Pending |
-| BASE-02 | Phase 1 | Pending |
-| BASE-03 | Phase 1 | Pending |
-| BASE-04 | Phase 1 | Pending |
-| BASE-05 | Phase 1 | Pending |
+| BASE-01 | Phase 1 | Complete |
+| BASE-02 | Phase 1 | Complete |
+| BASE-03 | Phase 1 | Complete |
+| BASE-04 | Phase 1 | Complete |
+| BASE-05 | Phase 1 | Complete |
 | EFF-01 | Phase 2 | Complete |
 | EFF-02 | Phase 2 | Complete |
 | EFF-03 | Phase 2 | Complete |
-| EFF-04 | Phase 2 | Pending |
+| EFF-04 | Phase 2 | Complete |
 | EFF-05 | Phase 2 | Complete |
 | VAL-01 | Phase 3 | Pending |
 | VAL-02 | Phase 3 | Pending |
@@ -118,4 +118,4 @@ Deferred to a later milestone after the core modernization work lands.
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after initial v2 definition*
+*Last updated: 2026-03-27 after Phase 2 completion*
