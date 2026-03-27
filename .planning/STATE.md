@@ -3,21 +3,21 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 02
-current_plan: "Not started"
-status: ready_for_planning
-last_updated: "2026-03-27T00:02:54.3012837-04:00"
+current_plan: "02-01"
+status: ready_for_execution
+last_updated: "2026-03-27T00:00:00-04:00"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 2
+  total_plans: 5
   completed_plans: 2
 ---
 
 # Project State: APDR
 
-**Last Updated:** 2026-03-26
+**Last Updated:** 2026-03-27
 **Current Phase:** 02
-**Current Plan:** Not started
+**Current Plan:** 02-01
 
 ---
 
@@ -31,8 +31,8 @@ progress:
 
 ## Current Position
 
-Phase: 02 (resolver-memory-and-algorithm-efficiency) - READY FOR PLANNING
-Plan: -
+Phase: 02 (resolver-memory-and-algorithm-efficiency) - PLANNED
+Plan: 02-01 (first execution unit)
 
 ## Milestone Snapshot
 
@@ -78,13 +78,13 @@ Plan: -
 
 ## Current Blockers
 
-*None - Phase 1 completed and Phase 2 is ready to plan.*
+*None - Phase 2 is planned and ready for execution.*
 
 ## Active TODOs
 
-- [ ] Run `$gsd-plan-phase 2`
-- [ ] Use `01-HOTSPOT-AUDIT.md` to pick the first resolver targets
-- [ ] Reuse `01-baseline.json` and `01-memory-profile.json` when measuring Phase 2 changes
+- [ ] Run `$gsd-execute-phase 2`
+- [ ] Start with `02-01` to remove pre-solve shared-state contention and consolidate metadata persistence
+- [ ] Reuse `01-baseline.json` when producing `02-resolver-candidate.json` before closing Phase 2
 
 ## Deferred Items
 
@@ -102,10 +102,11 @@ Plan: -
 - Created Phase 1 research and validation docs plus plans `01-01` and `01-02`
 - Completed `01-01` with committed baseline and memory-profile artifacts
 - Completed `01-02` with the regression gate, hotspot audit, and README guardrails
+- Created Phase 2 research and validation docs plus plans `02-01`, `02-02`, and `02-03`
 
 ### What's Next
 
-**Immediate:** Plan Phase 2 (Resolver Memory & Algorithm Efficiency)
+**Immediate:** Execute Phase 2 (Resolver Memory & Algorithm Efficiency)
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
@@ -116,7 +117,7 @@ Plan: -
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Read `01-HOTSPOT-AUDIT.md`, then run `$gsd-plan-phase 2`
+4. Read `02-RESEARCH.md`, `02-VALIDATION.md`, and the three `02-0X-PLAN.md` files, then run `$gsd-execute-phase 2`
 
 ---
 
@@ -131,14 +132,16 @@ Plan: -
 - `.planning/phases/01-baseline-and-guardrails/01-baseline.json` - committed timing and pass-rate baseline
 - `.planning/phases/01-baseline-and-guardrails/01-memory-profile.json` - representative memory snapshot
 - `.planning/phases/01-baseline-and-guardrails/01-HOTSPOT-AUDIT.md` - ranked Rust optimization targets for Phase 2 and Phase 3
+- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESEARCH.md` - Phase 2 implementation research
+- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-VALIDATION.md` - Phase 2 verification contract
 
 **Key Commands:**
 
-- `$gsd-plan-phase 2` - plan the first Rust optimization phase
-- `$gsd-progress` - review milestone state after Phase 1 completion
+- `$gsd-execute-phase 2` - execute the planned resolver optimization phase
+- `$gsd-progress` - review milestone state after Phase 2 planning
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 1 completion on 2026-03-27*
+*State updated after Phase 2 planning on 2026-03-27*

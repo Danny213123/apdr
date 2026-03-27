@@ -51,7 +51,10 @@
 4. Deterministic behavior and correctness remain intact after optimization
 5. The changed code is easier to reason about than the original hotspot implementation
 
-**Plans**: TBD
+**Plans**:
+- [ ] `02-01` - Pre-solve Ownership & Metadata Prefetch Cleanup
+- [ ] `02-02` - Resolver Retry Loop & Dependency Mutation Cleanup
+- [ ] `02-03` - Resolver Candidate Benchmark & Delta Report
 
 ---
 
@@ -132,7 +135,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Baseline & Guardrails | 2/2 | Complete | 2026-03-27 |
-| 2. Resolver Memory & Algorithm Efficiency | 0/TBD | Not started | - |
+| 2. Resolver Memory & Algorithm Efficiency | 0/3 | Planned | - |
 | 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
 | 5. Documentation, Error Handling & Review Readiness | 0/TBD | Not started | - |
@@ -160,4 +163,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 1 completion*
+*Last updated: 2026-03-27 after Phase 2 planning*
