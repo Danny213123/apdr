@@ -1995,10 +1995,12 @@ fn pin_dependency(
 // and persist them for future use. Learned families are stored in JSON and
 // merged with the static family knowledge at runtime.
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedFamilyMember {
@@ -2021,9 +2023,8 @@ pub struct LearnedFamily {
     pub learned_from_cases: Vec<String>,  // Track all cases that contributed
 }
 
-lazy_static::lazy_static! {
-    static ref LEARNED_FAMILIES: Mutex<Vec<LearnedFamily>> = Mutex::new(Vec::new());
-}
+static LEARNED_FAMILIES: Lazy<Mutex<Vec<LearnedFamily>>> =
+    Lazy::new(|| Mutex::new(Vec::new()));
 
 /// Get the path to the learned families JSON file
 pub fn learned_families_path() -> PathBuf {
@@ -2091,7 +2092,7 @@ pub fn add_learned_family(
     let mut learned = LEARNED_FAMILIES.lock()
         .map_err(|_| "Failed to lock learned families")?;
 
-    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+    let now = current_timestamp_string();
 
     // Check if family already exists
     if let Some(existing) = learned.iter_mut().find(|f| f.name == family_name) {
@@ -2106,11 +2107,11 @@ pub fn add_learned_family(
         }
 
         // Add members if not present
-        let member_packages: Vec<_> = existing.members.iter()
-            .map(|m| m.package.as_str())
+        let mut member_packages: Vec<String> = existing.members.iter()
+            .map(|member| member.package.clone())
             .collect();
 
-        if !member_packages.contains(&package_name) {
+        if !member_packages.iter().any(|package| package == package_name) {
             existing.members.push(LearnedFamilyMember {
                 package: package_name.to_string(),
                 modules: module_names.iter().map(|s| s.to_string()).collect(),
@@ -2119,10 +2120,11 @@ pub fn add_learned_family(
                 learned_from_case: Some(case_id.to_string()),
                 confidence_score: confidence,
             });
+            member_packages.push(package_name.to_string());
         }
 
         for (alt_pkg, is_pref) in alternative_packages {
-            if !member_packages.contains(alt_pkg) {
+            if !member_packages.iter().any(|package| package == alt_pkg) {
                 existing.members.push(LearnedFamilyMember {
                     package: alt_pkg.to_string(),
                     modules: module_names.iter().map(|s| s.to_string()).collect(),
@@ -2131,6 +2133,7 @@ pub fn add_learned_family(
                     learned_from_case: Some(case_id.to_string()),
                     confidence_score: confidence,
                 });
+                member_packages.push(alt_pkg.to_string());
             }
         }
     } else {
@@ -2208,3 +2211,9 @@ pub fn get_learned_alternatives(module_name: &str) -> Vec<String> {
     alternatives
 }
 
+fn current_timestamp_string() -> String {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => format!("unix:{}", duration.as_secs()),
+        Err(_) => "unix:0".to_string(),
+    }
+}

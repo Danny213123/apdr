@@ -42,10 +42,14 @@ fn cli_resolves_from_stdin_without_validation() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("SOLVE_DURATION_MS="));
+    assert!(stdout.contains("VALIDATION_DURATION_MS="));
     assert!(stdout.contains("VALIDATION_SUCCEEDED=true"));
     assert!(stdout.contains("DEBUG_DIR="));
     assert!(stdout.contains("CONTEXT_LOG="));
     assert!(stdout.contains("ENV_CREATE_DURATION_MS=0"));
+    assert!(stdout.contains("INSTALL_DURATION_MS=0"));
+    assert!(stdout.contains("SMOKE_DURATION_MS=0"));
 
     let requirements = fs::read_to_string(output_dir.join("requirements.txt")).unwrap();
     let report = fs::read_to_string(output_dir.join("resolution-report.txt")).unwrap();
