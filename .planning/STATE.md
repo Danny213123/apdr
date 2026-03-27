@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 05
 current_plan: Not started
-status: ready_to_plan
-last_updated: "2026-03-27T22:51:55.8217962Z"
+status: ready_to_execute
+last_updated: "2026-03-27T19:29:06.7674717-04:00"
 progress:
   total_phases: 6
   completed_phases: 4
@@ -20,15 +20,15 @@ progress:
 **Current Plan:** Not started
 **Current Phase Name:** Documentation, Error Handling & Review Readiness
 **Total Phases:** 6
-**Total Plans in Phase:** 0
-**Status:** Ready to plan
+**Total Plans in Phase:** 3
+**Status:** Ready to execute
 **Progress:** 0%
-**Last Activity:** Phase 5 context gathered
-**Last Activity Description:** Captured `05-CONTEXT.md` and `05-DISCUSSION-LOG.md` with decisions for docs placement, panic cleanup policy, and reviewer guide scope.
-**Paused At:** Phase 5 planning handoff
-**Last Date:** 2026-03-27T22:51:55.8217962Z
-**Stopped At:** Phase 5 context gathered
-**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md
+**Last Activity:** Phase 5 planned
+**Last Activity Description:** Added `05-RESEARCH.md`, `05-VALIDATION.md`, and three execution plans covering reviewer docs, panic-path cleanup, and verification closeout.
+**Paused At:** Phase 5 execution handoff
+**Last Date:** 2026-03-27T19:29:06.7674717-04:00
+**Stopped At:** Phase 5 planned
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-01-PLAN.md
 
 ---
 
@@ -42,8 +42,8 @@ progress:
 
 ## Current Position
 
-Phase: 05 (documentation-error-handling-and-review-readiness) — READY TO PLAN
-Plan: Not started
+Phase: 05 (documentation-error-handling-and-review-readiness) — READY TO EXECUTE
+Plan: Not started (3 plans queued)
 
 ## Milestone Snapshot
 
@@ -91,7 +91,7 @@ Plan: Not started
 
 ## Active TODOs
 
-- [ ] Plan Phase `05` (`Documentation, Error Handling & Review Readiness`)
+- [ ] Execute Phase `05` (`Documentation, Error Handling & Review Readiness`)
 - [ ] Document non-obvious Rust fallback and recovery behavior now that module ownership is explicit
 - [ ] Review touched Rust production paths for panic safety and style consistency using the new Phase 4 boundaries
 
@@ -103,9 +103,9 @@ Plan: Not started
 
 ## Session
 
-**Last Date:** 2026-03-27T22:51:55.8217962Z
-**Stopped At:** Phase 5 context gathered
-**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md
+**Last Date:** 2026-03-27T19:29:06.7674717-04:00
+**Stopped At:** Phase 5 planned
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-01-PLAN.md
 
 ---
 
@@ -128,14 +128,15 @@ Plan: Not started
 - Completed `04-03` by turning `family_knowledge`, `pypi_client`, and `tier3_llm` into directory-backed facades with named support modules
 - Stabilized full-suite verification by making wheelhouse cache pruning deterministic when file mtimes tie on Windows
 - Captured `05-CONTEXT.md` and `05-DISCUSSION-LOG.md` for Phase 5, locking the docs placement, panic cleanup policy, and reviewer-guide scope for the planning handoff
+- Planned Phase 5 with `05-RESEARCH.md`, `05-VALIDATION.md`, and three execution plans focused on reviewer docs, panic-path hardening, and consistency closeout
 
 ### What's Next
 
-**Immediate:** Plan Phase 5 from `05-CONTEXT.md`
+**Immediate:** Execute Phase 5 from `05-01-PLAN.md`
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Raise review readiness across the newly split Rust modules with clearer docs, safer error paths, and tighter style consistency
+**Next Phase:** Execute the review-readiness plans across the newly split Rust modules with clearer docs, safer error paths, and tighter style consistency
 
 ### Context for Next Session
 
@@ -143,7 +144,7 @@ Plan: Not started
 2. Read `PROJECT.md` for active scope and boundaries
 3. Read `REQUIREMENTS.md` for milestone REQ IDs
 4. Read `ROADMAP.md` for phase structure
-5. Run `$gsd-plan-phase 5`, using the completed Phase 4 summaries as the module-boundary reference
+5. Run `$gsd-execute-phase 5`, using the completed Phase 4 summaries as the module-boundary reference
 
 ---
 
@@ -175,15 +176,20 @@ Plan: Not started
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-SUMMARY.md` - support module boundary cleanup and full-suite verification summary
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` - locked Phase 5 decisions for documentation surface, panic cleanup, and reviewer-guide scope
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-DISCUSSION-LOG.md` - audit trail of the Phase 5 discuss-phase choices
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-RESEARCH.md` - implementation research and the concentrated panic-path targets for Phase 5
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` - Phase 5 verification contract for docs, panic cleanup, fmt, tests, and clippy
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-PLAN.md` - reviewer-surface documentation and guide plan
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-PLAN.md` - panic-path hardening and invariant-cleanup plan
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-03-PLAN.md` - consistency sweep and verification closeout plan
 
 **Key Commands:**
 
-- `$gsd-plan-phase 5` - plan the review-readiness phase against the completed Phase 4 boundaries
+- `$gsd-execute-phase 5` - execute the review-readiness plans against the completed Phase 4 boundaries
 - `$gsd-progress` - review milestone state after Phase 4 completion
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 5 context capture on 2026-03-27*
+*State updated after Phase 5 planning on 2026-03-27*
 
