@@ -1,145 +1,125 @@
-# Roadmap: APDR Enhancement
+# Roadmap: APDR
 
-**Project:** APDR Enhancement - Accuracy & Performance
-**Created:** 2026-03-25
-**Granularity:** Standard (5-8 phases)
+**Project:** APDR v2.0 - Rust Codebase Modernization
+**Created:** 2026-03-26
+**Granularity:** Standard (6 phases)
+
+## Roadmap v2.0: Rust Codebase Modernization
 
 ## Phases
 
-- [x] **Phase 1: Non-blocking UI Foundation** - Responsive UI with real-time streaming
-- [x] **Phase 2: Result Categorization & Insights** - Deterministic/LLM split view with filtering
-- [ ] **Phase 3: LLM Recovery Accuracy** - Improved error recovery with validation and confidence scoring
-- [ ] **Phase 4: LLM Performance Optimization** - Batching, caching, and parallel inference
-- [ ] **Phase 5: Docker Parallel Validation** - Concurrent Python version testing with BuildKit
-- [ ] **Phase 6: End-to-End Validation** - Metrics verification and performance benchmarking
+- [ ] **Phase 1: Baseline & Guardrails** - Establish measurement, profiling, and regression gates before refactoring
+- [ ] **Phase 2: Resolver Memory & Algorithm Efficiency** - Reduce hot-path allocation, clone churn, and avoidable work in core solve flows
+- [ ] **Phase 3: Validation Pipeline Throughput** - Improve env and Docker validation efficiency, cache reuse, and retry cost
+- [ ] **Phase 4: Module Layout & Boundary Cleanup** - Split oversized Rust modules and make responsibilities easier to review
+- [ ] **Phase 5: Documentation, Error Handling & Review Readiness** - Raise clarity, docs, and standards compliance in touched Rust code
+- [ ] **Phase 6: Benchmark Verification & v2 Closeout** - Prove the modernization work with before/after benchmarks and review gates
 
 ## Phase Details
 
-### Phase 1: Non-blocking UI Foundation
-**Goal**: Users experience responsive UI with real-time progress during benchmark runs
+### Phase 1: Baseline & Guardrails
+**Goal**: Build a measured starting point so later optimization work is evidence-driven and regression-safe
 
 **Depends on**: Nothing (foundation phase)
 
-**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, RT-01, RT-02, RT-03, RT-04, RT-05
+**Requirements**: BASE-01, BASE-02, BASE-03, BASE-04, BASE-05
 
 **Success Criteria** (what must be TRUE):
-1. User sees interactive UI within 500ms of page load (no 3+ second freeze)
-2. User sees results appear within 50ms of case completion (incremental updates)
-3. User can interact with browser during 100+ case runs (no freeze/hang)
-4. User observes smooth animations at 60fps during result updates (no jank)
-5. User runs 30-minute benchmarks without memory growth >50MB (stable performance)
-
-**Plans**: 3 plans in 2 waves
-
-Plans:
-- [x] 01-01-PLAN.md — Backend SSE infrastructure (Wave 1, autonomous)
-- [x] 01-02-PLAN.md — Frontend real-time client (Wave 1, autonomous)
-- [x] 01-03-PLAN.md — UI component integration with verification checkpoint (Wave 2)
-
-**UI hint**: yes
-
----
-
-### Phase 2: Result Categorization & Insights
-**Goal**: Users see deterministic results separated from LLM attempts with rich filtering and insights
-
-**Depends on**: Phase 1 (streaming infrastructure)
-
-**Requirements**: CAT-01, CAT-02, CAT-03, CAT-04, CAT-05, CAT-06, CAT-07, CAT-08, LLM-01, LLM-02, LLM-03, LLM-04
-
-**Success Criteria** (what must be TRUE):
-1. User sees two distinct result sections: deterministic (tier1/tier2) and LLM (tier3)
-2. User filters results by status, tier, and Python version with immediate updates
-3. User searches cases by ID or snippet content
-4. User sees color-coded pass/fail indicators at a glance
-5. User views cache hit rate dashboard showing tier1/tier2/tier3 breakdown with percentages
-6. User sees confidence-based skip indicators when LLM skips low-confidence cases
-7. User expands case details to view full logs and resolution path
-
-**Plans**: 4 plans in 2 waves
-
-Plans:
-- [x] 02-01-PLAN.md — Backend tier categorization (Wave 1, autonomous)
-- [x] 02-02-PLAN.md — Cache hit rate dashboard (Wave 2, autonomous)
-- [x] 02-03-PLAN.md — Deterministic results panel enhancement (Wave 2, autonomous)
-- [x] 02-04-PLAN.md — LLM results panel enhancement with checkpoint (Wave 2, has checkpoint)
-
-**UI hint**: yes
-
----
-
-### Phase 3: LLM Recovery Accuracy
-**Goal**: LLM recovery suggestions are validated and contextually accurate
-
-**Depends on**: Phase 1 (result streaming)
-
-**Requirements**: REC-01, REC-02, REC-03, REC-04, REC-05
-
-**Success Criteria** (what must be TRUE):
-1. User sees only PyPI-validated package suggestions (no invalid packages)
-2. User benefits from RAG-enhanced recovery using error pattern library
-3. User's cached suggestions invalidate when prompts or models change (no stale answers)
-4. User sees recovery attempts skip when confidence score <0.4 (avoid bad suggestions)
-5. User observes max 5 recovery attempts per case (prevents infinite retry loops)
-
-**Plans**: 3 plans in 3 waves
-
-Plans:
-- [x] 03-01-PLAN.md — Test infrastructure and validation (Wave 1, autonomous)
-- [x] 03-02-PLAN.md — Prompt hash cache invalidation (Wave 2, autonomous)
-- [x] 03-03-PLAN.md — Metrics logging and verification (Wave 3, has checkpoint)
-
----
-
-### Phase 4: LLM Performance Optimization
-**Goal**: LLM inference is fast and cost-efficient through batching and caching
-
-**Depends on**: Phase 1 (streaming infrastructure), Phase 3 (recovery logic)
-
-**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05
-
-**Success Criteria** (what must be TRUE):
-1. User experiences prompt cache warmup on startup (2-4s initial, 90% savings after)
-2. User benefits from batched LLM requests (5-10 parallel instead of sequential)
-3. User's duplicate import combinations return cached responses (no redundant calls)
-4. User observes Ollama configured for parallel execution (OLLAMA_NUM_PARALLEL=4-8)
-5. User sees P95 latency <3 seconds for batch completion
+1. A repeatable before-state benchmark exists for end-to-end runtime, validation-heavy runtime, and pass rate
+2. Memory-sensitive indicators are captured for the Rust areas targeted by this milestone
+3. The team has a standard command set for fmt, clippy, targeted tests, and benchmark comparison
+4. Hotspots are ranked from measured evidence, not just code inspection
+5. Every later optimization phase has an explicit regression check to protect correctness
 
 **Plans**: TBD
 
 ---
 
-### Phase 5: Docker Parallel Validation
-**Goal**: Docker validation runs Python versions concurrently with optimized caching
+### Phase 2: Resolver Memory & Algorithm Efficiency
+**Goal**: Make the core Rust solve path cheaper by reducing unnecessary ownership churn and avoidable work
 
-**Depends on**: Phase 1 (result streaming for parallel builds)
+**Depends on**: Phase 1 (baseline and regression gates)
 
-**Requirements**: DOCK-01, DOCK-02, DOCK-03, DOCK-04, DOCK-05
+**Requirements**: EFF-01, EFF-02, EFF-03, EFF-04, EFF-05
 
 **Success Criteria** (what must be TRUE):
-1. User sees 4 Python versions validated in parallel (not sequential)
-2. User benefits from BuildKit cache mounts for pip (70%+ build time reduction)
-3. User experiences zero cache corruption from parallel builds (sharing=locked prevents races)
-4. User observes Dockerfile layer ordering prevents cache invalidation on code changes
-5. User completes parallel validation in 80s for 4 versions (down from 240s sequential)
+1. Targeted resolver hot paths perform less cloning, allocation, or recomputation than the baseline
+2. Shared-state contention is reduced in the hottest benchmark-critical Rust flows
+3. Candidate selection or retry logic is simpler and measurably cheaper in the chosen targets
+4. Deterministic behavior and correctness remain intact after optimization
+5. The changed code is easier to reason about than the original hotspot implementation
 
 **Plans**: TBD
 
 ---
 
-### Phase 6: End-to-End Validation
-**Goal**: Performance and accuracy metrics meet or exceed targets across all phases
+### Phase 3: Validation Pipeline Throughput
+**Goal**: Reduce the cost of validation-heavy benchmark cases without weakening env or Docker correctness
 
-**Depends on**: Phase 2 (result categorization), Phase 3 (recovery accuracy), Phase 4 (LLM performance), Phase 5 (Docker performance)
+**Depends on**: Phase 1 (baseline), Phase 2 (core solve hot-path cleanup)
 
-**Requirements**: MET-01, MET-02, MET-03, MET-04, MET-05
+**Requirements**: VAL-01, VAL-02, VAL-03, VAL-04, VAL-05
 
 **Success Criteria** (what must be TRUE):
-1. User observes overall accuracy >75% baseline on hard-gists benchmark
-2. User sees LLM-assisted cases achieve ≥50% pass rate relative to total LLM cases
-3. User runs 30-minute benchmarks with browser memory growth <50MB
-4. User experiences LLM throughput of 4-8 requests/sec (up from 1 req/sec)
-5. User completes Docker validation 60%+ faster than sequential baseline
+1. Validation paths reuse caches, layers, or artifacts more effectively than the baseline
+2. Fallback and retry flows avoid obvious duplicate environment creation or repeated work
+3. Solve, env create, install, and smoke costs are clearly measurable and easier to compare
+4. Windows and Docker validation remain supported after throughput changes
+5. Validation-heavy benchmark cases complete faster than they did at milestone start
+
+**Plans**: TBD
+
+---
+
+### Phase 4: Module Layout & Boundary Cleanup
+**Goal**: Make the Rust codebase easier to navigate by decomposing oversized files and clarifying ownership boundaries
+
+**Depends on**: Phase 2 (resolver cleanup), Phase 3 (validation cleanup)
+
+**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
+
+**Success Criteria** (what must be TRUE):
+1. Oversized Rust modules are split into smaller files with coherent responsibilities
+2. Recovery, validation, and supporting helpers are extracted behind clear module boundaries
+3. Naming better matches responsibility and ownership of the code
+4. Reviewers can follow the main control flow without tracing giant monolithic files
+5. Targeted tests still pass after the structural refactor
+
+**Plans**: TBD
+
+---
+
+### Phase 5: Documentation, Error Handling & Review Readiness
+**Goal**: Bring the touched Rust code up to a higher review standard for docs, panic safety, and style consistency
+
+**Depends on**: Phase 4 (stable module boundaries)
+
+**Requirements**: QUAL-01, QUAL-02, QUAL-03, QUAL-04, QUAL-05
+
+**Success Criteria** (what must be TRUE):
+1. Non-obvious fallbacks, invariants, and recovery behavior are documented where reviewers need context
+2. Avoidable `unwrap()` and `expect()` panic paths are removed or explicitly justified in touched production code
+3. Touched Rust modules pass formatting, linting, and targeted tests
+4. A reviewer-facing guide exists for benchmark-critical modules and responsibilities
+5. Naming and error-handling patterns look consistent across the modernized Rust areas
+
+**Plans**: TBD
+
+---
+
+### Phase 6: Benchmark Verification & v2 Closeout
+**Goal**: Validate that the modernization work delivered measurable benchmark and review-quality improvements
+
+**Depends on**: Phase 2, Phase 3, Phase 4, Phase 5
+
+**Requirements**: BENCH-01, BENCH-02, BENCH-03, BENCH-04, BENCH-05
+
+**Success Criteria** (what must be TRUE):
+1. End-to-end benchmark runtime improves versus the milestone baseline
+2. Validation-heavy cases are measurably faster than the baseline
+3. Memory churn or peak memory indicators improve on the targeted Rust workflows
+4. Benchmark pass rate is maintained or improved after the refactor work
+5. The milestone can pass a codebase review focused on performance, layout, documentation, and standards
 
 **Plans**: TBD
 
@@ -149,33 +129,33 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Non-blocking UI Foundation | 3/3 | Complete | 2026-03-25 |
-| 2. Result Categorization & Insights | 4/4 | Complete | 2026-03-26 |
-| 3. LLM Recovery Accuracy | 2/3 | In Progress|  |
-| 4. LLM Performance Optimization | 0/TBD | Not started | - |
-| 5. Docker Parallel Validation | 0/TBD | Not started | - |
-| 6. End-to-End Validation | 0/TBD | Not started | - |
+| 1. Baseline & Guardrails | 0/TBD | Not started | - |
+| 2. Resolver Memory & Algorithm Efficiency | 0/TBD | Not started | - |
+| 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
+| 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
+| 5. Documentation, Error Handling & Review Readiness | 0/TBD | Not started | - |
+| 6. Benchmark Verification & v2 Closeout | 0/TBD | Not started | - |
 
 ---
 
 ## Dependencies
 
 ```
-Phase 1: Non-blocking UI Foundation (FOUNDATION)
-   ├─→ Phase 2: Result Categorization & Insights
-   ├─→ Phase 3: LLM Recovery Accuracy
-   │      └─→ Phase 4: LLM Performance Optimization
-   └─→ Phase 5: Docker Parallel Validation
-          └─→ Phase 6: End-to-End Validation
+Phase 1: Baseline & Guardrails (FOUNDATION)
+   └─> Phase 2: Resolver Memory & Algorithm Efficiency
+          └─> Phase 3: Validation Pipeline Throughput
+                 ├─> Phase 4: Module Layout & Boundary Cleanup
+                 │      └─> Phase 5: Documentation, Error Handling & Review Readiness
+                 └─> Phase 6: Benchmark Verification & v2 Closeout
 ```
 
-**Critical Path**: Phase 1 → Phase 3 → Phase 4 → Phase 6
+**Critical Path**: Phase 1 -> Phase 2 -> Phase 3 -> Phase 4 -> Phase 5 -> Phase 6
 
 **Parallel Opportunities**:
-- Phase 2 can run parallel with Phase 3
-- Phase 5 can run parallel with Phase 3-4 (independent infrastructure)
+- Phase 4 structural decomposition can begin in limited areas once Phase 2 hotspot refactors stabilize
+- Phase 5 documentation and review hardening can start on completed Phase 4 modules before the entire milestone is finished
 
 ---
 
-*Roadmap created: 2026-03-25*
-*Last updated: 2026-03-26 (Phase 1-2 complete, Phase 3 planned)*
+*Roadmap created: 2026-03-26*
+*Last updated: 2026-03-26 after v2.0 reset and milestone definition*

@@ -1,163 +1,121 @@
-# Requirements: APDR Enhancement
+# Requirements: APDR v2.0 Rust Codebase Modernization
 
-**Defined:** 2026-03-25
-**Core Value:** The benchmark UI must stay responsive and show real-time progress during runs
+**Defined:** 2026-03-26
+**Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
 ## v1 Requirements
 
-Requirements for accuracy and performance improvements. Each maps to roadmap phases.
+Requirements for the v2 modernization milestone. Each maps to exactly one roadmap phase.
 
-### UI Responsiveness
+### Baseline & Guardrails
 
-- [x] **UI-01**: UI becomes interactive within 500ms of page load (not 3+ seconds)
-- [x] **UI-02**: Results stream to UI within 50ms of worker completion (no batching delay)
-- [x] **UI-03**: Browser stays responsive during 100+ concurrent case runs (no freeze)
-- [x] **UI-04**: Frame rate sustains 60fps during result updates (no jank)
-- [x] **UI-05**: Memory usage remains stable in long-running benchmarks (no leaks)
+- [ ] **BASE-01**: Benchmark baseline captures end-to-end runtime, validation runtime, and pass rate before optimization work begins
+- [ ] **BASE-02**: Benchmark baseline captures memory-sensitive indicators for key Rust workflows
+- [ ] **BASE-03**: The repo has a repeatable command set for fmt, clippy, targeted tests, and benchmark comparison
+- [ ] **BASE-04**: High-risk performance hotspots are ranked from measured evidence, not only code inspection
+- [ ] **BASE-05**: Each optimization phase defines a regression check before refactoring begins
 
-### Real-time Updates
+### Memory & Algorithm Efficiency
 
-- [x] **RT-01**: Benchmark progress updates in real-time via Server-Sent Events
-- [x] **RT-02**: Visual progress bar shows completion percentage
-- [x] **RT-03**: Results appear incrementally as cases complete (not after entire batch)
-- [x] **RT-04**: Case status updates immediately (pending → running → pass/fail/skip)
-- [x] **RT-05**: Active case count updates in real-time
+- [ ] **EFF-01**: Hot-path Rust code reduces unnecessary cloning and allocation in resolver and cache flows
+- [ ] **EFF-02**: Shared-state contention in benchmark-critical paths is reduced with a better ownership or aggregation strategy
+- [ ] **EFF-03**: Repeated metadata lookups or recomputation in solve and validate paths are reduced or eliminated
+- [ ] **EFF-04**: Candidate-selection and retry logic use clearer, cheaper algorithms in the hottest Rust paths
+- [ ] **EFF-05**: Performance-oriented refactors preserve deterministic behavior and benchmark correctness
 
-### Result Categorization
+### Validation Throughput
 
-- [x] **CAT-01**: Deterministic results display separately from LLM results (two sections)
-- [x] **CAT-02**: Results filterable by status (pass, fail, skip, timeout)
-- [x] **CAT-03**: Results filterable by resolution tier (tier1 cache, tier2 heuristic, tier3 LLM)
-- [x] **CAT-04**: Results filterable by Python version
-- [x] **CAT-05**: Case search by ID or snippet content
-- [x] **CAT-06**: Pass/fail status indicators color-coded and visible at glance
-- [ ] **CAT-07**: Error messages categorized (build failure, import error, version conflict, timeout)
-- [ ] **CAT-08**: Expandable case details show full logs and resolution path
+- [ ] **VAL-01**: Validation reuses caches, layers, or artifacts more effectively to reduce repeated build work
+- [ ] **VAL-02**: Validation fallback and retry paths avoid unnecessary duplicate environment creation
+- [ ] **VAL-03**: Python-version or backend attempts use a more efficient execution strategy than the current bottlenecks
+- [ ] **VAL-04**: Validation telemetry clearly separates solve time, env create time, install time, and smoke or runtime cost
+- [ ] **VAL-05**: Validation changes preserve Windows and Docker compatibility
 
-### LLM Insights
+### Codebase Layout
 
-- [x] **LLM-01**: Cache hit rate dashboard shows tier1/tier2/tier3 breakdown with percentages
-- [x] **LLM-02**: Confidence-based skip indicators surface when LLM skips case (<0.4 threshold)
-- [x] **LLM-03**: Import-set cache reuse indicator shows when exact import combination cached
-- [ ] **LLM-04**: LLM recovery attempts show which error pattern triggered from pattern library
+- [ ] **ARCH-01**: Oversized Rust modules are split into smaller files with coherent responsibilities
+- [ ] **ARCH-02**: Public and internal APIs between Rust modules are easier to follow and less entangled
+- [ ] **ARCH-03**: Complex recovery and validation logic is extracted behind named helpers or submodules instead of giant functions
+- [ ] **ARCH-04**: File and module naming better reflects responsibility and ownership boundaries
+- [ ] **ARCH-05**: Refactors reduce cognitive load for code review on the most active Rust areas
 
-### Recovery Accuracy
+### Documentation & Review Quality
 
-- [x] **REC-01**: Recovery suggestions validate package exists on PyPI before suggesting
-- [x] **REC-02**: Error pattern matching uses RAG-enhanced recovery prompts
-- [x] **REC-03**: Cache invalidation based on prompt hash + model ID (prevent stale suggestions)
-- [x] **REC-04**: Recovery confidence scoring to skip low-confidence suggestions
-- [x] **REC-05**: Recovery attempt limit enforced (max 5 attempts per case)
+- [ ] **QUAL-01**: Non-obvious Rust behavior, invariants, and fallbacks are documented where reviewers need context
+- [ ] **QUAL-02**: Touched production Rust code removes avoidable `unwrap()` or `expect()` panic paths or documents why they are safe
+- [ ] **QUAL-03**: Touched Rust modules pass formatting, linting, and targeted tests without style regressions
+- [ ] **QUAL-04**: The codebase has a clear reviewer-facing guide to benchmark-critical modules and their responsibilities
+- [ ] **QUAL-05**: Code changes align with consistent error-handling and naming conventions across Rust modules
 
-### LLM Performance
+### Benchmark Outcomes
 
-- [ ] **PERF-01**: Prompt cache warmed on startup (2-4s initial cost, 90% savings on subsequent calls)
-- [ ] **PERF-02**: LLM requests batched (5-10 parallel requests instead of sequential)
-- [ ] **PERF-03**: Response caching prevents duplicate LLM calls for same imports
-- [ ] **PERF-04**: Ollama configured for parallel execution (OLLAMA_NUM_PARALLEL=4-8)
-- [ ] **PERF-05**: Batch size tuned for P95 latency <3 seconds
-
-### Docker Performance
-
-- [ ] **DOCK-01**: Docker validation runs 4 Python versions in parallel (not sequential)
-- [ ] **DOCK-02**: BuildKit cache mounts configured for pip (70%+ build time reduction)
-- [ ] **DOCK-03**: BuildKit cache mount locking prevents race conditions (sharing=locked)
-- [ ] **DOCK-04**: Dockerfile layer ordering optimized to prevent cache invalidation
-- [ ] **DOCK-05**: Parallel builds complete in 80s for 4 versions (currently 240s sequential)
-
-### Metrics
-
-- [ ] **MET-01**: Overall accuracy increases from 75% baseline
-- [ ] **MET-02**: LLM-assisted cases achieve ≥50% pass rate relative to total LLM cases
-- [ ] **MET-03**: Browser memory growth <50MB over 30-minute benchmark run
-- [ ] **MET-04**: LLM throughput increases to 4-8 requests/sec (from 1 req/sec)
-- [ ] **MET-05**: Docker validation time reduced by ≥60% vs sequential baseline
+- [ ] **BENCH-01**: End-to-end benchmark runtime improves measurably versus the v2 baseline
+- [ ] **BENCH-02**: Validation-heavy cases complete faster than the v2 baseline
+- [ ] **BENCH-03**: Memory churn or peak memory indicators improve on the targeted Rust workflows
+- [ ] **BENCH-04**: Benchmark pass rate is maintained or improved after modernization work
+- [ ] **BENCH-05**: The final milestone package can survive a codebase review focused on performance, layout, docs, and standards
 
 ## v2 Requirements
 
-Deferred to future enhancements based on user feedback.
+Deferred to a later milestone after the core modernization work lands.
 
-### Advanced Visualizations
+### Future Modernization
 
-- **VIZ-01**: LLM recovery attempt timeline visualization (shows retry sequence)
-- **VIZ-02**: Parallel execution timeline (shows Docker build concurrency)
-- **VIZ-03**: Historical comparison view (compare runs over time)
-- **VIZ-04**: Pattern library match annotations (highlight which RAG patterns triggered)
-
-### Performance Deep Dive
-
-- **PERF-06**: Async Python migration (Flask → FastAPI, sync → async)
-- **PERF-07**: Web Workers for heavy result parsing (only if >1000 results)
-- **PERF-08**: Virtual scrolling for large result sets
+- **FUT-01**: Move legacy family-knowledge bundles into data-driven configuration files
+- **FUT-02**: Introduce async I/O for network and subprocess-heavy paths
+- **FUT-03**: Replace ad-hoc telemetry with structured tracing across the Rust core
+- **FUT-04**: Add continuous performance benchmarking in CI
 
 ## Out of Scope
 
-Explicitly excluded to prevent scope creep.
-
 | Feature | Reason |
 |---------|--------|
-| Framework rewrite (React/Vue/Svelte) | Vanilla JS + Vite sufficient, rewrite adds zero user value |
-| WebSocket bidirectional communication | SSE covers 95% of real-time use cases, simpler than WebSockets |
-| Custom LLM provider abstraction | LiteLLM already provides multi-provider support |
-| Mobile-responsive UI | Benchmark tool is desktop/server context, not mobile |
-| Optimizing .clone() overhead (329 calls) | <5% of runtime, focus on sequential validation bottleneck (80%) |
-| Multi-language support beyond Python | APDR is Python-specific tool |
-| Removing Docker validation | Ground truth verification, necessary for correctness |
+| New UI features or UX redesign | Not part of Rust modernization |
+| New LLM provider integrations | Existing provider path is sufficient for this milestone |
+| Benchmark dataset expansion | Would muddy before/after comparisons |
+| Full rewrite of Python helpers | Only touch cross-language boundaries when required by Rust work |
+| Removing legacy compatibility families wholesale | Modernization must preserve supported scenarios unless explicitly deprecated |
 
 ## Traceability
 
-Each v1 requirement maps to exactly one phase.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UI-01 | Phase 1 | Complete |
-| UI-02 | Phase 1 | Complete |
-| UI-03 | Phase 1 | Complete |
-| UI-04 | Phase 1 | Complete |
-| UI-05 | Phase 1 | Complete |
-| RT-01 | Phase 1 | Complete |
-| RT-02 | Phase 1 | Complete |
-| RT-03 | Phase 1 | Complete |
-| RT-04 | Phase 1 | Complete |
-| RT-05 | Phase 1 | Complete |
-| CAT-01 | Phase 2 | Complete |
-| CAT-02 | Phase 2 | Complete |
-| CAT-03 | Phase 2 | Complete |
-| CAT-04 | Phase 2 | Complete |
-| CAT-05 | Phase 2 | Complete |
-| CAT-06 | Phase 2 | Complete |
-| CAT-07 | Phase 2 | Pending |
-| CAT-08 | Phase 2 | Pending |
-| LLM-01 | Phase 2 | Complete |
-| LLM-02 | Phase 2 | Complete |
-| LLM-03 | Phase 2 | Complete |
-| LLM-04 | Phase 2 | Pending |
-| REC-01 | Phase 3 | Complete |
-| REC-02 | Phase 3 | Complete |
-| REC-03 | Phase 3 | Complete |
-| REC-04 | Phase 3 | Complete |
-| REC-05 | Phase 3 | Complete |
-| PERF-01 | Phase 4 | Pending |
-| PERF-02 | Phase 4 | Pending |
-| PERF-03 | Phase 4 | Pending |
-| PERF-04 | Phase 4 | Pending |
-| PERF-05 | Phase 4 | Pending |
-| DOCK-01 | Phase 5 | Pending |
-| DOCK-02 | Phase 5 | Pending |
-| DOCK-03 | Phase 5 | Pending |
-| DOCK-04 | Phase 5 | Pending |
-| DOCK-05 | Phase 5 | Pending |
-| MET-01 | Phase 6 | Pending |
-| MET-02 | Phase 6 | Pending |
-| MET-03 | Phase 6 | Pending |
-| MET-04 | Phase 6 | Pending |
-| MET-05 | Phase 6 | Pending |
+| BASE-01 | Phase 1 | Pending |
+| BASE-02 | Phase 1 | Pending |
+| BASE-03 | Phase 1 | Pending |
+| BASE-04 | Phase 1 | Pending |
+| BASE-05 | Phase 1 | Pending |
+| EFF-01 | Phase 2 | Pending |
+| EFF-02 | Phase 2 | Pending |
+| EFF-03 | Phase 2 | Pending |
+| EFF-04 | Phase 2 | Pending |
+| EFF-05 | Phase 2 | Pending |
+| VAL-01 | Phase 3 | Pending |
+| VAL-02 | Phase 3 | Pending |
+| VAL-03 | Phase 3 | Pending |
+| VAL-04 | Phase 3 | Pending |
+| VAL-05 | Phase 3 | Pending |
+| ARCH-01 | Phase 4 | Pending |
+| ARCH-02 | Phase 4 | Pending |
+| ARCH-03 | Phase 4 | Pending |
+| ARCH-04 | Phase 4 | Pending |
+| ARCH-05 | Phase 4 | Pending |
+| QUAL-01 | Phase 5 | Pending |
+| QUAL-02 | Phase 5 | Pending |
+| QUAL-03 | Phase 5 | Pending |
+| QUAL-04 | Phase 5 | Pending |
+| QUAL-05 | Phase 5 | Pending |
+| BENCH-01 | Phase 6 | Pending |
+| BENCH-02 | Phase 6 | Pending |
+| BENCH-03 | Phase 6 | Pending |
+| BENCH-04 | Phase 6 | Pending |
+| BENCH-05 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 42 total
-- Mapped to phases: 42/42 ✓
-- Unmapped: 0
+- v1 requirements: 30 total
+- Mapped to phases: 30
+- Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 (Phase 1 complete: all UI/RT requirements verified)*
+*Requirements defined: 2026-03-26*
+*Last updated: 2026-03-26 after initial v2 definition*
