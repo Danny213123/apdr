@@ -1,4 +1,18 @@
-﻿pub mod family_knowledge;
+//! Resolver facade for snippet-to-requirements resolution.
+//!
+//! [`resolve_path(...)`] is the reviewer entrypoint for the full resolver flow:
+//! it parses the snippet, consults cache and heuristic tiers, coordinates
+//! pre-solve and validation, and writes the review artifacts for each attempt.
+//! The heavy implementation clusters live in sibling modules so this facade can
+//! keep the high-level orchestration readable: `retry_loop` owns dependency
+//! mutation and retry control flow, `recovery_diagnostics` owns failure
+//! classification and recovery notes, and `artifacts` owns parse, solver, and
+//! iteration artifact output.
+//!
+//! Reviewers should read this file first when tracing the resolver facade.
+//! Tier 3 LLM support remains a later recovery path behind the earlier cache
+//! and heuristic stages rather than the primary resolution path.
+pub mod family_knowledge;
 pub mod kgraph_db;
 pub mod pre_solve;
 pub mod pubgrub_solver;

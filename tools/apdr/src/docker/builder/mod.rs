@@ -1,4 +1,17 @@
-﻿mod agent_backend;
+//! Validation builder facade for requirement verification.
+//!
+//! [`validate_requirements(...)`] is the reviewer entrypoint for the validation
+//! builder. The facade selects the active backend, runs env validation first in
+//! the default path, and records the attempt history that reviewers use to
+//! understand how validation progressed.
+//!
+//! Backend-specific work lives in sibling modules: `env_backend` owns local env
+//! creation and smoke tests, `docker_backend` owns container validation and the
+//! env-to-Docker escalation path, `agent_backend` owns the validation-agent
+//! path, and the `python_runtime` and `process` modules hold shared runtime and
+//! command helpers. Reviewers should start here before drilling into a specific
+//! backend module.
+mod agent_backend;
 mod docker_backend;
 mod env_backend;
 mod process;
