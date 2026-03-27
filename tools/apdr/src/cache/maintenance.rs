@@ -340,8 +340,12 @@ pub fn prune_wheelhouse(wheelhouse_dir: &Path, max_bytes: Option<u64>) -> io::Re
         return Ok(0);
     }
 
-    // Sort oldest-modified first
-    files.sort_by_key(|(_, _, mtime)| *mtime);
+    // Sort oldest-modified first, then break ties by path for deterministic pruning.
+    files.sort_by(|(left_path, _, left_mtime), (right_path, _, right_mtime)| {
+        left_mtime
+            .cmp(right_mtime)
+            .then_with(|| left_path.cmp(right_path))
+    });
 
     let mut removed = 0u64;
     let mut current_total = total_bytes;

@@ -1,16 +1,12 @@
-use std::cmp::Ordering;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use super::host_python::run_host_python;
+use super::smartpip::{
+    fetch_versions_from_smtpip, smtpip_db_path, smtpip_kgraph_path, try_smartpip_tcp_deps,
+};
+use super::version_matching::version_satisfies;
+use std::path::PathBuf;
 use std::sync::Mutex;
-use std::thread;
 use std::time::Duration;
-
 use once_cell::sync::OnceCell;
-
 use crate::cache::pypi_index;
 use crate::cache::store::{normalize, CacheStore};
 use crate::knowledge_cache::KnowledgeCache;
@@ -19,11 +15,6 @@ use crate::resolver::kgraph_db;
 // Lazy-initialized in-process knowledge cache (fastest lookup path)
 // Wrapped in Mutex to allow learning/updates as we discover new packages
 static KNOWLEDGE_CACHE: OnceCell<Mutex<KnowledgeCache>> = OnceCell::new();
-
-// Lazy-initialized TCP connection to smartPip server (port 8888)
-static SMARTPIP_CONNECTION: Mutex<Option<TcpStream>> = Mutex::new(None);
-static SMARTPIP_SERVER_LAUNCHING: AtomicBool = AtomicBool::new(false);
-static SMARTPIP_SERVER_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
 /// Get or initialize the knowledge cache (starts empty, populated on-demand from smartPip)
 fn get_knowledge_cache() -> &'static Mutex<KnowledgeCache> {
@@ -456,62 +447,6 @@ pub fn cached_package_names(store: &CacheStore) -> Vec<String> {
     names
 }
 
-pub fn version_satisfies(version: &str, constraint: &str) -> bool {
-    let trimmed = constraint.trim();
-    if trimmed.is_empty() {
-        return true;
-    }
-    trimmed
-        .split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .all(|item| satisfies_single_constraint(version, item))
-}
-
-fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec<String> {
-    // Try TCP connection to smartPip server first (fast path)
-    if let Some(versions) = try_smartpip_tcp_versions(store, package_name) {
-        if !versions.is_empty() {
-            let _ = store.save_pypi_versions(package_name, &versions);
-            return versions;
-        }
-    }
-
-    // Fallback to subprocess (slow path)
-    let Some(kgraph_path) = smtpip_kgraph_path(store) else {
-        return Vec::new();
-    };
-    let kgraph_path_text = kgraph_path.display().to_string();
-    let db_path_text = smtpip_db_path(store).display().to_string();
-    let Some(output) = run_host_python(&[
-        "-c",
-        SMTPIP_KGRAPH_SCRIPT,
-        "versions",
-        kgraph_path_text.as_str(),
-        db_path_text.as_str(),
-        package_name,
-    ]) else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let versions = stdout
-        .trim()
-        .split(',')
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    if !versions.is_empty() {
-        let _ = store.save_pypi_versions(package_name, &versions);
-    }
-    versions
-}
-
-/// Fetch available versions for a package from the PyPI Simple API (PEP 658).
-/// Uses the JSON variant (`application/vnd.pypi.simple.v1+json`) to avoid HTML parsing.
-/// Returns an empty Vec on any error or timeout (10s).
 fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
     let url = format!("https://pypi.org/simple/{}/", normalize(package_name));
     let agent = ureq::Agent::new_with_config(
@@ -532,30 +467,21 @@ fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) else {
         return Vec::new();
     };
-    // Extract versions from the "versions" key (PEP 700 / Simple API v1)
-    // PyPI returns "versions" as either:
-    //   - A JSON array of version strings (current PyPI behavior)
-    //   - A JSON object with version keys (PEP 700 draft spec)
     if let Some(versions_arr) = json.get("versions").and_then(|v| v.as_array()) {
         let mut versions: Vec<String> = versions_arr
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect();
         if !versions.is_empty() {
-            versions.sort_by(|a, b| {
-                super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
-            });
+            versions.sort_by_key(|a| kgraph_db::version_sort_key(a));
             return versions;
         }
     }
     if let Some(versions_obj) = json.get("versions").and_then(|v| v.as_object()) {
         let mut versions: Vec<String> = versions_obj.keys().cloned().collect();
-        versions.sort_by(|a, b| {
-            super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
-        });
+        versions.sort_by_key(|a| kgraph_db::version_sort_key(a));
         return versions;
     }
-    // Fallback: parse version from filenames in "files" array
     if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
         let mut version_set = std::collections::BTreeSet::new();
         for file in files {
@@ -566,15 +492,12 @@ fn fetch_versions_from_pypi_simple(package_name: &str) -> Vec<String> {
             }
         }
         let mut versions: Vec<String> = version_set.into_iter().collect();
-        versions.sort_by(|a, b| {
-            super::kgraph_db::version_sort_key(a).cmp(&super::kgraph_db::version_sort_key(b))
-        });
+        versions.sort_by_key(|a| kgraph_db::version_sort_key(a));
         return versions;
     }
     Vec::new()
 }
 
-/// Extract version string from a PyPI filename (sdist or wheel).
 fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<String> {
     let normalized = normalize(package_name);
     let prefix = format!("{}-", normalized);
@@ -584,8 +507,6 @@ fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<S
         return None;
     }
     let rest = &filename[prefix.len()..].replace(&normalized, "");
-    // For wheel: name-version-py-abi-platform.whl
-    // For sdist: name-version.tar.gz or name-version.zip
     let version_end = rest
         .find(['-', '.'])
         .filter(|&pos| pos > 0)
@@ -596,510 +517,6 @@ fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<S
     } else {
         None
     }
-}
-
-fn smtpip_kgraph_path(store: &CacheStore) -> Option<PathBuf> {
-    let candidates = [
-        store.tool_root.join("../../SMTpip/KGraph.zip"),
-        store.tool_root.join("../../SMTpip/KGraph.json"),
-        store.tool_root.join("../SMTpip/KGraph.zip"),
-        store.tool_root.join("../SMTpip/KGraph.json"),
-    ];
-    candidates
-        .into_iter()
-        .map(|path| path.canonicalize().unwrap_or(path))
-        .find(|path| path.exists())
-}
-
-/// Try to query smartPip TCP server for package versions.
-/// Returns None if TCP connection fails, allowing fallback to subprocess.
-fn try_smartpip_tcp_versions(store: &CacheStore, package_name: &str) -> Option<Vec<String>> {
-    let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
-
-    // Establish connection if not already connected
-    if conn_guard.is_none() {
-        match connect_smartpip_stream() {
-            Ok(stream) => {
-                *conn_guard = Some(stream);
-            }
-            Err(_) => {
-                if !SMARTPIP_SERVER_UNAVAILABLE.load(AtomicOrdering::SeqCst) {
-                    ensure_smartpip_tcp_server(store);
-                }
-                match connect_smartpip_stream() {
-                    Ok(stream) => {
-                        *conn_guard = Some(stream);
-                    }
-                    Err(_) => return None,
-                }
-            }
-        }
-    }
-
-    let stream = conn_guard.as_mut()?;
-
-    // Send request: "VERSIONS package_name\n"
-    let request = format!("VERSIONS {}\n", normalize(package_name));
-    if stream.write_all(request.as_bytes()).is_err() {
-        *conn_guard = None; // Connection failed, reset
-        return None;
-    }
-
-    // Read response: "version1,version2,version3\n"
-    let mut reader = BufReader::new(stream.try_clone().ok()?);
-    let mut response = String::new();
-    if reader.read_line(&mut response).is_err() {
-        *conn_guard = None;
-        return None;
-    }
-
-    let versions = response
-        .trim()
-        .split(',')
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .collect::<Vec<_>>();
-
-    if versions.is_empty() {
-        None
-    } else {
-        Some(versions)
-    }
-}
-
-/// Try to query smartPip TCP server for dependency specs.
-/// Returns None if TCP connection fails, allowing fallback to subprocess.
-fn try_smartpip_tcp_deps(
-    store: &CacheStore,
-    package_name: &str,
-    version: &str,
-) -> Option<Vec<String>> {
-    let mut conn_guard = SMARTPIP_CONNECTION.lock().ok()?;
-
-    if conn_guard.is_none() {
-        match connect_smartpip_stream() {
-            Ok(stream) => {
-                *conn_guard = Some(stream);
-            }
-            Err(_) => {
-                if !SMARTPIP_SERVER_UNAVAILABLE.load(AtomicOrdering::SeqCst) {
-                    ensure_smartpip_tcp_server(store);
-                }
-                match connect_smartpip_stream() {
-                    Ok(stream) => {
-                        *conn_guard = Some(stream);
-                    }
-                    Err(_) => return None,
-                }
-            }
-        }
-    }
-
-    let stream = conn_guard.as_mut()?;
-
-    // Send request: "DEPS package_name version\n"
-    let request = format!("DEPS {} {}\n", normalize(package_name), version);
-    if stream.write_all(request.as_bytes()).is_err() {
-        *conn_guard = None;
-        return None;
-    }
-
-    // Read response: "spec1|spec2|spec3\n"
-    let mut reader = BufReader::new(stream.try_clone().ok()?);
-    let mut response = String::new();
-    if reader.read_line(&mut response).is_err() {
-        *conn_guard = None;
-        return None;
-    }
-
-    let specs = response
-        .trim()
-        .split('|')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>();
-
-    Some(specs)
-}
-
-fn smtpip_db_path(store: &CacheStore) -> PathBuf {
-    store.cache_path.join("smtpip-kgraph.sqlite3")
-}
-
-fn smartpip_server_script_path(store: &CacheStore) -> Option<PathBuf> {
-    let path = store.tool_root.join("smartpip_kgraph_server.py");
-    if path.exists() {
-        return Some(path);
-    }
-    None
-}
-
-fn smartpip_server_log_path(store: &CacheStore) -> PathBuf {
-    store.cache_path.join("smartpip-kgraph-server.log")
-}
-
-fn ensure_smartpip_tcp_server(store: &CacheStore) {
-    if smartpip_server_available() {
-        SMARTPIP_SERVER_UNAVAILABLE.store(false, AtomicOrdering::SeqCst);
-        return;
-    }
-    if SMARTPIP_SERVER_LAUNCHING.swap(true, AtomicOrdering::SeqCst) {
-        wait_for_smartpip_server();
-        return;
-    }
-
-    let Some(python) = host_python_command() else {
-        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
-        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
-        return;
-    };
-    let Some(graph_path) = smtpip_kgraph_path(store) else {
-        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
-        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
-        return;
-    };
-    let Some(script_path) = smartpip_server_script_path(store) else {
-        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
-        SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
-        return;
-    };
-    let db_path = smtpip_db_path(store);
-    let log_path = smartpip_server_log_path(store);
-
-    let stdout = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .ok();
-    let stderr = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .ok();
-
-    let mut command = Command::new(python);
-    command
-        .arg(script_path)
-        .arg(graph_path)
-        .arg(db_path)
-        .arg("8888");
-
-    if let Some(handle) = stdout {
-        command.stdout(handle);
-    }
-    if let Some(handle) = stderr {
-        command.stderr(handle);
-    }
-
-    let _ = command.spawn();
-    if smartpip_server_available() || wait_for_smartpip_server() {
-        SMARTPIP_SERVER_UNAVAILABLE.store(false, AtomicOrdering::SeqCst);
-    } else {
-        SMARTPIP_SERVER_UNAVAILABLE.store(true, AtomicOrdering::SeqCst);
-    }
-    SMARTPIP_SERVER_LAUNCHING.store(false, AtomicOrdering::SeqCst);
-}
-
-fn smartpip_server_available() -> bool {
-    TcpStream::connect_timeout(
-        &"127.0.0.1:8888".parse().unwrap(),
-        Duration::from_millis(250),
-    )
-    .is_ok()
-}
-
-fn wait_for_smartpip_server() -> bool {
-    for _ in 0..40 {
-        if smartpip_server_available() {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    false
-}
-
-fn connect_smartpip_stream() -> std::io::Result<TcpStream> {
-    let stream = TcpStream::connect_timeout(
-        &"127.0.0.1:8888".parse().unwrap(),
-        Duration::from_millis(500),
-    )?;
-    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-    Ok(stream)
-}
-
-fn run_host_python(args: &[&str]) -> Option<std::process::Output> {
-    let python = host_python_command()?;
-    Command::new(python).args(args).output().ok()
-}
-
-fn host_python_command() -> Option<PathBuf> {
-    let mut candidates = vec![PathBuf::from("python3"), PathBuf::from("python")];
-    if cfg!(windows) {
-        for version in ["312", "311", "310", "39"] {
-            if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-                candidates.push(
-                    PathBuf::from(&local_appdata)
-                        .join("Programs")
-                        .join("Python")
-                        .join(format!("Python{version}"))
-                        .join("python.exe"),
-                );
-            }
-            for variable in ["ProgramFiles", "ProgramFiles(x86)"] {
-                if let Some(base) = std::env::var_os(variable) {
-                    candidates.push(
-                        PathBuf::from(&base)
-                            .join("Python")
-                            .join(format!("Python{version}"))
-                            .join("python.exe"),
-                    );
-                }
-            }
-        }
-    }
-    dedupe_paths(candidates)
-        .into_iter()
-        .find(|candidate| is_python3(candidate))
-}
-
-fn is_python3(candidate: &Path) -> bool {
-    let Ok(output) = Command::new(candidate)
-        .arg("-c")
-        .arg("import sys; sys.stdout.write('%s' % sys.version_info[0])")
-        .output()
-    else {
-        return false;
-    };
-    output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "3"
-}
-
-fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut unique = Vec::new();
-    for path in paths {
-        let key = path.to_string_lossy().to_string();
-        if seen.insert(key) {
-            unique.push(path);
-        }
-    }
-    unique
-}
-
-fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {
-    let bytes = constraint.as_bytes();
-    // Two-character operators (checked first)
-    if bytes.len() >= 2 {
-        match (bytes[0], bytes[1]) {
-            (b'=', b'=') => return wildcard_match(version, constraint[2..].trim()),
-            (b'>', b'=') => {
-                return compare_versions(version, constraint[2..].trim()) != Ordering::Less
-            }
-            (b'<', b'=') => {
-                return compare_versions(version, constraint[2..].trim()) != Ordering::Greater
-            }
-            (b'!', b'=') => return !wildcard_match(version, constraint[2..].trim()),
-            (b'~', b'=') => return compatible_release(version, constraint[2..].trim()),
-            _ => {}
-        }
-    }
-    // Single-character operators
-    if !bytes.is_empty() {
-        match bytes[0] {
-            b'>' => return compare_versions(version, constraint[1..].trim()) == Ordering::Greater,
-            b'<' => return compare_versions(version, constraint[1..].trim()) == Ordering::Less,
-            _ => {}
-        }
-    }
-    wildcard_match(version, constraint)
-}
-
-fn wildcard_match(version: &str, target: &str) -> bool {
-    let target = target.trim();
-    if !target.contains('*') {
-        return compare_versions(version, target) == Ordering::Equal;
-    }
-    let prefix = target.trim_end_matches('*').trim_end_matches('.');
-    version == prefix
-        || (version.len() > prefix.len()
-            && version.starts_with(prefix)
-            && version.as_bytes()[prefix.len()] == b'.')
-}
-
-fn compatible_release(version: &str, base: &str) -> bool {
-    if compare_versions(version, base) == Ordering::Less {
-        return false;
-    }
-    let parts: Vec<&str> = base.split('.').collect();
-    if parts.len() <= 1 {
-        return true;
-    }
-    // Build upper bound: take all but last segment, increment second-to-last, append ".0"
-    let inc_index = parts.len() - 2;
-    let mut upper = String::with_capacity(base.len() + 4);
-    for (i, part) in parts[..parts.len() - 1].iter().enumerate() {
-        if i > 0 {
-            upper.push('.');
-        }
-        if i == inc_index {
-            upper.push_str(&increment_numeric(part));
-        } else {
-            upper.push_str(part);
-        }
-    }
-    upper.push_str(".0");
-    compare_versions(version, &upper) == Ordering::Less
-}
-
-fn increment_numeric(value: &str) -> String {
-    value
-        .parse::<u64>()
-        .map(|number| (number + 1).to_string())
-        .unwrap_or_else(|_| format!("{value}1"))
-}
-
-/// Maximum number of parsed segments in a version string.
-/// Real-world Python versions rarely exceed 6 segments (e.g. "1.0.0.dev201502270022" = 5 parts).
-const MAX_VERSION_PARTS: usize = 10;
-
-/// Stack-allocated version segment — no heap allocation.
-#[derive(Clone, Copy)]
-enum VersionPart {
-    Number(u64),
-    /// Lowercased text segment stored inline. Max 8 bytes covers all known
-    /// PEP 440 suffixes (a, b, rc, dev, post, alpha, beta, pre, rev, final).
-    Text([u8; 8], u8),
-}
-
-/// Parse a version string into a fixed-size array of parts.
-/// Semantics match the previous Vec-based `tokenize_version` exactly:
-///   - Digits accumulate into Number parts
-///   - Letters accumulate into Text parts (lowercased)
-///   - All other characters (`.`, `-`, `_`) are separators
-fn tokenize_version(value: &str) -> ([VersionPart; MAX_VERSION_PARTS], usize) {
-    let mut parts = [VersionPart::Number(0); MAX_VERSION_PARTS];
-    let mut len = 0usize;
-    let mut text_buf = [0u8; 8];
-    let mut text_len: u8 = 0;
-    let mut num_acc: u64 = 0;
-    let mut in_number = false;
-    let mut buf_active = false;
-
-    for ch in value.bytes() {
-        if ch.is_ascii_digit() {
-            if !in_number && buf_active {
-                if len < MAX_VERSION_PARTS {
-                    parts[len] = VersionPart::Text(text_buf, text_len);
-                    len += 1;
-                }
-                text_buf = [0u8; 8];
-                text_len = 0;
-            }
-            in_number = true;
-            buf_active = true;
-            num_acc = num_acc.wrapping_mul(10).wrapping_add((ch - b'0') as u64);
-        } else if ch.is_ascii_alphabetic() {
-            if in_number && buf_active {
-                if len < MAX_VERSION_PARTS {
-                    parts[len] = VersionPart::Number(num_acc);
-                    len += 1;
-                }
-                num_acc = 0;
-            }
-            in_number = false;
-            buf_active = true;
-            if text_len < 8 {
-                text_buf[text_len as usize] = ch.to_ascii_lowercase();
-                text_len += 1;
-            }
-        } else {
-            if buf_active {
-                if in_number {
-                    if len < MAX_VERSION_PARTS {
-                        parts[len] = VersionPart::Number(num_acc);
-                        len += 1;
-                    }
-                    num_acc = 0;
-                } else if len < MAX_VERSION_PARTS {
-                    parts[len] = VersionPart::Text(text_buf, text_len);
-                    len += 1;
-                    text_buf = [0u8; 8];
-                    text_len = 0;
-                }
-                buf_active = false;
-            }
-            in_number = false;
-        }
-    }
-
-    if buf_active {
-        if in_number {
-            if len < MAX_VERSION_PARTS {
-                parts[len] = VersionPart::Number(num_acc);
-                len += 1;
-            }
-        } else if len < MAX_VERSION_PARTS {
-            parts[len] = VersionPart::Text(text_buf, text_len);
-            len += 1;
-        }
-    }
-
-    (parts, len)
-}
-
-/// Thread-local cache for tokenized version strings. Avoids re-tokenizing
-/// the same version (e.g. "3.11", "1.0.0") thousands of times in the solver loop.
-fn tokenize_cached(version: &str) -> ([VersionPart; MAX_VERSION_PARTS], usize) {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-
-    thread_local! {
-        static CACHE: RefCell<HashMap<String, ([VersionPart; MAX_VERSION_PARTS], usize)>> =
-            RefCell::new(HashMap::with_capacity(256));
-    }
-    const MAX_ENTRIES: usize = 4096;
-
-    CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        if let Some(cached) = cache.get(version) {
-            return *cached;
-        }
-        let result = tokenize_version(version);
-        if cache.len() < MAX_ENTRIES {
-            cache.insert(version.to_string(), result);
-        }
-        result
-    })
-}
-
-fn compare_versions(left: &str, right: &str) -> Ordering {
-    let (lp, ll) = tokenize_cached(left);
-    let (rp, rl) = tokenize_cached(right);
-    let max_len = std::cmp::max(ll, rl);
-    for i in 0..max_len {
-        let left_part = if i < ll {
-            lp[i]
-        } else {
-            VersionPart::Number(0)
-        };
-        let right_part = if i < rl {
-            rp[i]
-        } else {
-            VersionPart::Number(0)
-        };
-        let ordering = match (left_part, right_part) {
-            (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(&b),
-            (VersionPart::Text(a, al), VersionPart::Text(b, bl)) => {
-                a[..al as usize].cmp(&b[..bl as usize])
-            }
-            (VersionPart::Number(_), VersionPart::Text(..)) => Ordering::Greater,
-            (VersionPart::Text(..), VersionPart::Number(_)) => Ordering::Less,
-        };
-        if ordering != Ordering::Equal {
-            return ordering;
-        }
-    }
-    Ordering::Equal
 }
 
 const PYPI_VERSION_SCRIPT: &str = r#"
@@ -1391,3 +808,5 @@ mod tests {
         let _ = fs::remove_dir_all(cache_path);
     }
 }
+
+
