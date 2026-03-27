@@ -5,11 +5,11 @@ milestone_name: Rust Codebase Modernization
 current_phase: 03
 current_plan: Not started
 status: ready
-last_updated: "2026-03-27T05:13:14.592Z"
+last_updated: "2026-03-27T11:49:58.7993974-04:00"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 5
+  total_plans: 8
   completed_plans: 5
 ---
 
@@ -31,7 +31,7 @@ progress:
 
 ## Current Position
 
-Phase: 03 (validation-pipeline-throughput) - READY TO PLAN
+Phase: 03 (validation-pipeline-throughput) - READY TO EXECUTE
 Plan: Not started
 
 ## Milestone Snapshot
@@ -75,13 +75,13 @@ Plan: Not started
 
 ## Current Blockers
 
-*None - Phase 2 is complete and Phase 3 is ready for planning.*
+*None - Phase 2 is complete and Phase 3 is ready for execution.*
 
 ## Active TODOs
 
-- [ ] Plan Phase 3 (`validation-pipeline-throughput`)
-- [ ] Preserve the clean resolver test + clippy gates while touching validation code paths
-- [ ] Use the committed Phase 2 resolver candidate as the reference point for validation-path measurements
+- [ ] Execute Plan `03-01` (`Env Attempt Staging & Validated-Env Reuse Cleanup`)
+- [ ] Preserve the `validation_pipeline_` cargo-test filter and workspace clippy pass while touching validation code paths
+- [ ] Capture both the warm and forced validation candidate artifacts before closing Phase 3
 
 ## Deferred Items
 
@@ -98,21 +98,22 @@ Plan: Not started
 - Completed `02-01` with owned pre-solve worker aggregation and shared PyPI metadata persistence helpers
 - Completed `02-02` with explicit retry-loop state, normalized dependency lookup helpers, resolver regression tests, and a restored workspace clippy pass
 - Completed `02-03` with `02-resolver-candidate.json`, `02-RESOLVER-CANDIDATE.md`, and `02-RESOLVER-DELTA.md`
+- Planned Phase 3 with `03-RESEARCH.md`, `03-VALIDATION.md`, and three execution plans focused on validation throughput, backend telemetry, and candidate benchmarking
 
 ### What's Next
 
-**Immediate:** Run `$gsd-plan-phase 3`
+**Immediate:** Run `$gsd-execute-phase 3`
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Reduce validation fallback, env creation, and Docker retry costs without regressing the Phase 2 solver gains
+**Next Phase:** Reduce env and Docker orchestration cost, expose validation-stage metrics more clearly, and capture both warm and forced candidate artifacts
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Read `02-RESOLVER-DELTA.md`, then plan Phase 3
+4. Read `03-RESEARCH.md`, `03-VALIDATION.md`, and the three `03-0X-PLAN.md` files, then execute Phase 3
 
 ---
 
@@ -130,14 +131,19 @@ Plan: Not started
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-02-SUMMARY.md` - retry-loop and lint-gate cleanup summary
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-03-SUMMARY.md` - bounded candidate capture summary
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` - Phase 2 benchmark comparison
+- `.planning/phases/03-validation-pipeline-throughput/03-RESEARCH.md` - validation hotspot and measurement guidance for Phase 3
+- `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION.md` - verification contract for validation-throughput work
+- `.planning/phases/03-validation-pipeline-throughput/03-01-PLAN.md` - env staging and validated-env reuse cleanup
+- `.planning/phases/03-validation-pipeline-throughput/03-02-PLAN.md` - backend telemetry and benchmark-reporting work
+- `.planning/phases/03-validation-pipeline-throughput/03-03-PLAN.md` - candidate capture and delta closeout
 
 **Key Commands:**
 
-- `$gsd-plan-phase 3` - create the validation-throughput plans for the next phase
+- `$gsd-execute-phase 3` - run the validation-throughput plans for the next phase
 - `$gsd-progress` - review milestone state after Phase 2 completion
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 2 completion on 2026-03-27*
+*State updated after Phase 3 planning on 2026-03-27*
