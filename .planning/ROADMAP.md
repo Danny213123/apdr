@@ -8,7 +8,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Baseline & Guardrails** - Establish measurement, profiling, and regression gates before refactoring
+- [x] **Phase 1: Baseline & Guardrails** - Establish measurement, profiling, and regression gates before refactoring
 - [ ] **Phase 2: Resolver Memory & Algorithm Efficiency** - Reduce hot-path allocation, clone churn, and avoidable work in core solve flows
 - [ ] **Phase 3: Validation Pipeline Throughput** - Improve env and Docker validation efficiency, cache reuse, and retry cost
 - [ ] **Phase 4: Module Layout & Boundary Cleanup** - Split oversized Rust modules and make responsibilities easier to review
@@ -33,7 +33,7 @@
 
 **Plans**:
 - [x] `01-01` - Baseline Harness & Memory Capture
-- [ ] `01-02` - Regression Gate, Hotspot Audit & Guardrails
+- [x] `01-02` - Regression Gate, Hotspot Audit & Guardrails
 
 ---
 
@@ -131,7 +131,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Baseline & Guardrails | 1/2 | In progress | `01-01` |
+| 1. Baseline & Guardrails | 2/2 | Complete | 2026-03-27 |
 | 2. Resolver Memory & Algorithm Efficiency | 0/TBD | Not started | - |
 | 3. Validation Pipeline Throughput | 0/TBD | Not started | - |
 | 4. Module Layout & Boundary Cleanup | 0/TBD | Not started | - |
@@ -160,4 +160,4 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-26 after Phase 1 planning*
+*Last updated: 2026-03-27 after Phase 1 completion*

@@ -1,7 +1,7 @@
 ---
 phase: 01
 slug: baseline-and-guardrails
-status: draft
+status: complete
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-03-26
@@ -38,12 +38,12 @@ created: 2026-03-26
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 01-01-01 | 01 | 1 | BASE-01 | script smoke + Rust contract | `python scripts/measure_apdr_baseline.py --help && cargo test --manifest-path tools/apdr/Cargo.toml --test test_cli` | yes | pending |
-| 01-01-02 | 01 | 1 | BASE-02 | script smoke | `python scripts/profile_apdr_memory.py --help` | yes | pending |
-| 01-01-03 | 01 | 1 | BASE-01 | artifact generation | `python scripts/measure_apdr_baseline.py --fixtures-root tools/apdr/tests/fixtures --limit 3 --validation-backend env --output-json .planning/phases/01-baseline-and-guardrails/01-baseline.json --output-md .planning/phases/01-baseline-and-guardrails/01-BASELINE.md` | yes | pending |
-| 01-02-01 | 02 | 2 | BASE-05 | script smoke | `python scripts/check_apdr_regression.py --help` | yes | pending |
-| 01-02-02 | 02 | 2 | BASE-04 | artifact verification | `rg -n "resolver/mod.rs|docker/builder.rs|pre_solve.rs" .planning/phases/01-baseline-and-guardrails/01-HOTSPOT-AUDIT.md` | yes | pending |
-| 01-02-03 | 02 | 2 | BASE-03 | docs verification | `rg -n "cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check|cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings|python scripts/check_apdr_regression.py" tools/apdr/README.md` | yes | pending |
+| 01-01-01 | 01 | 1 | BASE-01 | script smoke + Rust contract | `python scripts/measure_apdr_baseline.py --help && cargo test --manifest-path tools/apdr/Cargo.toml --test test_cli` | yes | completed |
+| 01-01-02 | 01 | 1 | BASE-02 | script smoke | `python scripts/profile_apdr_memory.py --help` | yes | completed |
+| 01-01-03 | 01 | 1 | BASE-01 | artifact generation | `python scripts/measure_apdr_baseline.py --fixtures-root tools/apdr/tests/fixtures --limit 3 --validation-backend env --output-json .planning/phases/01-baseline-and-guardrails/01-baseline.json --output-md .planning/phases/01-baseline-and-guardrails/01-BASELINE.md` | yes | completed |
+| 01-02-01 | 02 | 2 | BASE-05 | script smoke | `python scripts/check_apdr_regression.py --help` | yes | completed |
+| 01-02-02 | 02 | 2 | BASE-04 | artifact verification | `rg -n "resolver/mod.rs|docker/builder.rs|pre_solve.rs" .planning/phases/01-baseline-and-guardrails/01-HOTSPOT-AUDIT.md` | yes | completed |
+| 01-02-03 | 02 | 2 | BASE-03 | docs verification | `rg -n "cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check|cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings|python scripts/check_apdr_regression.py" tools/apdr/README.md` | yes | completed |
 
 ---
 
@@ -71,4 +71,4 @@ created: 2026-03-26
 - [x] Quick feedback latency stays under 60 seconds for code paths
 - [x] `nyquist_compliant: true` is set in frontmatter
 
-**Approval:** pending
+**Approval:** passed
