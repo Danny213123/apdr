@@ -72,6 +72,46 @@ python3 test_executor.py -f tests/fixtures/sample_snippet.py -v --no-validate
 
 It accepts the common benchmark flags (`-m`, `-b`, `-l`, `-r`, `-ra`) and forwards them to the Rust CLI. When validation is enabled, the wrapper now returns a non-zero exit code if APDR validation fails.
 
+## Modernization guardrails
+
+Run these from the repo root when touching the Rust modernization phases:
+
+```bash
+cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check
+```
+
+Verifies formatting before review or benchmark comparisons.
+
+```bash
+cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings
+```
+
+Keeps touched Rust code aligned with lint expectations before phase commits land.
+
+```bash
+cargo test --manifest-path tools/apdr/Cargo.toml
+```
+
+Runs the Rust regression suite before and after hotspot refactors.
+
+```bash
+python scripts/measure_apdr_baseline.py --fixtures-root tools/apdr/tests/fixtures --limit 3 --validation-backend env --output-json .planning/phases/01-baseline-and-guardrails/01-baseline.json --output-md .planning/phases/01-baseline-and-guardrails/01-BASELINE.md
+```
+
+Refreshes the bounded timing and pass-rate baseline used by the modernization milestone.
+
+```bash
+python scripts/profile_apdr_memory.py --snippet tools/apdr/tests/fixtures/sample_snippet.py --validation-backend env --output-json .planning/phases/01-baseline-and-guardrails/01-memory-profile.json
+```
+
+Captures the representative `peak_rss_bytes` snapshot used in hotspot ranking.
+
+```bash
+python scripts/check_apdr_regression.py --baseline .planning/phases/01-baseline-and-guardrails/01-baseline.json --candidate <candidate-json>
+```
+
+Compares a candidate run against the committed Phase 1 baseline and fails when pass rate or timing regress beyond explicit thresholds.
+
 ## Output Files
 
 APDR writes:
