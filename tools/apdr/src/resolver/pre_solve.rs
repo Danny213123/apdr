@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 
 use rustc_hash::FxHashMap;
 
@@ -74,6 +73,12 @@ impl SolveState {
 struct SolveOutcome {
     python_version: String,
     selected: BTreeMap<String, String>,
+}
+
+#[derive(Debug)]
+struct PythonSolveAttempt {
+    python_version: String,
+    outcome: Result<SolveOutcome, SolveError>,
 }
 
 #[derive(Clone, Debug)]
@@ -170,52 +175,61 @@ pub fn solve_dependency_graph(
     // For multiple Python versions, use parallel solving for faster resolution.
     // Each thread gets a cloned CacheStore (cheap since all data is already prefetched).
     let candidate_order = python_candidates.clone();
-    let successes = Arc::new(Mutex::new(BTreeMap::<String, SolveOutcome>::new()));
-    let hard_failures = Arc::new(Mutex::new(Vec::new()));
-    let incomplete_failures = Arc::new(Mutex::new(Vec::new()));
-
-    std::thread::scope(|scope| {
-        let mut handles = Vec::new();
+    let attempts = std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(candidate_order.len());
         for python_version in python_candidates {
             let state_clone = state.clone();
             let mut store_clone = store.clone();
-            let success_ref = Arc::clone(&successes);
-            let hard_ref = Arc::clone(&hard_failures);
-            let incomplete_ref = Arc::clone(&incomplete_failures);
+            let thread_python_version = python_version.clone();
 
             let handle = scope.spawn(move || {
                 let mut budget = 12_000usize;
-                match solve_for_python(&mut store_clone, &state_clone, &python_version, &mut budget)
-                {
-                    Ok(outcome) => {
-                        success_ref
-                            .lock()
-                            .unwrap()
-                            .insert(python_version.clone(), outcome);
-                    }
-                    Err(SolveError::Hard(reason)) => {
-                        hard_ref
-                            .lock()
-                            .unwrap()
-                            .push(format!("{python_version}: {reason}"));
-                    }
-                    Err(SolveError::Incomplete(reason)) => {
-                        incomplete_ref
-                            .lock()
-                            .unwrap()
-                            .push(format!("{python_version}: {reason}"));
-                    }
+                PythonSolveAttempt {
+                    python_version: thread_python_version.clone(),
+                    outcome: solve_for_python(
+                        &mut store_clone,
+                        &state_clone,
+                        &thread_python_version,
+                        &mut budget,
+                    ),
                 }
             });
-            handles.push(handle);
+            handles.push((python_version, handle));
         }
 
-        for handle in handles {
-            let _ = handle.join();
+        let mut attempts = Vec::with_capacity(handles.len());
+        for (python_version, handle) in handles {
+            let attempt = match handle.join() {
+                Ok(attempt) => attempt,
+                Err(_) => PythonSolveAttempt {
+                    python_version: python_version.clone(),
+                    outcome: Err(SolveError::Hard(
+                        "solver worker panicked before returning a result".to_string(),
+                    )),
+                },
+            };
+            attempts.push(attempt);
         }
+        attempts
     });
 
-    let mut successes = Arc::try_unwrap(successes).unwrap().into_inner().unwrap();
+    let mut successes = BTreeMap::<String, SolveOutcome>::new();
+    let mut hard_failures = Vec::new();
+    let mut incomplete_failures = Vec::new();
+    for attempt in attempts {
+        match attempt.outcome {
+            Ok(outcome) => {
+                successes.insert(attempt.python_version, outcome);
+            }
+            Err(SolveError::Hard(reason)) => {
+                hard_failures.push(format!("{}: {reason}", attempt.python_version));
+            }
+            Err(SolveError::Incomplete(reason)) => {
+                incomplete_failures.push(format!("{}: {reason}", attempt.python_version));
+            }
+        }
+    }
+
     if let Some(outcome) = candidate_order
         .iter()
         .find_map(|python_version| successes.remove(python_version))
@@ -236,15 +250,6 @@ pub fn solve_dependency_graph(
         ));
         return result;
     }
-
-    let hard_failures = Arc::try_unwrap(hard_failures)
-        .unwrap()
-        .into_inner()
-        .unwrap();
-    let incomplete_failures = Arc::try_unwrap(incomplete_failures)
-        .unwrap()
-        .into_inner()
-        .unwrap();
 
     if !hard_failures.is_empty() && incomplete_failures.is_empty() {
         result.hard_unsat = true;
