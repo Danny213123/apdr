@@ -3,21 +3,21 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 03
-current_plan: Not started
-status: ready
-last_updated: "2026-03-27T11:49:58.7993974-04:00"
+current_plan: 2
+status: active
+last_updated: "2026-03-27T16:15:36.000Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-27
 **Current Phase:** 03
-**Current Plan:** Not started
+**Current Plan:** 2
 
 ---
 
@@ -25,14 +25,14 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 03 - validation-pipeline-throughput
+**Current Focus:** Phase 03 — validation-pipeline-throughput
 
 ---
 
 ## Current Position
 
-Phase: 03 (validation-pipeline-throughput) - READY TO EXECUTE
-Plan: Not started
+Phase: 03 (validation-pipeline-throughput) — EXECUTING
+Plan: 2 of 3
 
 ## Milestone Snapshot
 
@@ -75,11 +75,11 @@ Plan: Not started
 
 ## Current Blockers
 
-*None - Phase 2 is complete and Phase 3 is ready for execution.*
+*None - 03-01 is complete and Phase 3 is continuing into 03-02.*
 
 ## Active TODOs
 
-- [ ] Execute Plan `03-01` (`Env Attempt Staging & Validated-Env Reuse Cleanup`)
+- [ ] Execute Plan `03-02` (`Backend Attempt Telemetry & Validation Benchmark Reporting`)
 - [ ] Preserve the `validation_pipeline_` cargo-test filter and workspace clippy pass while touching validation code paths
 - [ ] Capture both the warm and forced validation candidate artifacts before closing Phase 3
 
@@ -99,21 +99,22 @@ Plan: Not started
 - Completed `02-02` with explicit retry-loop state, normalized dependency lookup helpers, resolver regression tests, and a restored workspace clippy pass
 - Completed `02-03` with `02-resolver-candidate.json`, `02-RESOLVER-CANDIDATE.md`, and `02-RESOLVER-DELTA.md`
 - Planned Phase 3 with `03-RESEARCH.md`, `03-VALIDATION.md`, and three execution plans focused on validation throughput, backend telemetry, and candidate benchmarking
+- Completed `03-01` with explicit env-attempt path staging, validated-env cache-source helpers, ordered env-to-Docker retry history, and passing validation-pipeline tests
 
 ### What's Next
 
-**Immediate:** Run `$gsd-execute-phase 3`
+**Immediate:** Continue Phase 3 with Plan `03-02`
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Reduce env and Docker orchestration cost, expose validation-stage metrics more clearly, and capture both warm and forced candidate artifacts
+**Next Phase:** Cache backend-attempt probing, improve validation benchmark reporting, and extend the regression gate for validation sub-stages
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Read `03-RESEARCH.md`, `03-VALIDATION.md`, and the three `03-0X-PLAN.md` files, then execute Phase 3
+4. Read `03-02-PLAN.md`, then continue execution in Phase 3
 
 ---
 
@@ -133,17 +134,18 @@ Plan: Not started
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` - Phase 2 benchmark comparison
 - `.planning/phases/03-validation-pipeline-throughput/03-RESEARCH.md` - validation hotspot and measurement guidance for Phase 3
 - `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION.md` - verification contract for validation-throughput work
+- `.planning/phases/03-validation-pipeline-throughput/03-01-SUMMARY.md` - Wave 1 env-attempt staging and cache-source cleanup summary
 - `.planning/phases/03-validation-pipeline-throughput/03-01-PLAN.md` - env staging and validated-env reuse cleanup
 - `.planning/phases/03-validation-pipeline-throughput/03-02-PLAN.md` - backend telemetry and benchmark-reporting work
 - `.planning/phases/03-validation-pipeline-throughput/03-03-PLAN.md` - candidate capture and delta closeout
 
 **Key Commands:**
 
-- `$gsd-execute-phase 3` - run the validation-throughput plans for the next phase
+- `$gsd-execute-phase 3` - continue the remaining validation-throughput plans
 - `$gsd-progress` - review milestone state after Phase 2 completion
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 3 planning on 2026-03-27*
+*State updated after 03-01 execution on 2026-03-27*
