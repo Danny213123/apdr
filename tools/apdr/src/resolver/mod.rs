@@ -1404,9 +1404,11 @@ fn validate_with_retries(
             }
         }
 
+        // Changed from >= 2 to >= 4 to give LLM more attempts before giving up
+        // This allows the LLM to try different recovery strategies
         if failure_signature_requirements
             .get(&current_signature)
-            .map(|seen| seen.len() >= 2)
+            .map(|seen| seen.len() >= 4)
             .unwrap_or(false)
         {
             let note = format!(

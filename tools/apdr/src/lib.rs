@@ -214,7 +214,7 @@ impl ResolveConfig {
         Self {
             python_version: None,
             python_version_range: 1,
-            max_retries: 5,
+            max_retries: 7,  // Increased from 5 to give LLM more opportunities to learn and recover
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
             validation_timeout: Duration::from_secs(
