@@ -50,6 +50,79 @@ pub fn latest_known_version(store: &CacheStore, package_name: &str) -> Option<St
         .and_then(|versions| versions.last().cloned())
 }
 
+fn dependency_names_from_specs(specs: &[String]) -> Vec<String> {
+    specs
+        .iter()
+        .map(|spec| requirement_name(spec))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+fn persist_versions_with_cache(
+    store: &mut CacheStore,
+    package_name: &str,
+    versions: &[String],
+    cache: Option<&mut KnowledgeCache>,
+) {
+    if versions.is_empty() {
+        return;
+    }
+
+    let _ = store.save_pypi_versions(package_name, versions);
+    if let Some(cache) = cache {
+        for version in versions {
+            cache.add_package_version(package_name, version);
+        }
+        return;
+    }
+
+    if let Ok(mut cache) = get_knowledge_cache().lock() {
+        for version in versions {
+            cache.add_package_version(package_name, version);
+        }
+    }
+}
+
+fn persist_versions(store: &mut CacheStore, package_name: &str, versions: &[String]) {
+    persist_versions_with_cache(store, package_name, versions, None);
+}
+
+fn persist_dependency_specs_with_cache(
+    store: &mut CacheStore,
+    package_name: &str,
+    version: &str,
+    specs: &[String],
+    cache: Option<&mut KnowledgeCache>,
+) {
+    if specs.is_empty() {
+        return;
+    }
+
+    let _ = store.save_version_dependency_specs(package_name, version, specs);
+    let dependency_names = dependency_names_from_specs(specs);
+    if !dependency_names.is_empty() {
+        let _ = store.save_dependency_graph_entry(package_name, &dependency_names);
+    }
+
+    if let Some(cache) = cache {
+        cache.add_dependencies(package_name, version, specs);
+        return;
+    }
+
+    if let Ok(mut cache) = get_knowledge_cache().lock() {
+        cache.add_dependencies(package_name, version, specs);
+    }
+}
+
+fn persist_dependency_specs(
+    store: &mut CacheStore,
+    package_name: &str,
+    version: &str,
+    specs: &[String],
+) {
+    persist_dependency_specs_with_cache(store, package_name, version, specs, None);
+}
+
 pub fn fetch_versions(
     store: &mut CacheStore,
     package_name: &str,
@@ -68,8 +141,7 @@ pub fn fetch_versions(
         if let Ok(cache) = cache_mutex.lock() {
             if let Some(versions) = cache.get_versions(package_name) {
                 if !versions.is_empty() {
-                    // Cache hit! Save to local store for this session too
-                    let _ = store.save_pypi_versions(package_name, &versions);
+                    persist_versions(store, package_name, &versions);
                     return versions;
                 }
             }
@@ -80,39 +152,21 @@ pub fn fetch_versions(
     let db_path = smtpip_db_path(store);
     let versions = kgraph_db::kgraph_versions(&db_path, package_name);
     if !versions.is_empty() {
-        let _ = store.save_pypi_versions(package_name, &versions);
-        let cache_mutex = get_knowledge_cache();
-        if let Ok(mut cache) = cache_mutex.lock() {
-            for version in &versions {
-                cache.add_package_version(package_name, version);
-            }
-        }
+        persist_versions(store, package_name, &versions);
         return versions;
     }
 
     // 4. Try smartPip Z3 solver (TCP or subprocess fallback)
     let versions = fetch_versions_from_smtpip(store, package_name);
     if !versions.is_empty() {
-        // Populate knowledge cache from smartPip result
-        let cache_mutex = get_knowledge_cache();
-        if let Ok(mut cache) = cache_mutex.lock() {
-            for version in &versions {
-                cache.add_package_version(package_name, version);
-            }
-        }
+        persist_versions(store, package_name, &versions);
         return versions;
     }
 
     // 4.5. PEP 658 / PyPI Simple API (JSON, no subprocess overhead)
     let versions = fetch_versions_from_pypi_simple(package_name);
     if !versions.is_empty() {
-        let _ = store.save_pypi_versions(package_name, &versions);
-        let cache_mutex = get_knowledge_cache();
-        if let Ok(mut cache) = cache_mutex.lock() {
-            for version in &versions {
-                cache.add_package_version(package_name, version);
-            }
-        }
+        persist_versions(store, package_name, &versions);
         return versions;
     }
 
@@ -132,15 +186,7 @@ pub fn fetch_versions(
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
     if !versions.is_empty() {
-        let _ = store.save_pypi_versions(package_name, &versions);
-
-        // Populate knowledge cache from PyPI result
-        let cache_mutex = get_knowledge_cache();
-        if let Ok(mut cache) = cache_mutex.lock() {
-            for version in &versions {
-                cache.add_package_version(package_name, version);
-            }
-        }
+        persist_versions(store, package_name, &versions);
     }
     versions
 }
@@ -205,16 +251,7 @@ pub fn dependency_specs(store: &mut CacheStore, package_name: &str, version: &st
         if let Ok(cache) = cache_mutex.lock() {
             if let Some(specs) = cache.get_dependencies(package_name, version) {
                 if !specs.is_empty() {
-                    // Cache hit! Save to local store for this session too
-                    let _ = store.save_version_dependency_specs(package_name, version, &specs);
-                    let dep_names: Vec<String> = specs
-                        .iter()
-                        .map(|s| requirement_name(s))
-                        .filter(|n| !n.is_empty())
-                        .collect();
-                    if !dep_names.is_empty() {
-                        let _ = store.save_dependency_graph_entry(package_name, &dep_names);
-                    }
+                    persist_dependency_specs(store, package_name, version, &specs);
                     return specs;
                 }
             }
@@ -226,19 +263,7 @@ pub fn dependency_specs(store: &mut CacheStore, package_name: &str, version: &st
         let db_path = smtpip_db_path(store);
         let specs = kgraph_db::kgraph_dependency_specs(&db_path, package_name, version);
         if !specs.is_empty() {
-            let _ = store.save_version_dependency_specs(package_name, version, &specs);
-            let dep_names: Vec<String> = specs
-                .iter()
-                .map(|s| requirement_name(s))
-                .filter(|n| !n.is_empty())
-                .collect();
-            if !dep_names.is_empty() {
-                let _ = store.save_dependency_graph_entry(package_name, &dep_names);
-            }
-            let cache_mutex = get_knowledge_cache();
-            if let Ok(mut cache) = cache_mutex.lock() {
-                cache.add_dependencies(package_name, version, &specs);
-            }
+            persist_dependency_specs(store, package_name, version, &specs);
             return specs;
         }
     }
@@ -246,22 +271,7 @@ pub fn dependency_specs(store: &mut CacheStore, package_name: &str, version: &st
     // 4. Try smartPip Z3 solver via TCP (fast path if server is running)
     if let Some(specs) = try_smartpip_tcp_deps(store, package_name, version) {
         if !specs.is_empty() {
-            let _ = store.save_version_dependency_specs(package_name, version, &specs);
-            let dep_names: Vec<String> = specs
-                .iter()
-                .map(|s| requirement_name(s))
-                .filter(|n| !n.is_empty())
-                .collect();
-            if !dep_names.is_empty() {
-                let _ = store.save_dependency_graph_entry(package_name, &dep_names);
-            }
-
-            // Populate knowledge cache from smartPip TCP result
-            let cache_mutex = get_knowledge_cache();
-            if let Ok(mut cache) = cache_mutex.lock() {
-                cache.add_dependencies(package_name, version, &specs);
-            }
-
+            persist_dependency_specs(store, package_name, version, &specs);
             return specs;
         }
     }
@@ -294,21 +304,7 @@ pub fn dependency_specs(store: &mut CacheStore, package_name: &str, version: &st
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
     if !specs.is_empty() {
-        let _ = store.save_version_dependency_specs(package_name, version, &specs);
-        let dependency_names = specs
-            .iter()
-            .map(|spec| requirement_name(spec))
-            .filter(|name| !name.is_empty())
-            .collect::<Vec<_>>();
-        if !dependency_names.is_empty() {
-            let _ = store.save_dependency_graph_entry(package_name, &dependency_names);
-        }
-
-        // Populate knowledge cache from smartPip subprocess result
-        let cache_mutex = get_knowledge_cache();
-        if let Ok(mut cache) = cache_mutex.lock() {
-            cache.add_dependencies(package_name, version, &specs);
-        }
+        persist_dependency_specs(store, package_name, version, &specs);
     }
     specs
 }
@@ -331,29 +327,24 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
         let missing_owned: Vec<String> = missing.iter().map(|p| (*p).clone()).collect();
         let results = kgraph_db::kgraph_bulk_prefetch(&db_path, &missing_owned);
         if !results.is_empty() {
-            // Batch all store writes first, then lock knowledge cache once
-            for (pkg, (versions, deps_by_version)) in &results {
-                let _ = store.save_pypi_versions(pkg, versions);
-                for (version, specs) in deps_by_version {
-                    let _ = store.save_version_dependency_specs(pkg, version, specs);
-                    let dep_names: Vec<String> = specs
-                        .iter()
-                        .map(|s| requirement_name(s))
-                        .filter(|n| !n.is_empty())
-                        .collect();
-                    if !dep_names.is_empty() {
-                        let _ = store.save_dependency_graph_entry(pkg, &dep_names);
-                    }
-                }
-            }
-            // Single lock acquisition for all knowledge cache updates
             if let Ok(mut cache) = get_knowledge_cache().lock() {
                 for (pkg, (versions, deps_by_version)) in &results {
-                    for version in versions {
-                        cache.add_package_version(pkg, version);
-                    }
+                    persist_versions_with_cache(store, pkg, versions, Some(&mut cache));
                     for (version, specs) in deps_by_version {
-                        cache.add_dependencies(pkg, version, specs);
+                        persist_dependency_specs_with_cache(
+                            store,
+                            pkg,
+                            version,
+                            specs,
+                            Some(&mut cache),
+                        );
+                    }
+                }
+            } else {
+                for (pkg, (versions, deps_by_version)) in &results {
+                    persist_versions(store, pkg, versions);
+                    for (version, specs) in deps_by_version {
+                        persist_dependency_specs(store, pkg, version, specs);
                     }
                 }
             }
@@ -396,7 +387,7 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
                     .filter(|v| !v.is_empty())
                     .collect();
                 if !versions.is_empty() {
-                    let _ = store.save_pypi_versions(pkg, &versions);
+                    persist_versions(store, pkg, &versions);
                 }
             }
             Some("D") if parts.len() >= 4 => {
@@ -408,15 +399,7 @@ pub fn bulk_prefetch_from_kgraph(store: &mut CacheStore, packages: &[String]) {
                     .filter(|s| !s.is_empty())
                     .collect();
                 if !specs.is_empty() {
-                    let _ = store.save_version_dependency_specs(pkg, version, &specs);
-                    let dep_names: Vec<String> = specs
-                        .iter()
-                        .map(|s| requirement_name(s))
-                        .filter(|n| !n.is_empty())
-                        .collect();
-                    if !dep_names.is_empty() {
-                        let _ = store.save_dependency_graph_entry(pkg, &dep_names);
-                    }
+                    persist_dependency_specs(store, pkg, version, &specs);
                 }
             }
             _ => {}
