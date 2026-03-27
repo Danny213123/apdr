@@ -716,6 +716,146 @@ fn pre_solver_treats_missing_exact_pin_as_incomplete_metadata() {
     std::fs::remove_dir_all(cache_path).unwrap();
 }
 
+#[test]
+fn pre_solver_preserves_candidate_order_without_mutex_aggregation() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-pre-solver-candidate-order-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    store
+        .save_pypi_versions("click", &["6.6".into(), "8.1.0".into()])
+        .unwrap();
+    store
+        .save_pypi_versions("pip-tools", &["4.4.0".into(), "7.4.1".into()])
+        .unwrap();
+    store
+        .save_version_dependency_specs("pip-tools", "4.4.0", &["click==6.6".into()])
+        .unwrap();
+    store
+        .save_version_dependency_specs("pip-tools", "7.4.1", &["click>=8.0".into()])
+        .unwrap();
+
+    let parse_result = apdr::ParseResult {
+        imports: vec!["click".to_string()],
+        import_paths: vec!["click".to_string()],
+        config_deps: vec![apdr::ConfigDep {
+            package: "pip-tools".to_string(),
+            constraint: Some(">=4.0.0".to_string()),
+            source_file: "requirements.txt".to_string(),
+        }],
+        python_version_min: "3.10".to_string(),
+        python_version_max: Some("3.11".to_string()),
+        confidence: 0.9,
+        scanned_files: vec!["requirements.txt".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
+    };
+    let resolved = vec![apdr::ResolvedDependency {
+        import_name: "click".to_string(),
+        package_name: "click".to_string(),
+        version: Some("6.6".to_string()),
+        strategy: "test".to_string(),
+        confidence: 1.0,
+    }];
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.parallel_versions = true;
+    config.python_version_range = 1;
+    config.execute_snippet = false;
+
+    let result = apdr::resolver::pre_solve::solve_dependency_graph(
+        &parse_result,
+        &resolved,
+        "3.10",
+        &mut store,
+        &config,
+    );
+
+    assert!(result.attempted);
+    assert!(result.satisfiable);
+    assert_eq!(
+        result.selected_python_version, "3.10",
+        "the first satisfiable candidate in candidate order should win"
+    );
+    assert_eq!(
+        result
+            .assigned_versions
+            .get("pip-tools")
+            .map(String::as_str),
+        Some("4.4.0")
+    );
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
+#[test]
+fn pre_solver_keeps_incomplete_metadata_separate_from_hard_failures() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-pre-solver-metadata-fallback-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    store
+        .save_pypi_versions("django", &["1.11.29".into()])
+        .unwrap();
+    store
+        .save_pypi_versions("johnny-cache", &["1.4".into()])
+        .unwrap();
+
+    let parse_result = apdr::ParseResult {
+        imports: vec!["django".to_string(), "johnny".to_string()],
+        import_paths: vec![
+            "django.core.management.base".to_string(),
+            "johnny.cache".to_string(),
+        ],
+        config_deps: vec![],
+        python_version_min: "2.7".to_string(),
+        python_version_max: Some("3.7".to_string()),
+        confidence: 0.9,
+        scanned_files: vec!["snippet.py".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
+    };
+    let resolved = vec![
+        apdr::ResolvedDependency {
+            import_name: "django".to_string(),
+            package_name: "Django".to_string(),
+            version: Some("1.8.19".to_string()),
+            strategy: "family:legacy-johnny-cache".to_string(),
+            confidence: 1.0,
+        },
+        apdr::ResolvedDependency {
+            import_name: "johnny".to_string(),
+            package_name: "johnny-cache".to_string(),
+            version: Some("1.4".to_string()),
+            strategy: "family:legacy-johnny-cache".to_string(),
+            confidence: 1.0,
+        },
+    ];
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.parallel_versions = true;
+    config.python_version_range = 1;
+    config.execute_snippet = false;
+
+    let result = apdr::resolver::pre_solve::solve_dependency_graph(
+        &parse_result,
+        &resolved,
+        "2.7",
+        &mut store,
+        &config,
+    );
+
+    assert!(result.attempted);
+    assert!(!result.satisfiable);
+    assert!(
+        !result.hard_unsat,
+        "incomplete metadata should still fall back instead of becoming hard UNSAT"
+    );
+    assert!(result
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("dependency metadata was incomplete"));
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // New fixture-based tests for recent bugfix scenarios
 // ---------------------------------------------------------------------------
