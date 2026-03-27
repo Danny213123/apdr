@@ -89,11 +89,10 @@ fn get_pool(db_path: &Path) -> &'static ConnectionPool {
 }
 
 fn normalize(name: &str) -> String {
-    name.trim()
-        .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace('.', "-")
+    name.trim().to_ascii_lowercase().replace(['_', '.'], "-")
 }
+
+type BulkPrefetchEntry = (Vec<String>, BTreeMap<String, Vec<String>>);
 
 /// Fetch all versions for a package from the KGraph SQLite DB.
 /// Returns an empty Vec if the DB is unavailable or the package is not found.
@@ -146,7 +145,7 @@ pub fn kgraph_dependency_specs(db_path: &Path, package: &str, version: &str) -> 
 pub fn kgraph_bulk_prefetch(
     db_path: &Path,
     packages: &[String],
-) -> BTreeMap<String, (Vec<String>, BTreeMap<String, Vec<String>>)> {
+) -> BTreeMap<String, BulkPrefetchEntry> {
     let mut results = BTreeMap::new();
     if packages.is_empty() {
         return results;

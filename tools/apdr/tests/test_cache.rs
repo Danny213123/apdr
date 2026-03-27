@@ -1,10 +1,10 @@
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs as unix_fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn unique_cache_dir(tool_root: &PathBuf, label: &str) -> PathBuf {
+fn unique_cache_dir(tool_root: &Path, label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

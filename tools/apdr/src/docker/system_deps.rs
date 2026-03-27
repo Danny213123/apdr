@@ -4,10 +4,7 @@ use std::collections::BTreeSet;
 /// on Debian-based containers (python:*-slim).
 /// Returns an empty slice if the package needs no known system deps.
 pub fn system_packages_for_pypi(package_name: &str) -> &'static [&'static str] {
-    let normalized = package_name
-        .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace('.', "-");
+    let normalized = package_name.to_ascii_lowercase().replace(['_', '.'], "-");
     match normalized.as_str() {
         "lxml" => &["libxml2-dev", "libxslt1-dev"],
         "pillow" | "pil" => &["libjpeg-dev", "zlib1g-dev", "libfreetype6-dev"],

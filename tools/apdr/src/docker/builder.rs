@@ -689,10 +689,12 @@ fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
         return None;
     }
 
-    let mut summary = ValidationSummary::default();
-    summary.succeeded = true;
-    summary.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
-    summary.selected_python_version = extract_json_string(trimmed, "selected_python_version");
+    let mut summary = ValidationSummary {
+        succeeded: true,
+        validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+        selected_python_version: extract_json_string(trimmed, "selected_python_version"),
+        ..ValidationSummary::default()
+    };
 
     if let Some(dur) = extract_json_number(trimmed, "total_duration_ms") {
         summary.validation_duration_ms = dur as u128;
@@ -740,8 +742,10 @@ fn validate_requirements_docker(
     config: &ResolveConfig,
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
-    let mut summary = ValidationSummary::default();
-    summary.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
+    let mut summary = ValidationSummary {
+        validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+        ..ValidationSummary::default()
+    };
     context::ensure_debug_layout(&config.output_dir)?;
 
     // Try LangGraph multi-agent pipeline first when LLM is enabled
@@ -2776,6 +2780,7 @@ for dist in metadata.distributions(path=[site_packages]):
         print(f"{normalize(name)}\t{version}\t{artifact_dir}")
 "#;
 
+#[allow(clippy::too_many_arguments)]
 fn attempt_metadata(
     attempt: &ValidationAttempt,
     build_key: &str,

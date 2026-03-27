@@ -128,7 +128,7 @@ pub fn scan_imports(source: &str) -> ImportScan {
                 }
                 if pos > attr_start {
                     let attr = &trimmed[attr_start..pos];
-                    if attr.chars().next().map_or(false, |c| c.is_alphabetic()) {
+                    if attr.chars().next().is_some_and(|c| c.is_alphabetic()) {
                         attribute_usage
                             .entry(word.to_string())
                             .or_default()

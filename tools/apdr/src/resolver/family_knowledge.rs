@@ -69,10 +69,7 @@ macro_rules! member {
 }
 
 pub fn normalize(name: &str) -> String {
-    name.trim()
-        .to_ascii_lowercase()
-        .replace('-', "_")
-        .replace('.', "_")
+    name.trim().to_ascii_lowercase().replace(['-', '.'], "_")
 }
 
 pub static FAMILIES: &[PackageFamily] = &[
@@ -730,6 +727,12 @@ const EXPLICIT_NAMESPACE_MAPPINGS: &[(&str, &str)] = &[
 pub struct FamilyRegistry {
     by_package: BTreeMap<String, usize>,
     by_module: BTreeMap<String, Vec<usize>>,
+}
+
+impl Default for FamilyRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FamilyRegistry {
@@ -2006,25 +2009,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct LearnedFamilyMember {
     pub package: String,
     pub modules: Vec<String>,
-    pub status: String,  // "active", "deprecated", "unmaintained"
+    pub status: String, // "active", "deprecated", "unmaintained"
     pub preferred: bool,
-    pub learned_from_case: Option<String>,  // Track which case taught us this
-    pub confidence_score: f64,  // Track how confident we are in this mapping
+    pub learned_from_case: Option<String>, // Track which case taught us this
+    pub confidence_score: f64,             // Track how confident we are in this mapping
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedFamily {
     pub name: String,
     pub modules: Vec<String>,
-    pub conflict_kind: String,  // "namespace", "fork", "variant", "replacement", "migration"
+    pub conflict_kind: String, // "namespace", "fork", "variant", "replacement", "migration"
     pub members: Vec<LearnedFamilyMember>,
     pub notes: String,
-    pub learned_at: String,  // Timestamp
-    pub learned_from_cases: Vec<String>,  // Track all cases that contributed
+    pub learned_at: String,              // Timestamp
+    pub learned_from_cases: Vec<String>, // Track all cases that contributed
 }
 
-static LEARNED_FAMILIES: Lazy<Mutex<Vec<LearnedFamily>>> =
-    Lazy::new(|| Mutex::new(Vec::new()));
+static LEARNED_FAMILIES: Lazy<Mutex<Vec<LearnedFamily>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 /// Get the path to the learned families JSON file
 pub fn learned_families_path() -> PathBuf {
@@ -2042,9 +2044,9 @@ pub fn load_learned_families() -> Result<Vec<LearnedFamily>, String> {
         return Ok(Vec::new());
     }
 
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read learned families: {}", e))?;
-    
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read learned families: {}", e))?;
+
     let families: Vec<LearnedFamily> = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse learned families: {}", e))?;
 
@@ -2054,7 +2056,7 @@ pub fn load_learned_families() -> Result<Vec<LearnedFamily>, String> {
 /// Save learned families to disk
 pub fn save_learned_families(families: &[LearnedFamily]) -> Result<(), String> {
     let path = learned_families_path();
-    
+
     // Ensure directory exists
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -2063,9 +2065,8 @@ pub fn save_learned_families(families: &[LearnedFamily]) -> Result<(), String> {
 
     let json = serde_json::to_string_pretty(families)
         .map_err(|e| format!("Failed to serialize families: {}", e))?;
-    
-    fs::write(&path, json)
-        .map_err(|e| format!("Failed to write learned families: {}", e))?;
+
+    fs::write(&path, json).map_err(|e| format!("Failed to write learned families: {}", e))?;
 
     Ok(())
 }
@@ -2084,12 +2085,13 @@ pub fn add_learned_family(
     family_name: &str,
     module_names: &[&str],
     package_name: &str,
-    alternative_packages: &[(&str, bool)],  // (package, is_preferred)
+    alternative_packages: &[(&str, bool)], // (package, is_preferred)
     conflict_kind: &str,
     case_id: &str,
     confidence: f64,
 ) -> Result<(), String> {
-    let mut learned = LEARNED_FAMILIES.lock()
+    let mut learned = LEARNED_FAMILIES
+        .lock()
         .map_err(|_| "Failed to lock learned families")?;
 
     let now = current_timestamp_string();
@@ -2098,7 +2100,7 @@ pub fn add_learned_family(
     if let Some(existing) = learned.iter_mut().find(|f| f.name == family_name) {
         // Update existing family
         existing.learned_from_cases.push(case_id.to_string());
-        
+
         // Add modules if not present
         for module in module_names {
             if !existing.modules.contains(&module.to_string()) {
@@ -2107,11 +2109,16 @@ pub fn add_learned_family(
         }
 
         // Add members if not present
-        let mut member_packages: Vec<String> = existing.members.iter()
+        let mut member_packages: Vec<String> = existing
+            .members
+            .iter()
             .map(|member| member.package.clone())
             .collect();
 
-        if !member_packages.iter().any(|package| package == package_name) {
+        if !member_packages
+            .iter()
+            .any(|package| package == package_name)
+        {
             existing.members.push(LearnedFamilyMember {
                 package: package_name.to_string(),
                 modules: module_names.iter().map(|s| s.to_string()).collect(),
@@ -2178,11 +2185,16 @@ pub fn add_learned_family(
 /// Check if a package/module combination exists in learned families
 pub fn check_learned_family(module_name: &str, package_name: &str) -> Option<LearnedFamily> {
     let learned = LEARNED_FAMILIES.lock().ok()?;
-    
-    learned.iter()
+
+    learned
+        .iter()
         .find(|f| {
-            f.modules.iter().any(|m| normalize(m) == normalize(module_name)) &&
-            f.members.iter().any(|mem| normalize(&mem.package) == normalize(package_name))
+            f.modules
+                .iter()
+                .any(|m| normalize(m) == normalize(module_name))
+                && f.members
+                    .iter()
+                    .any(|mem| normalize(&mem.package) == normalize(package_name))
         })
         .cloned()
 }
@@ -2193,13 +2205,17 @@ pub fn get_learned_alternatives(module_name: &str) -> Vec<String> {
     if learned.is_none() {
         return Vec::new();
     }
-    
+
     let learned = learned.unwrap();
     let normalized_module = normalize(module_name);
-    
+
     let mut alternatives = Vec::new();
     for family in learned.iter() {
-        if family.modules.iter().any(|m| normalize(m) == normalized_module) {
+        if family
+            .modules
+            .iter()
+            .any(|m| normalize(m) == normalized_module)
+        {
             for member in &family.members {
                 if !alternatives.contains(&member.package) {
                     alternatives.push(member.package.clone());
@@ -2207,7 +2223,7 @@ pub fn get_learned_alternatives(module_name: &str) -> Vec<String> {
             }
         }
     }
-    
+
     alternatives
 }
 

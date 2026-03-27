@@ -37,9 +37,10 @@ fn get_knowledge_cache() -> &'static Mutex<KnowledgeCache> {
 /// Save the knowledge cache back to disk (persists learned knowledge)
 pub fn save_knowledge_cache() -> std::io::Result<()> {
     let cache_mutex = get_knowledge_cache();
-    let cache = cache_mutex.lock().ok().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Failed to lock knowledge cache")
-    })?;
+    let cache = cache_mutex
+        .lock()
+        .ok()
+        .ok_or_else(|| std::io::Error::other("Failed to lock knowledge cache"))?;
 
     let data_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/knowledge");
     cache.save_to_directory(&data_dir)
@@ -216,8 +217,7 @@ pub fn best_matching_version(
 ) -> Option<String> {
     compatible_versions(store, package_name, python_version)
         .into_iter()
-        .filter(|version| version_satisfies(version, constraint))
-        .last()
+        .rfind(|version| version_satisfies(version, constraint))
 }
 
 pub fn compatible_default_version(
@@ -427,7 +427,7 @@ pub fn requirement_name(requirement: &str) -> String {
             return cached.clone();
         }
         // Find first operator character position (single scan instead of 7 split_once calls)
-        let base = match trimmed.find(|ch: char| matches!(ch, '<' | '>' | '!' | '=' | '~')) {
+        let base = match trimmed.find(['<', '>', '!', '=', '~']) {
             Some(pos) => &trimmed[..pos],
             None => trimmed,
         };
@@ -587,15 +587,11 @@ fn extract_version_from_filename(filename: &str, package_name: &str) -> Option<S
     // For wheel: name-version-py-abi-platform.whl
     // For sdist: name-version.tar.gz or name-version.zip
     let version_end = rest
-        .find(|c: char| c == '-' || c == '.')
+        .find(['-', '.'])
         .filter(|&pos| pos > 0)
         .unwrap_or(rest.len());
     let candidate = &rest[..version_end];
-    if candidate
-        .chars()
-        .next()
-        .map_or(false, |c| c.is_ascii_digit())
-    {
+    if candidate.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         Some(candidate.to_string())
     } else {
         None

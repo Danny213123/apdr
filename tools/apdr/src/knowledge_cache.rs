@@ -102,10 +102,7 @@ impl KnowledgeCache {
         let new_id = self.next_available_id();
 
         // Now insert
-        let versions = self
-            .labels
-            .entry(package_name.to_string())
-            .or_insert_with(HashMap::new);
+        let versions = self.labels.entry(package_name.to_string()).or_default();
         versions.insert(version.to_string(), new_id);
         self.labels_by_id
             .insert(new_id, format!("{}-{}", package_name, version));
@@ -345,7 +342,7 @@ mod tests {
 
             if let Ok(cache) = cache {
                 // Test that we can query for common packages
-                assert!(cache.has_package("requests") || cache.labels.len() > 0);
+                assert!(cache.has_package("requests") || !cache.labels.is_empty());
             }
         }
     }

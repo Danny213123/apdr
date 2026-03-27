@@ -70,7 +70,7 @@ fn find_python() -> String {
         let (program, extra_args) = (parts[0], &parts[1..]);
         if Command::new(program)
             .args(extra_args)
-            .args(&["-c", "import pydantic"])
+            .args(["-c", "import pydantic"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -862,6 +862,7 @@ pub struct RecoveryHint {
     pub remove_pkg: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn recovery_package_hint(
     resolved: &[ResolvedDependency],
     error_log: &str,
@@ -1102,10 +1103,10 @@ fn build_tier2_candidates(
             if norm_pkg == normalized {
                 continue; // Skip exact match (identity)
             }
-            if norm_pkg.contains(normalized.as_str()) || normalized.contains(norm_pkg.as_str()) {
-                if !cands.contains(pkg_name) {
-                    cands.push(pkg_name.clone());
-                }
+            if (norm_pkg.contains(normalized.as_str()) || normalized.contains(norm_pkg.as_str()))
+                && !cands.contains(pkg_name)
+            {
+                cands.push(pkg_name.clone());
             }
             if cands.len() >= 10 {
                 break;

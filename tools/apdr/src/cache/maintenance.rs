@@ -414,9 +414,7 @@ fn validated_env_entries(validated_envs_dir: &Path) -> io::Result<usize> {
     for entry in fs::read_dir(validated_envs_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() {
-            count += 1;
-        } else if is_env_archive(&path) {
+        if path.is_dir() || is_env_archive(&path) {
             count += 1;
         }
     }

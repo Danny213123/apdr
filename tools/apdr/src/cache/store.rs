@@ -884,12 +884,10 @@ impl CacheStore {
             "requirements_txt": requirements_txt,
             "resolved": resolved_json,
         });
-        let json_bytes =
-            serde_json::to_vec(&json).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let json_bytes = serde_json::to_vec(&json).map_err(io::Error::other)?;
 
         // Compress with zstd level 3 (fast)
-        let compressed = zstd::encode_all(json_bytes.as_slice(), 3)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let compressed = zstd::encode_all(json_bytes.as_slice(), 3).map_err(io::Error::other)?;
 
         // Atomic write
         let final_path = dir.join(format!("{key}.json.zst"));

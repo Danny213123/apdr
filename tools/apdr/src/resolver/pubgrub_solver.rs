@@ -160,7 +160,7 @@ fn split_requirement(req: &str) -> (String, String) {
     let trimmed = req.trim();
     // Find first operator character
     let split_pos = trimmed
-        .find(|ch: char| matches!(ch, '<' | '>' | '!' | '=' | '~'))
+        .find(['<', '>', '!', '=', '~'])
         .unwrap_or(trimmed.len());
     let name_part = &trimmed[..split_pos];
     let constraint_part = &trimmed[split_pos..];
@@ -276,7 +276,7 @@ pub fn solve_with_pubgrub(
             }
             // Ensure all constrained packages are present (PubGrub may have
             // resolved transitive deps that shadow a direct constraint name)
-            for (pkg, _) in constraints {
+            for pkg in constraints.keys() {
                 if !selected.contains_key(pkg) {
                     // Use version sampler as fallback
                     let versions = pypi_client::compatible_versions(
