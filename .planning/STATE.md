@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Rust Codebase Modernization
-current_phase: 04
-current_plan: 1
-status: active
-last_updated: "2026-03-27T17:15:00.000Z"
+current_phase: 05
+current_plan: Not started
+status: unknown
+last_updated: "2026-03-27T18:25:38.955Z"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 11
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-27
-**Current Phase:** 04
-**Current Plan:** 1
+**Current Phase:** 05
+**Current Plan:** Not started
 
 ---
 
@@ -25,14 +25,14 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 04 - module-layout-and-boundary-cleanup
+**Current Focus:** Phase 05 — documentation-error-handling-and-review-readiness
 
 ---
 
 ## Current Position
 
-Phase: 04 (module-layout-and-boundary-cleanup) - READY TO EXECUTE
-Plan: 1 of 3
+Phase: 05 (documentation-error-handling-and-review-readiness) — READY TO PLAN
+Plan: Not started
 
 ## Milestone Snapshot
 
@@ -76,13 +76,13 @@ Plan: 1 of 3
 
 ## Current Blockers
 
-*None - Phase 4 is planned and execution is next.*
+*None - Phase 5 is next and Phase 4 is complete.*
 
 ## Active TODOs
 
-- [ ] Execute Phase `04` (`Module Layout & Boundary Cleanup`)
-- [ ] Split oversized validation and resolver Rust modules behind clearer boundaries without losing the current regression gates
-- [ ] Preserve the Phase 3 benchmark artifacts as the reference point for later benchmark-verification work
+- [ ] Plan Phase `05` (`Documentation, Error Handling & Review Readiness`)
+- [ ] Document non-obvious Rust fallback and recovery behavior now that module ownership is explicit
+- [ ] Review touched Rust production paths for panic safety and style consistency using the new Phase 4 boundaries
 
 ## Deferred Items
 
@@ -104,21 +104,25 @@ Plan: 1 of 3
 - Completed `03-02` with cached Docker-agent probing, JSON-backed agent-result parsing, richer per-sample validation benchmark reporting, and optional env-create or install or smoke regression thresholds
 - Completed `03-03` with warm and forced validation candidate artifacts, a passing continuity regression gate, and a delta note that keeps the Windows Docker constraint explicit
 - Planned Phase 4 with `04-RESEARCH.md`, `04-VALIDATION.md`, and three execution plans focused on resolver decomposition, validation-builder decomposition, and support-module boundary cleanup
+- Completed `04-01` by splitting `resolver/mod.rs` into facade, retry-loop, diagnostics, and artifact modules
+- Completed `04-02` by splitting `docker/builder.rs` into env, Docker, agent, process, and runtime modules
+- Completed `04-03` by turning `family_knowledge`, `pypi_client`, and `tier3_llm` into directory-backed facades with named support modules
+- Stabilized full-suite verification by making wheelhouse cache pruning deterministic when file mtimes tie on Windows
 
 ### What's Next
 
-**Immediate:** Execute Phase 4
+**Immediate:** Plan Phase 5
 
 **This milestone:** Measure first, optimize second, then clean up layout and review quality
 
-**Next Phase:** Split oversized Rust modules and tighten module boundaries for reviewability without breaking the current benchmark and lint guardrails
+**Next Phase:** Raise review readiness across the newly split Rust modules with clearer docs, safer error paths, and tighter style consistency
 
 ### Context for Next Session
 
 1. Read `PROJECT.md` for active scope and boundaries
 2. Read `REQUIREMENTS.md` for milestone REQ IDs
 3. Read `ROADMAP.md` for phase structure
-4. Run `$gsd-execute-phase 4`, then continue the milestone with the Phase 3 benchmark artifacts in hand
+4. Run `$gsd-plan-phase 5`, using the completed Phase 4 summaries as the module-boundary reference
 
 ---
 
@@ -143,16 +147,20 @@ Plan: 1 of 3
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-RESEARCH.md` - structural split targets and module-boundary recommendations
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-VALIDATION.md` - structural and behavioral verification contract for Phase 4
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-01-PLAN.md` - resolver orchestrator split plan
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-01-SUMMARY.md` - resolver orchestrator decomposition summary
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-02-PLAN.md` - validation builder split plan
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-02-SUMMARY.md` - validation builder decomposition summary
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-PLAN.md` - support module boundary cleanup plan
+- `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-SUMMARY.md` - support module boundary cleanup and full-suite verification summary
 
 **Key Commands:**
 
-- `$gsd-execute-phase 4` - execute the structural cleanup phase
-- `$gsd-progress` - review milestone state after Phase 4 planning
+- `$gsd-plan-phase 5` - plan the review-readiness phase against the completed Phase 4 boundaries
+- `$gsd-progress` - review milestone state after Phase 4 completion
 - `cargo test --manifest-path tools/apdr/Cargo.toml` - run Rust tests
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets` - lint touched Rust code
 
 ---
 
-*State updated after Phase 4 planning on 2026-03-27*
+*State updated after Phase 4 completion on 2026-03-27*
+
