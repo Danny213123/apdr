@@ -80,9 +80,7 @@ pub fn validate_requirements(
                     store,
                 )?;
                 // Merge env attempts into docker summary to keep full history
-                let mut combined = std::mem::take(&mut summary.attempts);
-                combined.append(&mut docker_summary.attempts);
-                docker_summary.attempts = combined;
+                merge_backend_retry_history(&mut summary, &mut docker_summary);
                 summary = docker_summary;
                 if summary.succeeded {
                     return Ok(summary);
@@ -91,6 +89,274 @@ pub fn validate_requirements(
             Ok(summary)
         }
     }
+}
+
+/// Represents the source of a cached validated environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ValidatedEnvCacheSource {
+    /// Compressed archive (.tar.zst)
+    Archive(PathBuf),
+    /// Legacy uncompressed directory
+    LegacyDir(PathBuf),
+    /// No cached environment found
+    None,
+}
+
+/// Per-attempt workspace paths and metadata for env validation.
+#[derive(Debug, Clone)]
+struct EnvAttemptPaths {
+    work_dir: PathBuf,
+    env_dir: PathBuf,
+    build_log_path: PathBuf,
+    run_log_path: PathBuf,
+    combined_log_path: PathBuf,
+    metadata_path: PathBuf,
+    context_snapshot_path: PathBuf,
+    install_requirements_path: PathBuf,
+    env_label: String,
+}
+
+/// Prepare workspace for a single env validation attempt.
+/// Writes requirements.txt, smoke_test.py, snippet.py, context snapshot,
+/// and detects cached validated-env source (archive, legacy dir, or none).
+/// Returns the selected cache source and the build key for this attempt.
+fn prepare_env_validation_attempt(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    smoke_test_script: &str,
+    python_version: &str,
+    attempt_index: usize,
+    validated_envs_dir: &Path,
+    config: &ResolveConfig,
+) -> io::Result<(EnvAttemptPaths, ValidatedEnvCacheSource, String)> {
+    let build_key = build_cache::key_for(requirements_txt, python_version);
+    let env_label = sanitized_env_label(&build_key, python_version);
+    let work_dir = context::attempt_dir(&config.output_dir, attempt_index, python_version);
+    fs::create_dir_all(&work_dir)?;
+
+    let env_dir = work_dir.join("env");
+    // Defensive cleanup: remove any stale env left by a previously killed process.
+    if env_dir.exists() {
+        let _ = fs::remove_dir_all(&env_dir);
+    }
+
+    fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
+    fs::write(work_dir.join("smoke_test.py"), smoke_test_script)?;
+    fs::copy(snippet_path, work_dir.join("snippet.py"))?;
+
+    let build_log_path = work_dir.join("build.log");
+    let run_log_path = work_dir.join("run.log");
+    let combined_log_path = work_dir.join("combined.log");
+    let metadata_path = work_dir.join("metadata.txt");
+    let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
+    let install_requirements_path = work_dir.join("requirements-install.txt");
+
+    fs::write(&install_requirements_path, requirements_txt)?;
+    fs::write(&run_log_path, "")?;
+    fs::write(&combined_log_path, "")?;
+
+    if let Ok(tail) = context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000) {
+        fs::write(&context_snapshot_path, tail)?;
+    } else {
+        fs::write(&context_snapshot_path, "")?;
+    }
+
+    let paths = EnvAttemptPaths {
+        work_dir,
+        env_dir,
+        build_log_path,
+        run_log_path,
+        combined_log_path,
+        metadata_path,
+        context_snapshot_path,
+        install_requirements_path,
+        env_label,
+    };
+
+    // Detect validated-env cache source: prefer archive, fall back to legacy dir
+    let cached_archive = validated_env_archive_path(validated_envs_dir, &build_key);
+    let cached_env_dir = validated_env_cache_path(validated_envs_dir, &build_key);
+    let cache_source = if cached_archive.exists() {
+        ValidatedEnvCacheSource::Archive(cached_archive)
+    } else if cached_env_dir.exists()
+        && (cached_env_dir.join("bin").exists() || cached_env_dir.join("Scripts").exists())
+    {
+        ValidatedEnvCacheSource::LegacyDir(cached_env_dir)
+    } else {
+        ValidatedEnvCacheSource::None
+    };
+
+    Ok((paths, cache_source, build_key))
+}
+
+/// Materialize a validated environment for an attempt: restore from cache or build fresh.
+/// Returns (build_logs, exit_code, duration_ms).
+/// On failure, sets attempt.status and returns early with empty status to signal continuation.
+#[allow(clippy::too_many_arguments)]
+fn materialize_env_for_attempt(
+    cache_source: &ValidatedEnvCacheSource,
+    paths: &EnvAttemptPaths,
+    interpreter: &Path,
+    python_version: &str,
+    env_python: &Path,
+    wheelhouse_dir: &Path,
+    build_command: &str,
+    run_command: &str,
+    build_key: &str,
+    timeout: Duration,
+    config: &ResolveConfig,
+    attempt: &mut ValidationAttempt,
+    summary: &mut ValidationSummary,
+) -> io::Result<(String, Option<i32>, u128)> {
+    match cache_source {
+        ValidatedEnvCacheSource::Archive(cached_archive) => {
+            // Try CoW clone from .hot sibling first (near-instant on APFS)
+            let hot = maintenance::hot_dir_path(cached_archive);
+            let restore_result = if hot.exists() {
+                match maintenance::try_cow_clone(&hot, &paths.env_dir) {
+                    Ok(true) => Ok(()),
+                    _ => maintenance::extract_archive_to_env(cached_archive, &paths.env_dir),
+                }
+            } else {
+                maintenance::extract_archive_to_env(cached_archive, &paths.env_dir)
+            };
+            // Verify the extracted env has a usable Python binary
+            let restore_result = restore_result.and_then(|()| {
+                let has_bin = paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
+                if has_bin {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!(
+                            "Extracted env missing bin/ directory: {}",
+                            paths.env_dir.display()
+                        ),
+                    ))
+                }
+            });
+            match restore_result {
+                Ok(()) => {
+                    let _ = maintenance::touch_archive_marker(cached_archive);
+                    let log = format!("reused cached validated env from {}", cached_archive.display());
+                    fs::write(&paths.build_log_path, &log)?;
+                    Ok((log, None, 0_u128))
+                }
+                Err(err) => {
+                    // Cache restore failed; fall back to cold build
+                    let _ = fs::remove_dir_all(&paths.env_dir);
+                    attempt.used_cached_env = false;
+                    attempt.validated_env_cache_hit = false;
+                    let result = create_and_install_env(
+                        interpreter,
+                        python_version,
+                        &paths.env_dir,
+                        env_python,
+                        wheelhouse_dir,
+                        &paths.install_requirements_path,
+                        &paths.build_log_path,
+                        &paths.combined_log_path,
+                        &paths.metadata_path,
+                        build_command,
+                        run_command,
+                        build_key,
+                        timeout,
+                        config,
+                        attempt,
+                        summary,
+                    )?;
+                    let mut log = format!("(cache restore failed: {})\n", err);
+                    log.push_str(&result.0);
+                    Ok((log, result.1, result.2))
+                }
+            }
+        }
+        ValidatedEnvCacheSource::LegacyDir(cached_env_dir) => {
+            let restore_result = copy_dir_all(cached_env_dir, &paths.env_dir);
+            // Verify the extracted env has a usable Python binary
+            let restore_result = restore_result.and_then(|()| {
+                let has_bin = paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
+                if has_bin {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!(
+                            "Extracted env missing bin/ directory: {}",
+                            paths.env_dir.display()
+                        ),
+                    ))
+                }
+            });
+            match restore_result {
+                Ok(()) => {
+                    let _ = maintenance::touch_validated_env_cache_entry(cached_env_dir);
+                    let log = format!("reused cached validated env from {}", cached_env_dir.display());
+                    fs::write(&paths.build_log_path, &log)?;
+                    Ok((log, None, 0_u128))
+                }
+                Err(err) => {
+                    // Cache restore failed; fall back to cold build
+                    let _ = fs::remove_dir_all(&paths.env_dir);
+                    attempt.used_cached_env = false;
+                    attempt.validated_env_cache_hit = false;
+                    let result = create_and_install_env(
+                        interpreter,
+                        python_version,
+                        &paths.env_dir,
+                        env_python,
+                        wheelhouse_dir,
+                        &paths.install_requirements_path,
+                        &paths.build_log_path,
+                        &paths.combined_log_path,
+                        &paths.metadata_path,
+                        build_command,
+                        run_command,
+                        build_key,
+                        timeout,
+                        config,
+                        attempt,
+                        summary,
+                    )?;
+                    let mut log = format!("(cache restore failed: {})\n", err);
+                    log.push_str(&result.0);
+                    Ok((log, result.1, result.2))
+                }
+            }
+        }
+        ValidatedEnvCacheSource::None => {
+            // No cache; build fresh
+            create_and_install_env(
+                interpreter,
+                python_version,
+                &paths.env_dir,
+                env_python,
+                wheelhouse_dir,
+                &paths.install_requirements_path,
+                &paths.build_log_path,
+                &paths.combined_log_path,
+                &paths.metadata_path,
+                build_command,
+                run_command,
+                build_key,
+                timeout,
+                config,
+                attempt,
+                summary,
+            )
+        }
+    }
+}
+
+/// Merge env backend attempts into a Docker summary before returning it.
+/// Preserves env attempt history ahead of Docker attempts for review continuity.
+fn merge_backend_retry_history(
+    env_summary: &mut ValidationSummary,
+    docker_summary: &mut ValidationSummary,
+) {
+    let mut combined = std::mem::take(&mut env_summary.attempts);
+    combined.append(&mut docker_summary.attempts);
+    docker_summary.attempts = combined;
 }
 
 fn validate_requirements_env(
@@ -140,49 +406,43 @@ fn validate_requirements_env(
             break;
         }
         let attempt_index = attempt_offset + local_index + 1;
-        let build_key = build_cache::key_for(requirements_txt, python_version);
+
+        // Prepare attempt workspace and detect cache source
+        let (paths, cache_source, build_key) = prepare_env_validation_attempt(
+            snippet_path,
+            requirements_txt,
+            &smoke_test_script,
+            python_version,
+            attempt_index,
+            &validated_envs_dir,
+            config,
+        )?;
+
         summary.lockfile_key = Some(build_key.clone());
         summary.build_cache_key = Some(build_key.clone());
-        let env_label = sanitized_env_label(&build_key, python_version);
-        let work_dir = context::attempt_dir(&config.output_dir, attempt_index, python_version);
-        fs::create_dir_all(&work_dir)?;
-        let env_dir = work_dir.join("env");
-        // Defensive cleanup: remove any stale env left by a previously killed process.
-        if env_dir.exists() {
-            let _ = fs::remove_dir_all(&env_dir);
-        }
 
-        fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
-        fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
-        fs::copy(snippet_path, work_dir.join("snippet.py"))?;
-        let build_log_path = work_dir.join("build.log");
-        let run_log_path = work_dir.join("run.log");
-        let combined_log_path = work_dir.join("combined.log");
-        let metadata_path = work_dir.join("metadata.txt");
-        let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
         let interpreter = match ensure_python_interpreter(python_version) {
             Ok(path) => path,
             Err(detail) => {
-                fs::write(&build_log_path, &detail)?;
-                fs::write(&run_log_path, "")?;
-                fs::write(&combined_log_path, &detail)?;
+                fs::write(&paths.build_log_path, &detail)?;
+                fs::write(&paths.combined_log_path, &detail)?;
                 let attempt = ValidationAttempt {
                     attempt_index,
                     python_version: python_version.clone(),
                     validation_backend: VALIDATION_BACKEND_ENV.to_string(),
-                    env_label: Some(env_label.clone()),
+                    env_label: Some(paths.env_label.clone()),
                     status: "build-failed".to_string(),
                     log_excerpt: truncate_log(&detail),
-                    artifact_dir: Some(work_dir.display().to_string()),
-                    build_log_path: Some(build_log_path.display().to_string()),
-                    run_log_path: Some(run_log_path.display().to_string()),
-                    combined_log_path: Some(combined_log_path.display().to_string()),
-                    metadata_path: Some(metadata_path.display().to_string()),
-                    context_snapshot_path: Some(context_snapshot_path.display().to_string()),
+                    artifact_dir: Some(paths.work_dir.display().to_string()),
+                    build_log_path: Some(paths.build_log_path.display().to_string()),
+                    run_log_path: Some(paths.run_log_path.display().to_string()),
+                    combined_log_path: Some(paths.combined_log_path.display().to_string()),
+                    metadata_path: Some(paths.metadata_path.display().to_string()),
+                    context_snapshot_path: Some(paths.context_snapshot_path.display().to_string()),
                     ..Default::default()
                 };
                 fs::write(
-                    &metadata_path,
+                    &paths.metadata_path,
                     attempt_metadata(
                         &attempt,
                         &build_key,
@@ -202,195 +462,86 @@ fn validate_requirements_env(
             }
         };
 
-        let install_requirements_path = work_dir.join("requirements-install.txt");
-        fs::write(&install_requirements_path, requirements_txt)?;
-
-        let env_python = env_python_path(&env_dir);
+        let env_python = env_python_path(&paths.env_dir);
         let env_create_command = if python_version.starts_with("2.") {
             format!(
                 "{} -m virtualenv {}",
                 interpreter.display(),
-                env_dir.display()
+                paths.env_dir.display()
             )
         } else {
-            format!("{} -m venv {}", interpreter.display(), env_dir.display())
+            format!("{} -m venv {}", interpreter.display(), paths.env_dir.display())
         };
         let env_install_command = format!(
             "{} -m pip install --disable-pip-version-check --default-timeout=100 --cache-dir {} -r {}",
             env_python.display(),
             wheelhouse_dir.display(),
-            install_requirements_path.display()
+            paths.install_requirements_path.display()
         );
         let build_command = format!("{}\n{}", env_create_command, env_install_command);
         let run_command = format!(
             "{} {}",
             env_python.display(),
-            work_dir.join("smoke_test.py").display()
+            paths.work_dir.join("smoke_test.py").display()
         );
-        fs::write(work_dir.join("env-create.command.txt"), &env_create_command)?;
+        fs::write(paths.work_dir.join("env-create.command.txt"), &env_create_command)?;
         fs::write(
-            work_dir.join("env-install.command.txt"),
+            paths.work_dir.join("env-install.command.txt"),
             &env_install_command,
         )?;
-        fs::write(work_dir.join("env-run.command.txt"), &run_command)?;
-        fs::write(&run_log_path, "")?;
-        fs::write(&combined_log_path, "")?;
-        if let Ok(tail) =
-            context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
-        {
-            fs::write(&context_snapshot_path, tail)?;
-        } else {
-            fs::write(&context_snapshot_path, "")?;
-        }
+        fs::write(paths.work_dir.join("env-run.command.txt"), &run_command)?;
 
         let mut attempt = ValidationAttempt {
             attempt_index,
             python_version: python_version.clone(),
             validation_backend: VALIDATION_BACKEND_ENV.to_string(),
-            env_label: Some(env_label.clone()),
-            env_dir: Some(env_dir.display().to_string()),
+            env_label: Some(paths.env_label.clone()),
+            env_dir: Some(paths.env_dir.display().to_string()),
             used_cached_lockfile: store.lockfile(&build_key).is_some(),
-            artifact_dir: Some(work_dir.display().to_string()),
-            build_log_path: Some(build_log_path.display().to_string()),
-            run_log_path: Some(run_log_path.display().to_string()),
-            combined_log_path: Some(combined_log_path.display().to_string()),
-            metadata_path: Some(metadata_path.display().to_string()),
-            context_snapshot_path: Some(context_snapshot_path.display().to_string()),
+            artifact_dir: Some(paths.work_dir.display().to_string()),
+            build_log_path: Some(paths.build_log_path.display().to_string()),
+            run_log_path: Some(paths.run_log_path.display().to_string()),
+            combined_log_path: Some(paths.combined_log_path.display().to_string()),
+            metadata_path: Some(paths.metadata_path.display().to_string()),
+            context_snapshot_path: Some(paths.context_snapshot_path.display().to_string()),
             ..Default::default()
         };
         summary.validation_backend = VALIDATION_BACKEND_ENV.to_string();
 
-        // Check validated-env cache: prefer compressed archive, fall back to legacy dir
-        let cached_archive = validated_env_archive_path(&validated_envs_dir, &build_key);
-        let cached_env_dir = validated_env_cache_path(&validated_envs_dir, &build_key);
-        let (cache_hit, cache_is_archive) = if cached_archive.exists() {
-            (true, true)
-        } else if cached_env_dir.exists()
-            && (cached_env_dir.join("bin").exists() || cached_env_dir.join("Scripts").exists())
-        {
-            (true, false)
-        } else {
-            (false, false)
-        };
+        // Determine cache hit status from detected cache source
+        let cache_hit = !matches!(cache_source, ValidatedEnvCacheSource::None);
         attempt.used_cached_env = cache_hit;
         attempt.validated_env_cache_hit = cache_hit;
 
-        let (build_logs, build_exit_code, build_duration_ms) = if cache_hit {
-            let restore_result = if cache_is_archive {
-                // Try CoW clone from .hot sibling first (near-instant on APFS)
-                let hot = maintenance::hot_dir_path(&cached_archive);
-                if hot.exists() {
-                    match maintenance::try_cow_clone(&hot, &env_dir) {
-                        Ok(true) => Ok(()),
-                        _ => maintenance::extract_archive_to_env(&cached_archive, &env_dir),
-                    }
-                } else {
-                    maintenance::extract_archive_to_env(&cached_archive, &env_dir)
-                }
-            } else {
-                copy_dir_all(&cached_env_dir, &env_dir)
-            };
-            // Verify the extracted env has a usable Python binary
-            let restore_result = restore_result.and_then(|()| {
-                let has_bin = env_dir.join("bin").exists() || env_dir.join("Scripts").exists();
-                if has_bin {
-                    Ok(())
-                } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::NotFound,
-                        format!(
-                            "Extracted env missing bin/ directory: {}",
-                            env_dir.display()
-                        ),
-                    ))
-                }
-            });
-            match restore_result {
-                Ok(()) => {
-                    if cache_is_archive {
-                        let _ = maintenance::touch_archive_marker(&cached_archive);
-                    } else {
-                        let _ = maintenance::touch_validated_env_cache_entry(&cached_env_dir);
-                    }
-                    let source = if cache_is_archive {
-                        cached_archive.display().to_string()
-                    } else {
-                        cached_env_dir.display().to_string()
-                    };
-                    let log = format!("reused cached validated env from {}", source);
-                    fs::write(&build_log_path, &log)?;
-                    (log, None, 0_u128)
-                }
-                Err(err) => {
-                    // Cache restore failed; fall through to fresh env creation
-                    let _ = fs::remove_dir_all(&env_dir);
-                    attempt.used_cached_env = false;
-                    attempt.validated_env_cache_hit = false;
-                    let attempt_timeout = total_budget.saturating_sub(validation_started.elapsed());
-                    let result = create_and_install_env(
-                        &interpreter,
-                        python_version,
-                        &env_dir,
-                        &env_python,
-                        &wheelhouse_dir,
-                        &install_requirements_path,
-                        &build_log_path,
-                        &combined_log_path,
-                        &metadata_path,
-                        &build_command,
-                        &run_command,
-                        &build_key,
-                        attempt_timeout,
-                        config,
-                        &mut attempt,
-                        &mut summary,
-                    )?;
-                    if !attempt.status.is_empty() {
-                        let _ = fs::remove_dir_all(&env_dir);
-                        summary.attempts.push(attempt);
-                        if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap())
-                        {
-                            break 'versions;
-                        }
-                        continue;
-                    }
-                    let mut log = format!("(cache restore failed: {})\n", err);
-                    log.push_str(&result.0);
-                    (log, result.1, result.2)
-                }
-            }
-        } else {
-            let attempt_timeout = total_budget.saturating_sub(validation_started.elapsed());
-            let result = create_and_install_env(
-                &interpreter,
-                python_version,
-                &env_dir,
-                &env_python,
-                &wheelhouse_dir,
-                &install_requirements_path,
-                &build_log_path,
-                &combined_log_path,
-                &metadata_path,
-                &build_command,
-                &run_command,
-                &build_key,
-                attempt_timeout,
-                config,
-                &mut attempt,
-                &mut summary,
-            )?;
-            if !attempt.status.is_empty() {
-                let _ = fs::remove_dir_all(&env_dir);
-                summary.attempts.push(attempt);
-                if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
-                    break 'versions;
-                }
-                continue;
-            }
-            result
-        };
+        // Materialize env: restore from cache or build fresh
+        let attempt_timeout = total_budget.saturating_sub(validation_started.elapsed());
+        let (build_logs, build_exit_code, build_duration_ms) = materialize_env_for_attempt(
+            &cache_source,
+            &paths,
+            &interpreter,
+            python_version,
+            &env_python,
+            &wheelhouse_dir,
+            &build_command,
+            &run_command,
+            &build_key,
+            attempt_timeout,
+            config,
+            &mut attempt,
+            &mut summary,
+        )?;
 
-        let mut smoke_command = smoke_test_command(&env_python, &work_dir);
+        // If attempt.status was set during materialization, escalation or failure occurred
+        if !attempt.status.is_empty() {
+            let _ = fs::remove_dir_all(&paths.env_dir);
+            summary.attempts.push(attempt);
+            if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+                break 'versions;
+            }
+            continue;
+        }
+
+        let mut smoke_command = smoke_test_command(&env_python, &paths.work_dir);
         let smoke_timeout = total_budget.saturating_sub(validation_started.elapsed());
         let run_output = run_command_with_timeout(&mut smoke_command, smoke_timeout)?;
         summary.smoke_duration_ms += run_output.duration_ms;
@@ -399,8 +550,8 @@ fn validate_requirements_env(
         } else {
             format!("{build_logs}\n{}", run_output.combined_output)
         };
-        fs::write(&run_log_path, &run_output.combined_output)?;
-        fs::write(&combined_log_path, &combined)?;
+        fs::write(&paths.run_log_path, &run_output.combined_output)?;
+        fs::write(&paths.combined_log_path, &combined)?;
         let _ = context::append_context_log(
             config.benchmark_context_log.as_deref(),
             "apdr-env-run",
@@ -411,7 +562,7 @@ fn validate_requirements_env(
             attempt.status = "runtime-timeout".to_string();
             attempt.log_excerpt = truncate_log(&combined);
             fs::write(
-                &metadata_path,
+                &paths.metadata_path,
                 attempt_metadata(
                     &attempt,
                     &build_key,
@@ -423,7 +574,7 @@ fn validate_requirements_env(
                     Some(run_output.duration_ms),
                 ),
             )?;
-            let _ = fs::remove_dir_all(&env_dir);
+            let _ = fs::remove_dir_all(&paths.env_dir);
             summary.attempts.push(attempt);
             if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
                 break 'versions;
@@ -434,13 +585,13 @@ fn validate_requirements_env(
         if run_output.success {
             attempt.status = "passed".to_string();
             attempt.log_excerpt = truncate_log(&combined);
-            let site_packages = env_site_packages_dir(&env_dir, python_version);
+            let site_packages = env_site_packages_dir(&paths.env_dir, python_version);
             if config.package_repository_cache_enabled {
                 let _ = catalog_package_repository(store, python_version, &site_packages);
             }
             // Save validated env to cache for future reuse
             if config.validated_env_cache_max_entries > 0 {
-                let _ = save_validated_env(&validated_envs_dir, &build_key, &env_dir);
+                let _ = save_validated_env(&validated_envs_dir, &build_key, &paths.env_dir);
                 let _ = maintenance::prune_validated_env_cache(
                     &validated_envs_dir,
                     config.validated_env_cache_max_entries,
@@ -448,7 +599,7 @@ fn validate_requirements_env(
                 );
             }
             fs::write(
-                &metadata_path,
+                &paths.metadata_path,
                 attempt_metadata(
                     &attempt,
                     &build_key,
@@ -466,14 +617,14 @@ fn validate_requirements_env(
             summary.succeeded = true;
             summary.attempts.push(attempt);
             // Clean up the venv to reclaim disk space (already saved to validated-env cache above)
-            let _ = fs::remove_dir_all(&env_dir);
+            let _ = fs::remove_dir_all(&paths.env_dir);
             return Ok(summary);
         }
 
         attempt.status = "runtime-failed".to_string();
         attempt.log_excerpt = truncate_log(&combined);
         fs::write(
-            &metadata_path,
+            &paths.metadata_path,
             attempt_metadata(
                 &attempt,
                 &build_key,
@@ -490,7 +641,7 @@ fn validate_requirements_env(
             break 'versions;
         }
         // Clean up the venv to reclaim disk space (logs and metadata are preserved)
-        let _ = fs::remove_dir_all(&env_dir);
+        let _ = fs::remove_dir_all(&paths.env_dir);
     }
 
     Ok(summary)
@@ -2895,5 +3046,146 @@ mod tests {
             &summary,
             "scrapy==1.8.3"
         ));
+    }
+
+    #[test]
+    fn validation_pipeline_detects_archive_cache_source() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let validated_envs_dir = temp.path().join("validated-envs");
+        fs::create_dir_all(&validated_envs_dir).unwrap();
+
+        let requirements = "os==0.0.0";
+        let build_key = build_cache::key_for(requirements, "3.11");
+        let archive_path = validated_env_archive_path(&validated_envs_dir, &build_key);
+
+        // Create an archive file
+        fs::write(&archive_path, b"fake archive").unwrap();
+
+        let snippet_path = temp.path().join("snippet.py");
+        fs::write(&snippet_path, "import os").unwrap();
+
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("debug");
+        config.cache_path = temp.path().join("cache");
+        config.benchmark_context_log = None;
+        fs::create_dir_all(&config.output_dir).unwrap();
+
+        let (_, cache_source, _) = prepare_env_validation_attempt(
+            &snippet_path,
+            requirements,
+            "# smoke test",
+            "3.11",
+            1,
+            &validated_envs_dir,
+            &config,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(cache_source, ValidatedEnvCacheSource::Archive(_)),
+            "Expected Archive cache source, got {:?}",
+            cache_source
+        );
+    }
+
+    #[test]
+    fn validation_pipeline_detects_legacy_env_cache_source() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let validated_envs_dir = temp.path().join("validated-envs");
+        fs::create_dir_all(&validated_envs_dir).unwrap();
+
+        let requirements = "os==0.0.0";
+        let build_key = build_cache::key_for(requirements, "3.11");
+        let legacy_env_dir = validated_env_cache_path(&validated_envs_dir, &build_key);
+
+        // Create a legacy env directory with bin/ subdirectory
+        fs::create_dir_all(legacy_env_dir.join("bin")).unwrap();
+
+        let snippet_path = temp.path().join("snippet.py");
+        fs::write(&snippet_path, "import os").unwrap();
+
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("debug");
+        config.cache_path = temp.path().join("cache");
+        config.benchmark_context_log = None;
+        fs::create_dir_all(&config.output_dir).unwrap();
+
+        let (_, cache_source, _) = prepare_env_validation_attempt(
+            &snippet_path,
+            requirements,
+            "# smoke test",
+            "3.11",
+            1,
+            &validated_envs_dir,
+            &config,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(cache_source, ValidatedEnvCacheSource::LegacyDir(_)),
+            "Expected LegacyDir cache source, got {:?}",
+            cache_source
+        );
+    }
+
+    #[test]
+    fn validation_pipeline_merges_env_history_before_docker_attempts() {
+        let mut env_summary = ValidationSummary {
+            attempts: vec![
+                ValidationAttempt {
+                    attempt_index: 1,
+                    python_version: "3.11".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "build-failed".to_string(),
+                    ..Default::default()
+                },
+                ValidationAttempt {
+                    attempt_index: 2,
+                    python_version: "3.10".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "runtime-failed".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let mut docker_summary = ValidationSummary {
+            attempts: vec![
+                ValidationAttempt {
+                    attempt_index: 3,
+                    python_version: "3.11".to_string(),
+                    validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+                    status: "passed".to_string(),
+                    ..Default::default()
+                },
+            ],
+            succeeded: true,
+            ..Default::default()
+        };
+
+        merge_backend_retry_history(&mut env_summary, &mut docker_summary);
+
+        assert_eq!(docker_summary.attempts.len(), 3);
+        assert_eq!(docker_summary.attempts[0].attempt_index, 1);
+        assert_eq!(
+            docker_summary.attempts[0].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
+        assert_eq!(docker_summary.attempts[1].attempt_index, 2);
+        assert_eq!(
+            docker_summary.attempts[1].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
+        assert_eq!(docker_summary.attempts[2].attempt_index, 3);
+        assert_eq!(
+            docker_summary.attempts[2].validation_backend,
+            VALIDATION_BACKEND_DOCKER
+        );
+        assert!(docker_summary.succeeded);
     }
 }
