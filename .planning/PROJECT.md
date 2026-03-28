@@ -2,7 +2,7 @@
 
 ## What This Is
 
-APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. v2.0 modernized the Rust core so APDR stays fast, memory-aware, and reviewable as the benchmark corpus grows.
+APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. After the v2.0 modernization pass, the next milestone focuses on making family knowledge easier to evolve and recovering LLM-tier accuracy on real benchmark failures.
 
 ## Core Value
 
@@ -10,16 +10,19 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 ## Current State
 
-- v2.0 shipped on 2026-03-28 with 6 completed phases and 17 completed plans.
+- v2.0 shipped with 6 completed phases and 17 completed plans.
 - The Rust modernization milestone closed its benchmark and review gates, including BENCH-03 through direct APDR private-memory comparison and BENCH-05 through the inherited five-command Rust review loop.
-- There is no active milestone yet. The next planning step is to create fresh requirements and a new roadmap.
+- The latest local stopped benchmark run is `runs\20260327-150339-apdr`, which processed 1,257 cases with 285 failures and 297 skips; 228 of the failures are tier3.
+- The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once, including 72 strong wins (`>= 5/10`) and 51 clean `10/10` `pllm` wins.
 
-## Next Milestone Goals
+## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
-- Move legacy family-knowledge bundles into data-driven configuration files.
-- Evaluate async I/O for network and subprocess-heavy validation paths where benchmark evidence supports it.
-- Replace ad-hoc telemetry with structured tracing across the Rust core.
-- Add continuous performance benchmarking in CI.
+**Goal:** Replace brittle hardcoded family-knowledge behavior with data-driven rules and improve APDR's LLM recovery accuracy on the stopped benchmark failures surfaced on 2026-03-27.
+
+**Target features:**
+- Move touched family-knowledge bundles, aliases, and mapping hints into validated data files instead of hardcoded Rust tables.
+- Improve tier3 recovery behavior on the stopped-run failure buckets, especially `module-not-found`, `environment-build-failed`, and `version-not-found`.
+- Produce benchmark artifacts that track targeted APDR recovery deltas against the stopped APDR run and the matching `pllm` parity slice in `pllm_results`.
 
 ## Requirements
 
@@ -37,45 +40,48 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 ### Active
 
-- [ ] Move legacy family-knowledge bundles into data-driven configuration files
-- [ ] Introduce async I/O for network and subprocess-heavy paths
-- [ ] Replace ad-hoc telemetry with structured tracing across the Rust core
-- [ ] Add continuous performance benchmarking in CI
+- [ ] Data-driven family knowledge replaces hardcoded touched mapping logic
+- [ ] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets
+- [ ] Benchmark evidence makes APDR recovery deltas inspectable at the case level
 
 ### Out of Scope
 
-- New benchmark UI or product-surface features - still not the priority until the next milestone explicitly says otherwise
-- Replacing the Rust/Python architecture - v2.0 proved the current architecture can be improved incrementally
-- Changing benchmark datasets or scoring rules as part of core modernization - continuity still matters for before or after comparisons
-- Full async or Tokio migration without measured justification - evaluate targeted async work, not a rewrite
+- New benchmark UI or product-surface features - this milestone is about resolution accuracy and maintainability, not interface expansion
+- Replacing the Rust/Python architecture - the goal is to improve the existing system, not rewrite it
+- Changing benchmark datasets or scoring rules - the stopped benchmark needs to stay comparable while accuracy work lands
+- Full async or Tokio migration - still deferred until benchmark evidence says it is the right next bottleneck
 - Dropping Windows or Docker support - compatibility remains a hard constraint
+- Full LLM provider replacement - this milestone should improve the current recovery path before considering a provider swap
 
 ## Context
 
-- The primary modernization target in v2.0 was the Rust code under `tools/apdr/src/`.
-- The largest Rust pain points at milestone start were oversized modules, clone-heavy resolver paths, shared-state contention, and sequential validation bottlenecks.
-- Phase 4 split the major Rust hotspots into reviewable facades and named sibling modules, and Phase 5 documented the resulting reviewer surfaces.
-- Phase 6 closed the milestone with benchmark continuity evidence, a bounded hard-gists package, a green Rust review gate, and a targeted direct-APDR memory comparison for BENCH-03.
-- No standalone `v2.0-MILESTONE-AUDIT.md` was recorded; milestone completion relies on the completed phase summaries, `06-BENCHMARK-VERIFICATION.md`, and `06-MILESTONE-CLOSEOUT.md`.
+- The primary milestone targets are the family-knowledge path and tier3 recovery behavior in the existing APDR stack.
+- The stopped local benchmark run at `runs\20260327-150339-apdr` used `qwen3.5:9b` with RAG enabled and ended in `stopped` state after processing 1,257 cases.
+- In that run, the visible dominant failure buckets were `module-not-found` (86), `environment-build-failed` (62), and `version-not-found` (33), with 228 of 285 failures landing in tier3.
+- The `pllm` comparison data lives in `pllm_results\csv\summary-all-runs.csv` rather than under `runs\`, and it exposes 87 APDR-failed cases where `pllm` passed at least once.
+- Among those APDR-failed and `pllm`-passing cases, the largest visible APDR validation statuses are `environment-build-failed` (21), `module-not-found` (19), missing explicit failure bucket tagging (18), `dependency-conflict` (12), and `version-not-found` (11).
+- v2.0 already improved performance, module boundaries, and review quality, so this milestone should concentrate on correctness and recovery behavior rather than reopening broad modernization work.
 
 ## Constraints
 
 - **Tech stack**: Rust 2021 core plus existing Python and JS helpers - keep the current architecture intact
 - **Compatibility**: Windows and Docker validation flows must continue to work - benchmark users depend on both
-- **Correctness**: Performance work cannot weaken dependency resolution accuracy or validation fidelity - correctness remains primary
-- **Benchmark target**: Hard-gists remains the comparison corpus when continuity matters
-- **Scope discipline**: Focus future milestones on measurable value rather than speculative rewrites
+- **Correctness**: Accuracy work cannot weaken dependency resolution fidelity or validation behavior - correctness remains primary
+- **Benchmark target**: The stopped benchmark run and hard-gists corpus must remain comparable while accuracy work lands
+- **Scope discipline**: Focus on family knowledge and recovery accuracy - avoid expanding back into broad performance or UI work
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Start a fresh v2.0 roadmap and ignore remaining v1.0 roadmap items | The next milestone was a Rust modernization effort, not a continuation of prior feature work | Good |
-| Reset phase numbering to Phase 1 | New milestone needed clean sequencing and avoided mixing old phase intent with the modernization roadmap | Good |
-| Skip optional external domain research for v2 | The local codebase map and benchmark evidence were the relevant inputs for this brownfield refactor | Good |
+| Start a fresh v2.0 roadmap and ignore remaining v1.0 roadmap items | The previous milestone was a Rust modernization effort, not a continuation of prior feature work | Good |
+| Reset phase numbering to Phase 1 for v2.0 | The previous milestone needed clean sequencing and avoided mixing old phase intent with the modernization roadmap | Good |
+| Skip optional external domain research for v2.0 | The local codebase map and benchmark evidence were the relevant inputs for the brownfield modernization work | Good |
 | Measure before optimizing | Benchmark speed and memory work needed baselines and regression checks, not intuition | Good |
 | Keep the Phase 5 five-command Rust review loop as the Phase 6 closeout contract | Final signoff needed to reuse the same reviewer gate instead of inventing a new one | Good |
 | Close BENCH-03 with direct APDR private-memory comparison instead of wrapper-level RSS | The targeted Rust workflow needed a direct process-level signal when wrapper RSS stayed noisy on Windows | Good |
+| Use `runs\20260327-150339-apdr` as the v2.1 accuracy baseline | The new milestone needs one concrete stopped-run reference before changing family knowledge and LLM recovery behavior | Pending |
+| Skip external research for v2.1 by default | This milestone is driven by a local benchmark failure surface and the existing codebase, not by a new external product domain | Pending |
 
 ## Shipped Milestone Snapshot
 
@@ -109,4 +115,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v2.0 milestone completion*
+*Last updated: 2026-03-27 after milestone v2.1 initialization*
