@@ -540,6 +540,25 @@ pub(super) fn validate_with_retries(
             "ModuleNotFound" | "ImportError"
         ) {
             if let Some(module) = extract_missing_module(&last_log) {
+                // Phase 9: check targeted stop-reason rules first.  If the
+                // module is classified as removed-runtime, internal-extension,
+                // or project-local, stop immediately with an inspectable note
+                // instead of burning LLM retries.
+                if let Some(stop_reason) = targeted_stop_reason_for_module(&module) {
+                    let note = format!(
+                        "Phase 9 targeted stop: module `{module}` — {stop_reason}"
+                    );
+                    repeat_failure_signature = Some(current_signature.clone());
+                    report.notes.push(note.clone());
+                    validation.iteration_history.push(note.clone());
+                    validation.reason = Some(note.clone());
+                    validation.root_cause = Some(note.clone());
+                    if let Some(last_attempt) = validation.attempts.last_mut() {
+                        last_attempt.fix_applied = Some(note);
+                    }
+                    break;
+                }
+
                 // Phase 9: before concluding mapping failure, check if a
                 // targeted recovery provider rule can still recover this module.
                 if module_requirement_sets
@@ -1167,6 +1186,12 @@ fn apply_recovery_fix(
                 family_knowledge::recover_curated_missing_module(&module_name, resolved)
             {
                 return Some(note);
+            }
+            // Phase 9: check targeted stop-reason rules.  If the module is
+            // classified as removed-runtime, internal-extension, or project-local,
+            // do NOT attempt recovery — the caller's break logic handles the stop.
+            if targeted_stop_reason_for_module(&module_name).is_some() {
+                return None;
             }
             // Phase 9: consult targeted recovery module-provider rules before
             // generic mapping-failure logic.  This gives deterministic provider

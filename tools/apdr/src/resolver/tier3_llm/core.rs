@@ -584,6 +584,19 @@ pub fn recovery_package_hint(
     error_type: &str,
     previous_attempts: &[(String, String, String)],
 ) -> Option<RecoveryHint> {
+    // Phase 9: skip LLM recovery when the module already has a deterministic
+    // targeted_recovery stop-reason classification (removed-runtime, project-local,
+    // internal-extension).  Burning LLM calls cannot fix these cases.
+    if matches!(error_type, "ModuleNotFound" | "ImportError") {
+        if let Some(policy) = crate::resolver::targeted_recovery::get_targeted_recovery_policy() {
+            if let Some(module) = extract_module_from_error_log(error_log) {
+                if policy.stop_reason_for_module(&module).is_some() {
+                    return None;
+                }
+            }
+        }
+    }
+
     let resolved_desc: Vec<String> = resolved
         .iter()
         .map(|d| {
@@ -876,4 +889,31 @@ pub fn fallback_notes(
         unresolved_imports.join(", ")
     ));
     notes
+}
+
+/// Lightweight extraction of a module name from an error log for the purpose
+/// of targeted_recovery stop-reason gating.  Does not need to cover every
+/// log format — only the standard ModuleNotFoundError / ImportError patterns.
+fn extract_module_from_error_log(log: &str) -> Option<String> {
+    for marker in [
+        "No module named ",
+        "ModuleNotFoundError: No module named ",
+        "ImportError: No module named ",
+    ] {
+        if let Some(index) = log.find(marker) {
+            let fragment = &log[index + marker.len()..];
+            let module = fragment
+                .trim_matches('"')
+                .trim_matches('\'')
+                .split(|ch: char| ch.is_whitespace() || ch == ';' || ch == '\n')
+                .next()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"');
+            if !module.is_empty() {
+                return Some(module.to_string());
+            }
+        }
+    }
+    None
 }

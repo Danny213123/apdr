@@ -184,6 +184,16 @@ pub(super) fn apply_llm_recovery_hint(
     (applied, notes)
 }
 
+/// Check if a missing module matches a Phase 9 targeted stop-reason rule.
+/// Returns the stop reason string (e.g. "removed-runtime: ...") if a match
+/// is found, or `None` if no stop-reason rule applies.  The caller should
+/// use this to skip further LLM recovery attempts for the module.
+pub(super) fn targeted_stop_reason_for_module(module_name: &str) -> Option<String> {
+    let policy = super::targeted_recovery::get_targeted_recovery_policy()?;
+    let rule = policy.stop_reason_for_module(module_name)?;
+    Some(rule.reason.clone())
+}
+
 pub(super) fn update_failure_metadata(
     validation: &mut ValidationSummary,
     config: &ResolveConfig,

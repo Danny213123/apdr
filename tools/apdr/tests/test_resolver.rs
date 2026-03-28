@@ -2194,3 +2194,87 @@ fn phase9_targeted_module_recovers_rest_framework_provider() {
     );
     assert_eq!(rule.id, "mod-django-rest-framework");
 }
+
+#[test]
+fn phase9_targeted_module_marks_removed_runtime_case() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // imp is a removed stdlib module (Python 3.12+).
+    let stop = policy
+        .stop_reason_for_module("imp")
+        .expect("should find a stop-reason rule for imp");
+    assert!(
+        stop.reason.contains("removed-runtime"),
+        "imp stop reason should contain 'removed-runtime', got: {}",
+        stop.reason
+    );
+
+    // numpy.distutils was removed in NumPy 2.0.
+    let stop_np = policy
+        .stop_reason_for_module("numpy.distutils")
+        .expect("should find a stop-reason rule for numpy.distutils");
+    assert!(
+        stop_np.reason.contains("removed-runtime"),
+        "numpy.distutils stop reason should contain 'removed-runtime', got: {}",
+        stop_np.reason
+    );
+
+    // elementtree is a removed standalone package.
+    let stop_et = policy
+        .stop_reason_for_module("elementtree")
+        .expect("should find a stop-reason rule for elementtree");
+    assert!(
+        stop_et.reason.contains("removed-runtime"),
+        "elementtree stop reason should contain 'removed-runtime', got: {}",
+        stop_et.reason
+    );
+}
+
+#[test]
+fn phase9_targeted_module_marks_project_local_case() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // api is typically a project-local module.
+    let stop_api = policy
+        .stop_reason_for_module("api")
+        .expect("should find a stop-reason rule for api");
+    assert!(
+        stop_api.reason.contains("project-local"),
+        "api stop reason should contain 'project-local', got: {}",
+        stop_api.reason
+    );
+
+    // taggit_autocomplete is a project-local Django app.
+    let stop_taggit = policy
+        .stop_reason_for_module("taggit_autocomplete")
+        .expect("should find a stop-reason rule for taggit_autocomplete");
+    assert!(
+        stop_taggit.reason.contains("project-local"),
+        "taggit_autocomplete stop reason should contain 'project-local', got: {}",
+        stop_taggit.reason
+    );
+
+    // pizzanuvola_teaser is a project-specific Plone module.
+    let stop_pizza = policy
+        .stop_reason_for_module("pizzanuvola_teaser")
+        .expect("should find a stop-reason rule for pizzanuvola_teaser");
+    assert!(
+        stop_pizza.reason.contains("project-local"),
+        "pizzanuvola_teaser stop reason should contain 'project-local', got: {}",
+        stop_pizza.reason
+    );
+
+    // _distance_wrap is an internal C extension.
+    let stop_dw = policy
+        .stop_reason_for_module("_distance_wrap")
+        .expect("should find a stop-reason rule for _distance_wrap");
+    assert!(
+        stop_dw.reason.contains("internal-extension"),
+        "_distance_wrap stop reason should contain 'internal-extension', got: {}",
+        stop_dw.reason
+    );
+}
