@@ -179,3 +179,5 @@ runs/*
 !runs/.gitkeep
 web/node_modules/
 web/dist/
+.planning/phases/*/.baseline-runs/
+.planning/phases/*/.memory-profile-run/
