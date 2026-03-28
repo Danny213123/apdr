@@ -9,17 +9,17 @@ Requirements for the v2.1 accuracy milestone. Each maps to exactly one roadmap p
 
 ### Family Knowledge
 
-- [x] **FAM-01**: Maintainers can define touched family aliases, package mappings, and rejection hints in data files instead of hardcoded Rust tables
-- [x] **FAM-02**: APDR loads and applies data-driven family knowledge for the touched families used in the milestone accuracy slice
-- [x] **FAM-03**: Invalid or conflicting family-knowledge data fails with actionable validation errors before it can silently change recovery behavior
+- [ ] **FAM-01**: Maintainers can define touched family aliases, package mappings, and rejection hints in data files instead of hardcoded Rust tables
+- [ ] **FAM-02**: APDR loads and applies data-driven family knowledge for the touched families used in the milestone accuracy slice
+- [ ] **FAM-03**: Invalid or conflicting family-knowledge data fails with actionable validation errors before it can silently change recovery behavior
 - [x] **FAM-04**: Touched family-knowledge behavior is covered by regression fixtures or tests so the data migration preserves intended outcomes
 
 ### Recovery Accuracy
 
 - [x] **REC-01**: The repo has a reproducible target slice derived from `runs\20260327-150339-apdr` and `pllm_results\csv\summary-all-runs.csv` for APDR-failed but `pllm`-passing cases
-- [x] **REC-02**: APDR reduces `module-not-found` outcomes on the targeted parity slice compared with the 2026-03-27 baseline
-- [x] **REC-03**: APDR reduces `version-not-found` and dependency-mapping failures on the targeted parity slice compared with the 2026-03-27 baseline
-- [x] **REC-04**: APDR improves the number of APDR-failed but `pllm`-passing cases it can recover on the targeted slice
+- [ ] **REC-02**: APDR reduces `module-not-found` outcomes on the targeted parity slice compared with the 2026-03-27 baseline
+- [ ] **REC-03**: APDR reduces `version-not-found` and dependency-mapping failures on the targeted parity slice compared with the 2026-03-27 baseline
+- [ ] **REC-04**: APDR improves the number of APDR-failed but `pllm`-passing cases it can recover on the targeted slice
 - [x] **REC-05**: Recovery changes preserve existing passed cases and expected skip behavior for host-runtime, unsolvable, and local-helper cases on the rerun
 
 ### Benchmark Evidence
@@ -51,23 +51,24 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FAM-01 | Phase 8 | Complete |
-| FAM-02 | Phase 8 | Complete |
-| FAM-03 | Phase 8 | Complete |
+| FAM-01 | Phase 11 | Pending |
+| FAM-02 | Phase 11 | Pending |
+| FAM-03 | Phase 11 | Pending |
 | FAM-04 | Phase 7 | Complete |
 | REC-01 | Phase 7 | Complete |
-| REC-02 | Phase 9 | Complete |
-| REC-03 | Phase 9 | Complete |
-| REC-04 | Phase 9 | Complete |
+| REC-02 | Phase 12 | Pending |
+| REC-03 | Phase 12 | Pending |
+| REC-04 | Phase 12 | Pending |
 | REC-05 | Phase 10 | Complete |
 | EVD-01 | Phase 10 | Complete |
 | EVD-02 | Phase 10 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
+- Checked off: 5
 - Mapped to phases: 11
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-28 after Phase 8 completion*
+*Last updated: 2026-03-28 after v2.1 milestone gap planning*
