@@ -1671,6 +1671,34 @@ fn resolve_inline_snippet(snippet_source: &str, output_name: &str) -> apdr::Reso
     apdr::resolver::resolve_path(&tool_root, &snippet_path, &config).unwrap()
 }
 
+fn resolve_phase7_family_fixture(case_id: &str, output_name: &str) -> apdr::ResolveResult {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root
+        .join("tests/phase7_family_fixtures")
+        .join(case_id)
+        .join("snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target").join(output_name);
+    config.validate = false;
+
+    apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap()
+}
+
+fn resolve_phase7_family_bundle_fixture(case_id: &str, output_name: &str) -> apdr::ResolveResult {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root
+        .join("tests/phase7_family_fixtures")
+        .join(case_id)
+        .join("snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target").join(output_name);
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 5;
+
+    apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap()
+}
+
 struct CuratedFamilyOverride {
     original_tool_root: PathBuf,
     _temp_dir: tempfile::TempDir,
@@ -1826,5 +1854,127 @@ fn data_driven_family_runtime_behavior_routes_pkg_resources_through_curated_mapp
         dependency.import_name == "pkg_resources"
             && dependency.package_name == "setuptools"
             && dependency.strategy == "recovery:missing-module"
+    }));
+}
+
+#[test]
+fn phase7_family_pillow_fixtures_still_pin_pillow() {
+    let _lock = family_runtime_test_lock();
+    for case_id in ["2e3b989e0343f0884388ed7ed82eb3b0", "33e2172bafbb5dd794ab"] {
+        let result = resolve_phase7_family_fixture(
+            case_id,
+            &format!("phase7-family-pillow-{case_id}"),
+        );
+
+        assert!(
+            result.requirements_txt.contains("Pillow==6.2.2"),
+            "{case_id} should keep the legacy Pillow pin"
+        );
+        assert!(
+            result.resolution_report.notes.iter().any(|note| note.contains(
+                "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+            )),
+            "{case_id} should keep the legacy Pillow note"
+        );
+    }
+}
+
+#[test]
+fn phase7_family_pymc3_fixture_keeps_coherent_bundle() {
+    let _lock = family_runtime_test_lock();
+    let result = resolve_phase7_family_bundle_fixture(
+        "2de2e9a156fe619dbdad762fe1cf84e1",
+        "phase7-family-pymc3",
+    );
+    let req_lower = result.requirements_txt.to_lowercase();
+
+    assert_eq!(result.python_version, "3.10");
+    assert!(req_lower.contains("pymc3==3.11.5"));
+    assert!(req_lower.contains("theano-pymc==1.1.2"));
+    assert!(req_lower.contains("arviz==0.12.1"));
+    assert!(req_lower.contains("xarray-einstats==0.6.0"));
+    assert!(result.resolved.iter().any(|dependency| {
+        dependency.package_name == "Theano-PyMC" && dependency.strategy == "family:legacy-pymc3"
+    }));
+    assert!(result
+        .resolution_report
+        .notes
+        .iter()
+        .any(|note| note.contains("Family knowledge targeted the legacy PyMC3 stack")));
+}
+
+#[test]
+fn phase7_family_keras_fixtures_add_tensorflow_backend() {
+    let _lock = family_runtime_test_lock();
+    for case_id in [
+        "0830affa1f7f19fd47b06d4cf89ed44d",
+        "3a2a081e4f3089920fd8aecefecbe280",
+        "3fdd80a08808bd275142d46863e92d68",
+    ] {
+        let result = resolve_phase7_family_bundle_fixture(
+            case_id,
+            &format!("phase7-family-keras-{case_id}"),
+        );
+        let req_lower = result.requirements_txt.to_lowercase();
+
+        assert!(
+            req_lower.contains("tensorflow"),
+            "{case_id} should keep tensorflow in the resolved requirements"
+        );
+        assert!(result.resolved.iter().any(|dependency| {
+            dependency.package_name == "tensorflow"
+                && dependency.strategy == "family:keras-backend"
+        }));
+        assert!(
+            result.resolution_report.notes.iter().any(|note| note.contains(
+                "Family knowledge added tensorflow as the default backend for standalone keras."
+            )),
+            "{case_id} should keep the keras backend note"
+        );
+    }
+}
+
+#[test]
+fn phase7_family_pkg_resources_fixtures_add_setuptools() {
+    let _lock = family_runtime_test_lock();
+    for case_id in ["1e2600ed62d5e76b21ee", "263113", "3a6e4d618afc344aab81"] {
+        let result = resolve_phase7_family_fixture(
+            case_id,
+            &format!("phase7-family-pkg-resources-{case_id}"),
+        );
+        let (resolved, note) =
+            apdr::resolver::family_knowledge::debug_curated_missing_module_recovery(
+                "pkg_resources",
+                result.resolved.clone(),
+            );
+
+        assert_eq!(
+            note.as_deref(),
+            Some("Added setuptools to provide missing pkg_resources module."),
+            "{case_id} should keep the pkg_resources recovery note"
+        );
+        assert!(resolved.iter().any(|dependency| {
+            dependency.import_name == "pkg_resources"
+                && dependency.package_name == "setuptools"
+                && dependency.strategy == "recovery:missing-module"
+        }));
+    }
+}
+
+#[test]
+fn phase7_family_sklearn_fixture_resolves_to_scikit_learn() {
+    let _lock = family_runtime_test_lock();
+    let result = resolve_phase7_family_fixture(
+        "28bf77e9a95ae6b70b14141feacb1f84",
+        "phase7-family-sklearn",
+    );
+    let req_lower = result.requirements_txt.to_lowercase();
+
+    assert!(req_lower.contains("scikit-learn"));
+    assert!(result.resolved.iter().any(|dependency| {
+        dependency.import_name == "sklearn" && dependency.package_name == "scikit-learn"
+    }));
+    assert!(!result.resolved.iter().any(|dependency| {
+        dependency.import_name == "sklearn" && dependency.package_name == "sklearn"
     }));
 }
