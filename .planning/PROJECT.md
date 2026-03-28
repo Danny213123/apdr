@@ -15,9 +15,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The latest local stopped benchmark run is `runs\20260327-150339-apdr`, which processed 1,257 cases with 285 failures and 297 skips; 228 of the failures are tier3.
 - The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once; Phase 7 locked that surface into a canonical 70-case tier3 parity slice plus a 17-case watchlist outside the Phase 7 contract.
 - Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
-- Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`.
-- Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior.
-- Phase 10 produced the v2.1 milestone closeout with a split evidence package: machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap report. All 3 deterministic checkers (Phase 7, 8, 10) and 22 Rust regression tests pass.
+- Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`. Phase 11 is backfilling the missing repo-level verification report so `FAM-01`, `FAM-02`, and `FAM-03` are no longer orphaned in the milestone audit.
+- Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior, but live benchmark proof for `REC-02`, `REC-03`, and `REC-04` remains open.
+- Phase 10 produced the v2.1 evidence package with machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap reporting. The package is useful, but the on-disk rerun proof is still dry-run only, so the milestone audit opened Phase 11 and Phase 12 instead of allowing milestone completion.
+- Phase 11 and Phase 12 now serve as explicit gap-closure phases: Phase 11 repairs verification/state truth, and Phase 12 owns the live benchmark proof and requirement reconciliation work.
 
 ## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
@@ -42,11 +43,13 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Rust docs and comments explain non-obvious behavior, invariants, and fallbacks - v2.0
 - [x] Touched Rust modules meet stronger review gates for style, error handling, and maintainability - v2.0
 - [x] Benchmark evidence makes APDR recovery deltas inspectable at the case level - validated in Phase 7: failure-baseline-parity-slice
-- [x] Data-driven family knowledge replaces hardcoded touched mapping logic - validated in Phase 8: data-driven-family-knowledge-runtime
-- [x] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets - validated in Phase 9: targeted-tier3-recovery-accuracy
+- [x] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary - validated in Phase 10: benchmark-verification-accuracy-closeout
 
 ### Active
-- [x] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary - validated in Phase 10: benchmark-verification-accuracy-closeout
+
+- [ ] Backfill repo-backed verification coverage for the shipped Phase 8 family-runtime work so `FAM-01`, `FAM-02`, and `FAM-03` are no longer audit orphans - Phase 11
+- [ ] Repair milestone state and closeout docs so the repo reflects the post-audit reality instead of the pre-audit completion claim - Phase 11
+- [ ] Close the live benchmark proof gap and reconcile `REC-02`, `REC-03`, and `REC-04` against measured rerun evidence - Phase 12
 
 ### Out of Scope
 
@@ -88,6 +91,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Skip external research for v2.1 by default | This milestone is driven by a local benchmark failure surface and the existing codebase, not by a new external product domain | Pending |
 | Lock the first v2.1 migration boundary to the Phase 7 canonical slice and touched-family fixtures | Phase 8 needs a stable baseline so data-driven family work can be measured instead of guessed | Good |
 | Close Phase 8 with curated touched-family data, bounded Phase 7 fixture regressions, and `check_phase8_family_runtime.py` | Phase 9 recovery work needs a locked runtime boundary and deterministic checker before accuracy changes begin | Good |
+| Open Phase 11 and Phase 12 after the v2.1 milestone audit | The repo had real shipped work, but the audit showed missing verification/state artifacts and no live proof for the recovery-improvement claims | Good |
 
 ## Shipped Milestone Snapshot
 
@@ -121,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after Phase 10 completion (v2.1 milestone closeout)*
+*Last updated: 2026-03-28 during Phase 11 verification and state repair*
