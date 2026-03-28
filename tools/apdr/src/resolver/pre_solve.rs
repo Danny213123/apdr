@@ -59,10 +59,7 @@ impl SolveState {
                     }
                 },
                 None => {
-                    debug_assert!(
-                        false,
-                        "undo stack length was checked before restore pop"
-                    );
+                    debug_assert!(false, "undo stack length was checked before restore pop");
                     break;
                 }
             }

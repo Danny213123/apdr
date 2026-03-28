@@ -113,17 +113,28 @@ pub(super) fn merge_backend_retry_history(
     docker_summary.attempts = combined;
 }
 
-#[cfg(test)] use self::agent_backend::docker_agent_importable_with_probe;
-#[cfg(test)] use self::env_backend::prepare_env_validation_attempt;
-#[cfg(test)] use self::env_backend::ValidatedEnvCacheSource;
-#[cfg(test)] use self::env_backend::validated_env_archive_path;
-#[cfg(test)] use self::env_backend::validated_env_cache_path;
-#[cfg(test)] use self::python_runtime::{normalized_command_output_path, windows_launcher_version_arg};
-#[cfg(test)] use crate::cache::build_cache;
-#[cfg(test)] use crate::ValidationAttempt;
-#[cfg(test)] use std::fs;
-#[cfg(test)] use std::path::PathBuf;
-#[cfg(test)] use std::sync::OnceLock;
+#[cfg(test)]
+use self::agent_backend::docker_agent_importable_with_probe;
+#[cfg(test)]
+use self::env_backend::prepare_env_validation_attempt;
+#[cfg(test)]
+use self::env_backend::validated_env_archive_path;
+#[cfg(test)]
+use self::env_backend::validated_env_cache_path;
+#[cfg(test)]
+use self::env_backend::ValidatedEnvCacheSource;
+#[cfg(test)]
+use self::python_runtime::{normalized_command_output_path, windows_launcher_version_arg};
+#[cfg(test)]
+use crate::cache::build_cache;
+#[cfg(test)]
+use crate::ValidationAttempt;
+#[cfg(test)]
+use std::fs;
+#[cfg(test)]
+use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::OnceLock;
 
 #[cfg(test)]
 mod tests {
@@ -306,15 +317,13 @@ mod tests {
         };
 
         let mut docker_summary = ValidationSummary {
-            attempts: vec![
-                ValidationAttempt {
-                    attempt_index: 3,
-                    python_version: "3.11".to_string(),
-                    validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
-                    status: "passed".to_string(),
-                    ..Default::default()
-                },
-            ],
+            attempts: vec![ValidationAttempt {
+                attempt_index: 3,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+                status: "passed".to_string(),
+                ..Default::default()
+            }],
             succeeded: true,
             ..Default::default()
         };

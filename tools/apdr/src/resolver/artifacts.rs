@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -77,7 +77,10 @@ pub(super) fn write_parse_artifacts(
     )
 }
 
-pub(super) fn write_solver_artifacts(output_dir: &Path, result: &pre_solve::PreSolveResult) -> io::Result<()> {
+pub(super) fn write_solver_artifacts(
+    output_dir: &Path,
+    result: &pre_solve::PreSolveResult,
+) -> io::Result<()> {
     let assignments = if result.assigned_versions.is_empty() {
         "- none".to_string()
     } else {
@@ -117,7 +120,11 @@ pub(super) fn write_solver_artifacts(output_dir: &Path, result: &pre_solve::PreS
     )
 }
 
-pub(super) fn write_state_artifacts(output_dir: &Path, name: &str, contents: &str) -> io::Result<()> {
+pub(super) fn write_state_artifacts(
+    output_dir: &Path,
+    name: &str,
+    contents: &str,
+) -> io::Result<()> {
     context::write_text(&context::debug_root(output_dir).join(name), contents)
 }
 
@@ -132,7 +139,10 @@ pub(super) fn write_iteration_snapshot(
     context::write_text(&directory.join(name), contents)
 }
 
-pub(super) fn format_dependency_state(resolved: &[ResolvedDependency], unresolved: &[String]) -> String {
+pub(super) fn format_dependency_state(
+    resolved: &[ResolvedDependency],
+    unresolved: &[String],
+) -> String {
     let resolved_rows = if resolved.is_empty() {
         "- none".to_string()
     } else {
@@ -172,4 +182,3 @@ pub(super) fn format_classifier(classified: &crate::ClassifierResult) -> String 
         classified.recommended_fix,
     )
 }
-

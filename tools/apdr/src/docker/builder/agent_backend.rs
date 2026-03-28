@@ -1,4 +1,4 @@
-﻿use super::process::{run_command_with_timeout, truncate_log};
+use super::process::{run_command_with_timeout, truncate_log};
 use super::*;
 use crate::{ResolveConfig, ValidationSummary, VALIDATION_BACKEND_LLM};
 use std::fs;
@@ -242,4 +242,3 @@ pub(super) fn json_value_as_u128(value: &serde_json::Value) -> Option<u128> {
         .filter(|number| *number >= 0.0)
         .map(|number| number as u128)
 }
-

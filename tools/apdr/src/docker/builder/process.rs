@@ -1,8 +1,8 @@
-﻿use super::*;
 use super::env_backend::PACKAGE_REPOSITORY_CATALOG_SCRIPT;
 use super::python_runtime::{
     host_python_for_metadata, path_matches_python_version, python_install_specs,
 };
+use super::*;
 use crate::cache::store::CacheStore;
 use std::fs;
 use std::io;
@@ -58,7 +58,10 @@ pub(super) fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
     output
 }
 
-pub(super) fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Result<CommandResult> {
+pub(super) fn run_command_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> io::Result<CommandResult> {
     // Redirect stdout+stderr to a temp file instead of piping.
     // On Windows, docker.exe (BuildKit) can deadlock when its output is piped
     // because docker-buildx.exe inherits the pipe handles and keeps them open
@@ -134,7 +137,11 @@ pub(super) fn docker_image_tag(build_key: &str, python_version: &str) -> String 
     )
 }
 
-pub(super) fn docker_container_name(build_key: &str, python_version: &str, attempt_index: usize) -> String {
+pub(super) fn docker_container_name(
+    build_key: &str,
+    python_version: &str,
+    attempt_index: usize,
+) -> String {
     format!(
         "apdr-validate-py{}-{}-{}",
         python_version.replace('.', "_"),
@@ -151,7 +158,6 @@ pub(super) fn docker_container_name(build_key: &str, python_version: &str, attem
         attempt_index
     )
 }
-
 
 pub(super) fn command_on_path(command: &str) -> bool {
     std::env::var_os("PATH")
@@ -365,4 +371,3 @@ pub(super) fn unix_miniforge_installer_url() -> Option<&'static str> {
         _ => None,
     }
 }
-

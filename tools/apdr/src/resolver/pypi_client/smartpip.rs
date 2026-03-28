@@ -12,7 +12,10 @@ use std::time::Duration;
 static SMARTPIP_CONNECTION: Mutex<Option<TcpStream>> = Mutex::new(None);
 static SMARTPIP_SERVER_LAUNCHING: AtomicBool = AtomicBool::new(false);
 static SMARTPIP_SERVER_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
-pub(super) fn fetch_versions_from_smtpip(store: &mut CacheStore, package_name: &str) -> Vec<String> {
+pub(super) fn fetch_versions_from_smtpip(
+    store: &mut CacheStore,
+    package_name: &str,
+) -> Vec<String> {
     if let Some(versions) = try_smartpip_tcp_versions(store, package_name) {
         if !versions.is_empty() {
             let _ = store.save_pypi_versions(package_name, &versions);
@@ -99,7 +102,11 @@ fn try_smartpip_tcp_versions(store: &CacheStore, package_name: &str) -> Option<V
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .collect::<Vec<_>>();
-    if versions.is_empty() { None } else { Some(versions) }
+    if versions.is_empty() {
+        None
+    } else {
+        Some(versions)
+    }
 }
 pub(super) fn try_smartpip_tcp_deps(
     store: &CacheStore,

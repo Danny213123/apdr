@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
-use crate::{ParseResult, ResolvedDependency};
 use super::core::EXPLICIT_NAMESPACE_MAPPINGS;
 use super::{FamilyRegistry, PackageFamily};
+use crate::{ParseResult, ResolvedDependency};
+use std::collections::BTreeSet;
 pub fn normalize(name: &str) -> String {
     name.trim().to_ascii_lowercase().replace(['-', '.'], "_")
 }
@@ -30,7 +30,10 @@ pub fn namespace_mapping_allowed(import_name: &str, package_name: &str) -> bool 
         })
 }
 
-pub(super) fn uses_legacy_pymc3_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_legacy_pymc3_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let imports = parse_result
         .imports
         .iter()
@@ -82,7 +85,10 @@ pub(super) fn uses_legacy_tensorflow_stack(
     has_tensorflow && (has_standalone_keras || py2_target)
 }
 
-pub(super) fn uses_legacy_flask_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_legacy_flask_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let (imports, packages) = collect_markers(parse_result, resolved);
     let legacy_markers = [
         "flask_security",
@@ -108,17 +114,26 @@ pub(super) fn uses_legacy_flask_stack(parse_result: &ParseResult, resolved: &[Re
     has_flask && has_legacy_marker
 }
 
-pub(super) fn uses_cfscrape_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_cfscrape_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let (imports, packages) = collect_markers(parse_result, resolved);
     imports.contains("cfscrape") || packages.contains("cfscrape")
 }
 
-pub(super) fn uses_legacy_ggplot_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_legacy_ggplot_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let (imports, packages) = collect_markers(parse_result, resolved);
     imports.contains("ggplot") || packages.contains("ggplot")
 }
 
-pub(super) fn uses_simplecv_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_simplecv_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     let (imports, packages) = collect_markers(parse_result, resolved);
     imports.contains("simplecv") || packages.contains("simplecv")
 }
@@ -166,7 +181,10 @@ pub(super) fn uses_legacy_johnny_cache_stack(
         || packages.contains("johnny_cache")
 }
 
-pub(super) fn uses_legacy_scrapy_stack(parse_result: &ParseResult, resolved: &[ResolvedDependency]) -> bool {
+pub(super) fn uses_legacy_scrapy_stack(
+    parse_result: &ParseResult,
+    resolved: &[ResolvedDependency],
+) -> bool {
     resolved
         .iter()
         .any(|dep| normalize(&dep.package_name) == "scrapy")
@@ -175,5 +193,3 @@ pub(super) fn uses_legacy_scrapy_stack(parse_result: &ParseResult, resolved: &[R
             .iter()
             .any(|import_name| normalize(import_name) == "scrapy")
 }
-
-

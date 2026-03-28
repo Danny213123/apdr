@@ -17,8 +17,12 @@ fn satisfies_single_constraint(version: &str, constraint: &str) -> bool {
     if bytes.len() >= 2 {
         match (bytes[0], bytes[1]) {
             (b'=', b'=') => return wildcard_match(version, constraint[2..].trim()),
-            (b'>', b'=') => return compare_versions(version, constraint[2..].trim()) != Ordering::Less,
-            (b'<', b'=') => return compare_versions(version, constraint[2..].trim()) != Ordering::Greater,
+            (b'>', b'=') => {
+                return compare_versions(version, constraint[2..].trim()) != Ordering::Less
+            }
+            (b'<', b'=') => {
+                return compare_versions(version, constraint[2..].trim()) != Ordering::Greater
+            }
             (b'!', b'=') => return !wildcard_match(version, constraint[2..].trim()),
             (b'~', b'=') => return compatible_release(version, constraint[2..].trim()),
             _ => {}
@@ -184,11 +188,21 @@ pub(super) fn compare_versions(left: &str, right: &str) -> Ordering {
     let (rp, rl) = tokenize_cached(right);
     let max_len = std::cmp::max(ll, rl);
     for i in 0..max_len {
-        let left_part = if i < ll { lp[i] } else { VersionPart::Number(0) };
-        let right_part = if i < rl { rp[i] } else { VersionPart::Number(0) };
+        let left_part = if i < ll {
+            lp[i]
+        } else {
+            VersionPart::Number(0)
+        };
+        let right_part = if i < rl {
+            rp[i]
+        } else {
+            VersionPart::Number(0)
+        };
         let ordering = match (left_part, right_part) {
             (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(&b),
-            (VersionPart::Text(a, al), VersionPart::Text(b, bl)) => a[..al as usize].cmp(&b[..bl as usize]),
+            (VersionPart::Text(a, al), VersionPart::Text(b, bl)) => {
+                a[..al as usize].cmp(&b[..bl as usize])
+            }
             (VersionPart::Number(_), VersionPart::Text(..)) => Ordering::Greater,
             (VersionPart::Text(..), VersionPart::Number(_)) => Ordering::Less,
         };

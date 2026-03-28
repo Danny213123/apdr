@@ -1,6 +1,6 @@
-﻿use super::process::*;
-use super::python_runtime::*;
 use super::docker_backend::env_attempt_requires_backend_escalation;
+use super::process::*;
+use super::python_runtime::*;
 use super::*;
 use crate::cache::build_cache;
 use crate::cache::maintenance;
@@ -144,7 +144,8 @@ pub(super) fn materialize_env_for_attempt(
             };
             // Verify the extracted env has a usable Python binary
             let restore_result = restore_result.and_then(|()| {
-                let has_bin = paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
+                let has_bin =
+                    paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
                 if has_bin {
                     Ok(())
                 } else {
@@ -160,7 +161,10 @@ pub(super) fn materialize_env_for_attempt(
             match restore_result {
                 Ok(()) => {
                     let _ = maintenance::touch_archive_marker(cached_archive);
-                    let log = format!("reused cached validated env from {}", cached_archive.display());
+                    let log = format!(
+                        "reused cached validated env from {}",
+                        cached_archive.display()
+                    );
                     fs::write(&paths.build_log_path, &log)?;
                     Ok((log, None, 0_u128))
                 }
@@ -197,7 +201,8 @@ pub(super) fn materialize_env_for_attempt(
             let restore_result = copy_dir_all(cached_env_dir, &paths.env_dir);
             // Verify the extracted env has a usable Python binary
             let restore_result = restore_result.and_then(|()| {
-                let has_bin = paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
+                let has_bin =
+                    paths.env_dir.join("bin").exists() || paths.env_dir.join("Scripts").exists();
                 if has_bin {
                     Ok(())
                 } else {
@@ -213,7 +218,10 @@ pub(super) fn materialize_env_for_attempt(
             match restore_result {
                 Ok(()) => {
                     let _ = maintenance::touch_validated_env_cache_entry(cached_env_dir);
-                    let log = format!("reused cached validated env from {}", cached_env_dir.display());
+                    let log = format!(
+                        "reused cached validated env from {}",
+                        cached_env_dir.display()
+                    );
                     fs::write(&paths.build_log_path, &log)?;
                     Ok((log, None, 0_u128))
                 }
@@ -389,7 +397,11 @@ pub(super) fn validate_requirements_env(
                 paths.env_dir.display()
             )
         } else {
-            format!("{} -m venv {}", interpreter.display(), paths.env_dir.display())
+            format!(
+                "{} -m venv {}",
+                interpreter.display(),
+                paths.env_dir.display()
+            )
         };
         let env_install_command = format!(
             "{} -m pip install --disable-pip-version-check --default-timeout=100 --cache-dir {} -r {}",
@@ -403,7 +415,10 @@ pub(super) fn validate_requirements_env(
             env_python.display(),
             paths.work_dir.join("smoke_test.py").display()
         );
-        fs::write(paths.work_dir.join("env-create.command.txt"), &env_create_command)?;
+        fs::write(
+            paths.work_dir.join("env-create.command.txt"),
+            &env_create_command,
+        )?;
         fs::write(
             paths.work_dir.join("env-install.command.txt"),
             &env_install_command,
@@ -781,7 +796,6 @@ pub(super) fn create_and_install_env(
     ))
 }
 
-
 pub(super) fn copy_dir_all(source: &Path, destination: &Path) -> io::Result<()> {
     fs::create_dir_all(destination)?;
     for entry in fs::read_dir(source)? {
@@ -1108,7 +1122,10 @@ pub(super) fn save_validated_env(
 /// Packages whose setup.py imports their own dependencies at build time.
 /// These must be pre-installed before `pip install -r requirements.txt` so
 /// that the egg_info / setup.py phase can succeed.
-pub(super) fn build_time_prerequisites<'a>(requirements: &str, python_version: &str) -> Vec<&'a str> {
+pub(super) fn build_time_prerequisites<'a>(
+    requirements: &str,
+    python_version: &str,
+) -> Vec<&'a str> {
     let is_py2 = python_version.starts_with("2.");
     let mut prereqs = Vec::new();
     for line in requirements.lines() {
@@ -1228,4 +1245,3 @@ pub(super) fn attempt_metadata(
         attempt.artifact_dir.as_deref().unwrap_or("--"),
     )
 }
-

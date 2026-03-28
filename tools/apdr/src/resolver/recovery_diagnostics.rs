@@ -1,7 +1,7 @@
-﻿use super::*;
 use super::retry_loop::{
     dependency_index_by_import, dependency_index_by_package, upsert_dependency,
 };
+use super::*;
 use std::collections::BTreeSet;
 
 pub(super) fn normalize_package_key(value: &str) -> String {
@@ -729,7 +729,6 @@ pub(super) fn learned_pattern_key(classified: &crate::ClassifierResult, log: &st
         .unwrap_or_else(|| classified.error_type.clone())
 }
 
-
 pub(super) fn environment_specific_note(
     classified: &crate::ClassifierResult,
     log: &str,
@@ -1207,4 +1206,3 @@ pub(super) fn check_unsolvable_cache(
     }
     None
 }
-

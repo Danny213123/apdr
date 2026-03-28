@@ -1,4 +1,4 @@
-﻿use super::process::{
+use super::process::{
     command_on_path, install_with_miniforge, run_install_command, summarize_command_output,
 };
 use std::collections::BTreeMap;
@@ -570,4 +570,3 @@ pub(super) fn windows_scoop_python_package(python_version: &str) -> Option<&'sta
         _ => None,
     }
 }
-

@@ -2,7 +2,9 @@ use super::context::{
     assemble_batch_context, assemble_context_for_import, build_base_request,
     looks_like_local_helper_import,
 };
-use super::failure_memory::{format_failure_context, has_failed, load_failure_memory, persist_trace};
+use super::failure_memory::{
+    format_failure_context, has_failed, load_failure_memory, persist_trace,
+};
 use super::process::call_python;
 use crate::cache::store::CacheStore;
 use crate::context;
@@ -875,5 +877,3 @@ pub fn fallback_notes(
     ));
     notes
 }
-
-

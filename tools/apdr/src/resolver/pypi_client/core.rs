@@ -3,14 +3,14 @@ use super::smartpip::{
     fetch_versions_from_smtpip, smtpip_db_path, smtpip_kgraph_path, try_smartpip_tcp_deps,
 };
 use super::version_matching::version_satisfies;
-use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::Duration;
-use once_cell::sync::OnceCell;
 use crate::cache::pypi_index;
 use crate::cache::store::{normalize, CacheStore};
 use crate::knowledge_cache::KnowledgeCache;
 use crate::resolver::kgraph_db;
+use once_cell::sync::OnceCell;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::Duration;
 
 // Lazy-initialized in-process knowledge cache (fastest lookup path)
 // Wrapped in Mutex to allow learning/updates as we discover new packages
@@ -808,5 +808,3 @@ mod tests {
         let _ = fs::remove_dir_all(cache_path);
     }
 }
-
-

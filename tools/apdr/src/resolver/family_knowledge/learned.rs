@@ -239,4 +239,3 @@ fn current_timestamp_string() -> String {
         Err(_) => "unix:0".to_string(),
     }
 }
-

@@ -38,13 +38,13 @@ created: 2026-03-27
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 05-01-01 | 01 | 1 | QUAL-01 | structural grep | `rg -n '^//!|^///' tools/apdr/src/resolver/mod.rs tools/apdr/src/docker/builder/mod.rs tools/apdr/src/resolver/family_knowledge/mod.rs tools/apdr/src/resolver/pypi_client/mod.rs tools/apdr/src/resolver/tier3_llm/mod.rs` | yes | pending |
-| 05-01-02 | 01 | 1 | QUAL-04 | doc existence | `rg -n 'resolver|validation builder|family knowledge|PyPI client|Tier 3 LLM|fallback|verification' .planning/phases/05-documentation-error-handling-and-review-readiness/*` | yes | pending |
-| 05-02-01 | 02 | 2 | QUAL-02 | panic-path grep | `rg -n 'unwrap\\(|expect\\(' tools/apdr/src/resolver tools/apdr/src/docker/builder` | yes | pending |
-| 05-02-02 | 02 | 2 | QUAL-02 | targeted Rust tests | `cargo test --manifest-path tools/apdr/Cargo.toml validation_pipeline_ -- --nocapture` | yes | pending |
-| 05-02-03 | 02 | 2 | QUAL-02 | targeted Rust tests | `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture` | yes | pending |
-| 05-03-01 | 03 | 3 | QUAL-03 | full Rust suite | `cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check && cargo test --manifest-path tools/apdr/Cargo.toml -- --nocapture && cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings` | yes | pending |
-| 05-03-02 | 03 | 3 | QUAL-05 | structural grep | `rg -n 'Result<|io::Result|Failed to|fallback|retrying with Docker' tools/apdr/src/resolver tools/apdr/src/docker/builder` | yes | pending |
+| 05-01-01 | 01 | 1 | QUAL-01 | structural grep | `rg -n '^//!|^///' tools/apdr/src/resolver/mod.rs tools/apdr/src/docker/builder/mod.rs tools/apdr/src/resolver/family_knowledge/mod.rs tools/apdr/src/resolver/pypi_client/mod.rs tools/apdr/src/resolver/tier3_llm/mod.rs` | yes | complete |
+| 05-01-02 | 01 | 1 | QUAL-04 | doc existence | `rg -n 'resolver|validation builder|family knowledge|PyPI client|Tier 3 LLM|fallback|verification' .planning/phases/05-documentation-error-handling-and-review-readiness/*` | yes | complete |
+| 05-02-01 | 02 | 2 | QUAL-02 | panic-path grep | `rg -n 'unwrap\\(|expect\\(' tools/apdr/src/resolver tools/apdr/src/docker/builder` | yes | complete |
+| 05-02-02 | 02 | 2 | QUAL-02 | targeted Rust tests | `cargo test --manifest-path tools/apdr/Cargo.toml validation_pipeline_ -- --nocapture` | yes | complete |
+| 05-02-03 | 02 | 2 | QUAL-02 | targeted Rust tests | `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture` | yes | complete |
+| 05-03-01 | 03 | 3 | QUAL-03 | full Rust suite | `cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check && cargo test --manifest-path tools/apdr/Cargo.toml -- --nocapture && cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings` | yes | complete |
+| 05-03-02 | 03 | 3 | QUAL-05 | structural grep | `rg -n 'Result<|io::Result|Failed to|fallback|retrying with Docker' tools/apdr/src/resolver tools/apdr/src/docker/builder` | yes | complete |
 
 ---
 

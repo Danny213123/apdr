@@ -1,6 +1,6 @@
-﻿use super::*;
 use super::artifacts::*;
 use super::recovery_diagnostics::*;
+use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::Path;
@@ -1594,7 +1594,10 @@ fn apply_recovery_fix(
     }
 }
 
-pub(super) fn python_backport_package<'a>(module_name: &str, python_version: &str) -> Option<&'a str> {
+pub(super) fn python_backport_package<'a>(
+    module_name: &str,
+    python_version: &str,
+) -> Option<&'a str> {
     if !python_version.starts_with("2.") {
         return None;
     }
@@ -1613,7 +1616,10 @@ pub(super) fn python_backport_package<'a>(module_name: &str, python_version: &st
     }
 }
 
-pub(super) fn selected_python_version(parse_result: &crate::ParseResult, config: &ResolveConfig) -> String {
+pub(super) fn selected_python_version(
+    parse_result: &crate::ParseResult,
+    config: &ResolveConfig,
+) -> String {
     if let Some(value) = &config.python_version {
         return value.clone();
     }
@@ -1731,7 +1737,10 @@ pub(super) fn dependency_index_by_package(
         .position(|dependency| normalize_package_key(&dependency.package_name) == package_key)
 }
 
-pub(super) fn dependency_index_by_import(resolved: &[ResolvedDependency], import_name: &str) -> Option<usize> {
+pub(super) fn dependency_index_by_import(
+    resolved: &[ResolvedDependency],
+    import_name: &str,
+) -> Option<usize> {
     let import_key = normalize_package_key(import_name);
     resolved
         .iter()
@@ -1930,4 +1939,3 @@ pub(super) fn apply_compatibility_overrides(
         config.execute_snippet,
     )
 }
-

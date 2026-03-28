@@ -1,10 +1,10 @@
-use crate::docker;
-use crate::{ParseResult, ResolvedDependency};
 use super::detection::{
     normalize, uses_cfscrape_stack, uses_legacy_flask_stack, uses_legacy_ggplot_stack,
     uses_legacy_johnny_cache_stack, uses_legacy_pymc3_stack, uses_legacy_scrapy_stack,
     uses_legacy_tensorflow_stack, uses_simplecv_stack,
 };
+use crate::docker;
+use crate::{ParseResult, ResolvedDependency};
 pub(super) fn apply_legacy_pymc3_bundle(
     parse_result: &ParseResult,
     resolved: &mut Vec<ResolvedDependency>,
@@ -538,7 +538,10 @@ pub(super) fn preferred_legacy_tensorflow_python(
     }
 }
 
-pub(super) fn legacy_tensorflow_candidate_versions(selected_python: &str, python_range: usize) -> Vec<String> {
+pub(super) fn legacy_tensorflow_candidate_versions(
+    selected_python: &str,
+    python_range: usize,
+) -> Vec<String> {
     let mut candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
     // Force 2.7 if not already present (TF 1.15.0 has cp27 wheels).
@@ -703,5 +706,3 @@ fn pin_dependency(
     });
     true
 }
-
-

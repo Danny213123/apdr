@@ -1129,5 +1129,3 @@ fn prune_family_conflicts(resolved: &mut Vec<ResolvedDependency>) -> Vec<String>
     });
     notes
 }
-
-
