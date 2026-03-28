@@ -9,7 +9,7 @@ struct LlmProcess {
     _child: Child,
 }
 
-static LLM_PROCESS: OnceLock<Mutex<LlmProcess>> = OnceLock::new();
+static LLM_PROCESS: OnceLock<Option<Mutex<LlmProcess>>> = OnceLock::new();
 
 pub(super) fn find_python() -> String {
     if let Ok(py) = std::env::var("APDR_PYTHON") {
@@ -80,7 +80,7 @@ fn llm_py_dir() -> PathBuf {
     PathBuf::from("tools/apdr/llm_py")
 }
 
-fn spawn_python_process() -> Mutex<LlmProcess> {
+fn spawn_python_process() -> Option<Mutex<LlmProcess>> {
     let python = find_python();
     let py_dir = llm_py_dir();
     let parent = py_dir.parent().unwrap_or_else(|| Path::new("."));
@@ -96,10 +96,27 @@ fn spawn_python_process() -> Mutex<LlmProcess> {
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
-        .unwrap_or_else(|e| panic!("Failed to spawn Python LLM service: {e}"));
+        .map_err(|err| {
+            eprintln!(
+                "[tier3-llm] Python LLM service unavailable: failed to spawn `{python} -m llm_py` from {}: {err}",
+                parent.display()
+            );
+            err
+        })
+        .ok()?;
 
-    let stdin = child.stdin.take().expect("Failed to open stdin");
-    let stdout = child.stdout.take().expect("Failed to open stdout");
+    let Some(stdin) = child.stdin.take() else {
+        eprintln!("[tier3-llm] Python LLM service unavailable: failed to capture stdin");
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    };
+    let Some(stdout) = child.stdout.take() else {
+        eprintln!("[tier3-llm] Python LLM service unavailable: failed to capture stdout");
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    };
     let mut reader = BufReader::new(stdout);
 
     let mut ready_line = String::new();
@@ -111,15 +128,15 @@ fn spawn_python_process() -> Mutex<LlmProcess> {
         }
     }
 
-    Mutex::new(LlmProcess {
+    Some(Mutex::new(LlmProcess {
         stdin,
         stdout: reader,
         _child: child,
-    })
+    }))
 }
 
 pub(super) fn call_python(request: &serde_json::Value) -> Option<serde_json::Value> {
-    let process = LLM_PROCESS.get_or_init(spawn_python_process);
+    let process = LLM_PROCESS.get_or_init(spawn_python_process).as_ref()?;
     let mut guard = process.lock().ok()?;
 
     let request_str = serde_json::to_string(request).ok()?;
