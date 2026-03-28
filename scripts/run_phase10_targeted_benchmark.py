@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Phase 10 manifest-driven targeted benchmark rerun wrapper.
 
-Reads the Phase 10 rerun manifest and either reruns the locked case set
-with the baseline March 27, 2026 command shape or (with --dry-run) builds
-the delta artifacts from existing baseline data without executing APDR.
+Reads the Phase 10 rerun manifest and either reruns the locked case set,
+builds an explicit dry-run comparison package, or probes live-proof readiness.
 
 Outputs:
   - targeted-rerun.json  (separate canonical, watchlist, and guard results)
   - case-delta.json      (per-case APDR vs baseline vs pllm delta)
   - TARGETED-RERUN.md    (reviewer-facing markdown with required sections)
+  - status-json          (machine-readable live-proof readiness / blocker state)
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -47,12 +48,15 @@ def parse_args() -> argparse.Namespace:
                         help="Path to the locked APDR baseline summary.json")
     parser.add_argument("--pllm-csv", required=True,
                         help="Path to pllm_results/csv/summary-all-runs.csv")
-    parser.add_argument("--output-json", required=True,
-                        help="Path for targeted-rerun.json output")
-    parser.add_argument("--case-delta-json", required=True,
-                        help="Path for case-delta.json output")
-    parser.add_argument("--output-md", required=True,
-                        help="Path for TARGETED-RERUN.md output")
+    parser.add_argument("--output-json", default="",
+                        help="Path for targeted-rerun.json output "
+                             "(required unless --probe-only)")
+    parser.add_argument("--case-delta-json", default="",
+                        help="Path for case-delta.json output "
+                             "(required unless --probe-only)")
+    parser.add_argument("--output-md", default="",
+                        help="Path for TARGETED-RERUN.md output "
+                             "(required unless --probe-only)")
     parser.add_argument("--context-log", default="",
                         help="Optional benchmark context log path")
     parser.add_argument("--llm-model", default="qwen3.5:9b",
@@ -64,12 +68,256 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true",
                         help="Build delta artifacts from existing baseline data "
                              "without executing APDR")
+    parser.add_argument("--require-live", action="store_true",
+                        help="Require explicit live execution semantics. If live "
+                             "inputs are missing, report a blocker instead of "
+                             "falling back to dry-run.")
+    parser.add_argument("--probe-only", action="store_true",
+                        help="Do not rerun cases. Write readiness / blocker status "
+                             "for a requested live proof.")
+    parser.add_argument("--status-json", default="",
+                        help="Machine-readable readiness / blocker output for "
+                             "Phase 12 live-proof flow.")
     return parser.parse_args()
 
 
 def load_manifest(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def resolve_repo_path(path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
+
+
+def locate_command_path(command_text: str) -> Path | None:
+    raw = command_text.strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+    repo_candidate = (REPO_ROOT / candidate).resolve()
+    if repo_candidate.exists():
+        return repo_candidate
+    which_candidate = shutil.which(raw)
+    if which_candidate:
+        return Path(which_candidate)
+    return None
+
+
+def actual_mode(args: argparse.Namespace) -> str:
+    if args.probe_only:
+        return "probe-only"
+    if args.dry_run:
+        return "dry-run"
+    return "live-rerun"
+
+
+def requested_mode(args: argparse.Namespace) -> str:
+    if args.dry_run:
+        return "dry-run"
+    if args.require_live or args.probe_only:
+        return "live-proof"
+    return "live-rerun"
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.dry_run and args.require_live:
+        raise SystemExit("--dry-run and --require-live are mutually exclusive.")
+    if args.probe_only and args.dry_run:
+        raise SystemExit("--probe-only cannot be combined with --dry-run.")
+    if args.probe_only and not args.status_json:
+        raise SystemExit("--probe-only requires --status-json.")
+    if not args.probe_only:
+        missing_outputs = [
+            flag for flag, value in (
+                ("--output-json", args.output_json),
+                ("--case-delta-json", args.case_delta_json),
+                ("--output-md", args.output_md),
+            )
+            if not value
+        ]
+        if missing_outputs:
+            raise SystemExit(
+                "Non-probe runs require output paths: "
+                + ", ".join(missing_outputs)
+            )
+
+
+def probe_command(command_text: str) -> dict[str, Any]:
+    info: dict[str, Any] = {
+        "raw": command_text,
+        "resolved": "",
+        "exists": False,
+        "invocable": False,
+        "returncode": None,
+        "error": "",
+    }
+    command_path = locate_command_path(command_text)
+    if command_path is None:
+        return info
+    info["resolved"] = str(command_path)
+    info["exists"] = command_path.exists()
+    if not command_path.exists():
+        return info
+    try:
+        completed = subprocess.run(
+            [str(command_path), "--help"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+        info["invocable"] = True
+        info["returncode"] = completed.returncode
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        info["error"] = str(exc)
+    return info
+
+
+def build_live_status(args: argparse.Namespace) -> dict[str, Any]:
+    manifest_path = resolve_repo_path(args.manifest_json)
+    baseline_path = resolve_repo_path(args.baseline_summary)
+    pllm_path = resolve_repo_path(args.pllm_csv)
+    command_info = probe_command(args.apdr_command)
+
+    blockers: list[str] = []
+    canonical_case_count = 0
+    watchlist_case_count = 0
+    preservation_guard_count = 0
+    manifest_error = ""
+
+    if not manifest_path.exists():
+        blockers.append(f"Manifest not found: {manifest_path}")
+    else:
+        try:
+            manifest = load_manifest(str(manifest_path))
+            canonical_case_count = len(manifest.get("canonical_case_ids", []))
+            watchlist_case_count = len(manifest.get("tier1_watchlist_case_ids", []))
+            guards = manifest.get("preservation_guards", {})
+            preservation_guard_count = sum(
+                len(guards.get(key, []))
+                for key in (
+                    "passed_case_ids",
+                    "host_runtime_case_ids",
+                    "local_helper_case_ids",
+                    "unsolvable_case_ids",
+                )
+            )
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            manifest_error = str(exc)
+            blockers.append(f"Manifest could not be parsed: {manifest_path} ({exc})")
+
+    if not baseline_path.exists():
+        blockers.append(f"Baseline summary not found: {baseline_path}")
+    if not pllm_path.exists():
+        blockers.append(f"pllm CSV not found: {pllm_path}")
+
+    live_requested = requested_mode(args) != "dry-run"
+    if live_requested:
+        if not args.apdr_command.strip():
+            blockers.append("Live proof requires --apdr-command.")
+        elif not command_info["exists"]:
+            blockers.append(f"APDR command not found: {args.apdr_command}")
+        elif not command_info["invocable"]:
+            detail = command_info["error"] or "command could not be started"
+            blockers.append(f"APDR command is not invocable: {detail}")
+
+    live_ready = live_requested and not blockers
+    if args.probe_only:
+        terminal_state = "ready-for-live-rerun" if live_ready else "hard-blocker"
+    elif live_ready:
+        terminal_state = "live-rerun-requested"
+    elif requested_mode(args) == "dry-run":
+        terminal_state = "dry-run"
+    else:
+        terminal_state = "hard-blocker"
+
+    return {
+        "generated_at": utc_now(),
+        "requested_mode": requested_mode(args),
+        "actual_mode": actual_mode(args),
+        "live_ready": live_ready,
+        "terminal_state": terminal_state,
+        "blocker_reason": blockers[0] if blockers else "",
+        "blockers": blockers,
+        "probe_only": args.probe_only,
+        "require_live": args.require_live,
+        "dry_run": args.dry_run,
+        "manifest": args.manifest_json,
+        "baseline_summary": args.baseline_summary,
+        "pllm_csv": args.pllm_csv,
+        "apdr_command": command_info["resolved"] or args.apdr_command,
+        "canonical_case_count": canonical_case_count,
+        "watchlist_case_count": watchlist_case_count,
+        "preservation_guard_count": preservation_guard_count,
+        "prerequisites": {
+            "manifest_exists": manifest_path.exists(),
+            "manifest_error": manifest_error,
+            "baseline_summary_exists": baseline_path.exists(),
+            "pllm_csv_exists": pllm_path.exists(),
+            "apdr_command_provided": bool(args.apdr_command.strip()),
+            "apdr_command_exists": bool(command_info["exists"]),
+            "apdr_command_invocable": bool(command_info["invocable"]),
+            "apdr_command_returncode": command_info["returncode"],
+            "apdr_command_error": command_info["error"],
+        },
+    }
+
+
+def output_metadata_skipped(metadata: dict[str, str]) -> bool:
+    status = str(metadata.get("validation_status") or "").strip().lower()
+    return status.startswith("skipped") or status == "host-runtime-required"
+
+
+def read_requirements_if_updated(
+    requirements_path: Path,
+    existing_mtime: float | None,
+    started_at: float,
+) -> list[str]:
+    if not requirements_path.exists():
+        return []
+    current_mtime = requirements_path.stat().st_mtime
+    if existing_mtime is not None and current_mtime < started_at - 1:
+        return []
+    try:
+        return [
+            line.strip()
+            for line in requirements_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    except OSError:
+        return []
+
+
+def read_output_metadata(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    metadata: dict[str, str] = {}
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line == "---":
+                continue
+            if ":" in line:
+                key, value = line.split(":", 1)
+            elif "=" in line:
+                key, value = line.split("=", 1)
+            else:
+                continue
+            metadata[key.strip().lower()] = value.strip()
+    except OSError:
+        return {}
+    return metadata
 
 
 def load_baseline_summary(path: str) -> dict[str, Any]:
@@ -119,7 +367,21 @@ def result_requirements(result: dict[str, Any]) -> list[str]:
     """Extract requirements from a result."""
     reqs = result.get("requirements", [])
     if isinstance(reqs, list):
-        return [r for r in reqs if r and isinstance(r, str)]
+        normalized = [r for r in reqs if r and isinstance(r, str)]
+        if normalized:
+            return normalized
+    artifact_dir = result.get("artifact_dir")
+    if artifact_dir:
+        req_path = resolve_repo_path(str(artifact_dir)) / "requirements.txt"
+        if req_path.exists():
+            try:
+                return [
+                    line.strip()
+                    for line in req_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and not line.lstrip().startswith("#")
+                ]
+            except OSError:
+                return []
     return []
 
 
@@ -266,6 +528,12 @@ def run_apdr_for_case(
 
     case_output = Path(output_dir) / case_id
     case_output.mkdir(parents=True, exist_ok=True)
+    existing_outputs = {path.resolve() for path in case_output.glob("output_data_*.yml")}
+    requirements_path = case_output / "requirements.txt"
+    existing_requirements_mtime = (
+        requirements_path.stat().st_mtime if requirements_path.exists() else None
+    )
+    started_at = time.time()
 
     cmd = [apdr_command, "resolve", str(snippet_path), "--output", str(case_output)]
     cmd.extend(DEFAULT_APDR_FLAGS)
@@ -277,17 +545,48 @@ def run_apdr_for_case(
 
     try:
         completed = subprocess.run(
-            cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False, timeout=1200
+            cmd,
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            timeout=1200,
+        )
+        output_paths: list[Path] = []
+        for path in sorted(
+            case_output.glob("output_data_*.yml"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        ):
+            resolved = path.resolve()
+            if resolved not in existing_outputs or path.stat().st_mtime >= started_at - 1:
+                output_paths.append(path)
+        output_files = [str(path.relative_to(REPO_ROOT)) for path in output_paths]
+        output_metadata = read_output_metadata(output_paths[0]) if output_paths else {}
+        requirements = read_requirements_if_updated(
+            requirements_path,
+            existing_requirements_mtime,
+            started_at,
+        )
+        skipped = output_metadata_skipped(output_metadata)
+        if skipped and requirements and completed.returncode == 0:
+            skipped = False
+        succeeded = (
+            not skipped
+            and completed.returncode == 0
+            and (bool(requirements) or bool(output_files))
         )
         return {
             "returncode": completed.returncode,
-            "succeeded": completed.returncode == 0,
-            "skipped": False,
+            "succeeded": succeeded,
+            "skipped": skipped,
             "snippet": snippet,
             "artifact_dir": str(case_output),
-            "output_metadata": {},
-            "requirements": [],
-            "log_tail": completed.stdout.splitlines()[-20:] if completed.stdout else [],
+            "output_files": output_files[:5],
+            "output_metadata": output_metadata,
+            "requirements": requirements,
+            "log_tail": completed.stdout.splitlines()[-25:] if completed.stdout else [],
         }
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         return {
@@ -322,7 +621,7 @@ def process_case_set(
             snippet = baseline_result.get("snippet", snippet)
 
         rerun_result = None
-        if not args.dry_run and args.apdr_command:
+        if not args.dry_run and not args.probe_only and args.apdr_command:
             rerun_result = run_apdr_for_case(
                 case_id, snippet, str(Path(args.output_json).parent / "rerun-cases"),
                 args.llm_model, args.llm_base_url, args.apdr_command, args.context_log,
@@ -542,10 +841,24 @@ def render_markdown(
 
 def main() -> int:
     args = parse_args()
+    validate_args(args)
 
-    # If no explicit --dry-run but no apdr-command either, default to dry run
-    if not args.dry_run and not args.apdr_command:
-        args.dry_run = True
+    status = build_live_status(args)
+    if args.status_json:
+        write_json(args.status_json, status)
+    if status["apdr_command"]:
+        args.apdr_command = str(status["apdr_command"])
+    if args.probe_only:
+        print(f"Wrote live-proof status to {args.status_json}")
+        if status["live_ready"]:
+            print("Live proof preflight passed.")
+        else:
+            print(f"Live proof blocked: {status['blocker_reason']}")
+        return 0
+    if requested_mode(args) != "dry-run" and not status["live_ready"]:
+        blocker = status["blocker_reason"] or "live rerun prerequisites are not satisfied"
+        print(f"Live rerun blocked: {blocker}", file=sys.stderr)
+        return 1
 
     manifest = load_manifest(args.manifest_json)
     summary = load_baseline_summary(args.baseline_summary)
@@ -577,8 +890,10 @@ def main() -> int:
 
     # Write targeted-rerun.json
     rerun_output = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": utc_now(),
         "mode": "dry-run" if args.dry_run else "live",
+        "requested_mode": requested_mode(args),
+        "actual_mode": actual_mode(args),
         "manifest": args.manifest_json,
         "baseline_summary": args.baseline_summary,
         "pllm_csv": args.pllm_csv,
@@ -602,12 +917,12 @@ def main() -> int:
             delta_summary_buckets[b] = delta_summary_buckets.get(b, 0) + 1
 
     delta_output = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": utc_now(),
         "baseline_summary": args.baseline_summary,
         "pllm_csv": args.pllm_csv,
         "benchmark_context_log": args.context_log,
-        "canonical_case_count": 70,
-        "watchlist_case_count": 17,
+        "canonical_case_count": len(canonical_ids),
+        "watchlist_case_count": len(watchlist_ids),
         "preservation_guard_count": len(all_guard_entries),
         "canonical_bucket_totals": delta_summary_buckets,
         "cases": all_deltas,
