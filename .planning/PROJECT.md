@@ -17,6 +17,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
 - Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`.
 - Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior.
+- Phase 10 produced the v2.1 milestone closeout with a split evidence package: machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap report. All 3 deterministic checkers (Phase 7, 8, 10) and 22 Rust regression tests pass.
 
 ## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
@@ -45,7 +46,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets - validated in Phase 9: targeted-tier3-recovery-accuracy
 
 ### Active
-- [ ] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary
+- [x] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary - validated in Phase 10: benchmark-verification-accuracy-closeout
 
 ### Out of Scope
 
@@ -120,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after Phase 9 completion*
+*Last updated: 2026-03-28 after Phase 10 completion (v2.1 milestone closeout)*
