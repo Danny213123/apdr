@@ -270,6 +270,14 @@ pub(super) fn materialize_env_for_attempt(
     }
 }
 
+fn latest_env_attempt_requires_backend_escalation(summary: &ValidationSummary) -> bool {
+    summary
+        .attempts
+        .last()
+        .map(env_attempt_requires_backend_escalation)
+        .unwrap_or(false)
+}
+
 pub(super) fn validate_requirements_env(
     snippet_path: &Path,
     requirements_txt: &str,
@@ -366,7 +374,7 @@ pub(super) fn validate_requirements_env(
                     ),
                 )?;
                 summary.attempts.push(attempt);
-                if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+                if latest_env_attempt_requires_backend_escalation(&summary) {
                     break 'versions;
                 }
                 continue;
@@ -446,7 +454,7 @@ pub(super) fn validate_requirements_env(
         if !attempt.status.is_empty() {
             let _ = fs::remove_dir_all(&paths.env_dir);
             summary.attempts.push(attempt);
-            if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+            if latest_env_attempt_requires_backend_escalation(&summary) {
                 break 'versions;
             }
             continue;
@@ -487,7 +495,7 @@ pub(super) fn validate_requirements_env(
             )?;
             let _ = fs::remove_dir_all(&paths.env_dir);
             summary.attempts.push(attempt);
-            if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+            if latest_env_attempt_requires_backend_escalation(&summary) {
                 break 'versions;
             }
             continue;
@@ -548,7 +556,7 @@ pub(super) fn validate_requirements_env(
             ),
         )?;
         summary.attempts.push(attempt);
-        if env_attempt_requires_backend_escalation(summary.attempts.last().unwrap()) {
+        if latest_env_attempt_requires_backend_escalation(&summary) {
             break 'versions;
         }
         // Clean up the venv to reclaim disk space (logs and metadata are preserved)
