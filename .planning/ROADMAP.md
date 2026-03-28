@@ -17,7 +17,7 @@
 - [x] **Phase 7: Failure Baseline & Parity Slice** - Turn the stopped APDR run and `pllm` summary into a reproducible target slice with baseline fixtures (completed 2026-03-28)
 - [x] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection (completed 2026-03-28)
 - [ ] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets
-- [ ] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps
+- [x] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps (completed 2026-03-28)
 
 ## Phase Details
 
@@ -92,7 +92,7 @@
 | 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Complete | 2026-03-28 |
 | 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Complete | 2026-03-28 |
 | 9. Targeted Tier3 Recovery Accuracy | 1/3 | In Progress|  |
-| 10. Benchmark Verification & Accuracy Closeout | 2/3 | In Progress|  |
+| 10. Benchmark Verification & Accuracy Closeout | 3/3 | Complete   | 2026-03-28 |
 
 ---
 
