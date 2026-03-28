@@ -1978,3 +1978,163 @@ fn phase7_family_sklearn_fixture_resolves_to_scikit_learn() {
         dependency.import_name == "sklearn" && dependency.package_name == "sklearn"
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 targeted recovery policy tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn phase9_targeted_policy_reads_seed_rules() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // Module provider rules should include pkg_resources and Image.
+    assert!(
+        policy.module_rules().iter().any(|r| r.id == "mod-pkg-resources"),
+        "expected mod-pkg-resources rule in module_rules"
+    );
+    assert!(
+        policy.module_rules().iter().any(|r| r.id == "mod-pil-image"),
+        "expected mod-pil-image rule in module_rules"
+    );
+
+    // Stop reason rules should include imp and numpy.distutils.
+    assert!(
+        policy.stop_reason_rules().iter().any(|r| r.id == "stop-imp-removed"),
+        "expected stop-imp-removed rule in stop_reason_rules"
+    );
+    assert!(
+        policy.stop_reason_rules().iter().any(|r| r.id == "stop-numpy-distutils"),
+        "expected stop-numpy-distutils rule in stop_reason_rules"
+    );
+
+    // Compatibility clusters should include torch and tensorflow.
+    assert!(
+        policy.compatibility_clusters().iter().any(|c| c.id == "compat-torch"),
+        "expected compat-torch cluster in compatibility_clusters"
+    );
+    assert!(
+        policy.compatibility_clusters().iter().any(|c| c.id == "compat-tensorflow"),
+        "expected compat-tensorflow cluster in compatibility_clusters"
+    );
+
+    // Read-only accessors should work.
+    let pkg_rule = policy.module_rule_for_alias("pkg_resources");
+    assert!(pkg_rule.is_some(), "module_rule_for_alias should find pkg_resources");
+    assert_eq!(pkg_rule.unwrap().provider_package, "setuptools");
+
+    let torch_cluster = policy.compatibility_cluster_for_package("torch");
+    assert!(torch_cluster.is_some(), "compatibility_cluster_for_package should find torch");
+    assert_eq!(torch_cluster.unwrap().id, "compat-torch");
+}
+
+#[test]
+fn phase9_targeted_policy_rejects_duplicate_module_aliases() {
+    use std::io::Write;
+
+    let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let recovery_dir = tmp_dir.path().join("data").join("recovery");
+    std::fs::create_dir_all(&recovery_dir).unwrap();
+
+    // Write module_rules.json with duplicate alias "pkg_resources" in two rules.
+    let module_rules = r#"{
+        "module_provider_rules": [
+            {
+                "id": "rule-a",
+                "module_aliases": ["pkg_resources"],
+                "provider_package": "setuptools"
+            },
+            {
+                "id": "rule-b",
+                "module_aliases": ["pkg_resources"],
+                "provider_package": "pkg-resources"
+            }
+        ],
+        "stop_reason_rules": []
+    }"#;
+    let mut f = std::fs::File::create(recovery_dir.join("module_rules.json")).unwrap();
+    f.write_all(module_rules.as_bytes()).unwrap();
+
+    // Write valid empty compatibility_rules.json.
+    let compat_rules = r#"{
+        "compatibility_clusters": [],
+        "companion_rules": [],
+        "python_ceiling_rules": []
+    }"#;
+    let mut f2 = std::fs::File::create(recovery_dir.join("compatibility_rules.json")).unwrap();
+    f2.write_all(compat_rules.as_bytes()).unwrap();
+
+    let err = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(tmp_dir.path())
+        .expect_err("should reject duplicate module aliases");
+
+    assert!(
+        err.contains("duplicate module alias `pkg_resources`"),
+        "error should mention the duplicate alias, got: {err}"
+    );
+    assert!(
+        err.contains("rule-a"),
+        "error should mention the conflicting rule ID, got: {err}"
+    );
+}
+
+#[test]
+fn phase9_targeted_policy_rejects_unknown_case_ids() {
+    use std::io::Write;
+
+    let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+    // Create a minimal parity manifest with known case IDs.
+    let planning_dir = tmp_dir
+        .path()
+        .join(".planning")
+        .join("phases")
+        .join("07-failure-baseline-parity-slice");
+    std::fs::create_dir_all(&planning_dir).unwrap();
+    let manifest = r#"{
+        "canonical_case_ids": ["case-aaa", "case-bbb"],
+        "tier1_watchlist_case_ids": ["case-ccc"]
+    }"#;
+    let mut mf = std::fs::File::create(planning_dir.join("07-tier3-parity-manifest.json")).unwrap();
+    mf.write_all(manifest.as_bytes()).unwrap();
+
+    // Create a fake tool root two levels down so the manifest resolves.
+    let tool_root = tmp_dir.path().join("tools").join("apdr");
+    let recovery_dir = tool_root.join("data").join("recovery");
+    std::fs::create_dir_all(&recovery_dir).unwrap();
+
+    // Write module_rules.json with an unknown case ID.
+    let module_rules = r#"{
+        "module_provider_rules": [
+            {
+                "id": "rule-x",
+                "module_aliases": ["fake_mod"],
+                "provider_package": "fake-pkg",
+                "canonical_case_ids": ["case-aaa", "case-UNKNOWN"]
+            }
+        ],
+        "stop_reason_rules": []
+    }"#;
+    let mut f = std::fs::File::create(recovery_dir.join("module_rules.json")).unwrap();
+    f.write_all(module_rules.as_bytes()).unwrap();
+
+    let compat_rules = r#"{
+        "compatibility_clusters": [],
+        "companion_rules": [],
+        "python_ceiling_rules": []
+    }"#;
+    let mut f2 = std::fs::File::create(recovery_dir.join("compatibility_rules.json")).unwrap();
+    f2.write_all(compat_rules.as_bytes()).unwrap();
+
+    let err = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect_err("should reject unknown case IDs");
+
+    assert!(
+        err.contains("unknown canonical case ID `case-UNKNOWN`"),
+        "error should mention the unknown case ID, got: {err}"
+    );
+    assert!(
+        err.contains("rule-x"),
+        "error should mention the rule ID, got: {err}"
+    );
+}

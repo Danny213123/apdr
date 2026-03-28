@@ -1,5 +1,91 @@
 {
   "canonical_case_count": 70,
-  "module_provider_rules": [],
-  "stop_reason_rules": []
+  "module_provider_rules": [
+    {
+      "id": "mod-pkg-resources",
+      "module_aliases": ["pkg_resources"],
+      "provider_package": "setuptools",
+      "canonical_case_ids": ["1e2600ed62d5e76b21ee", "263113", "3a6e4d618afc344aab81"],
+      "notes": "pkg_resources is provided by setuptools; three canonical cases fail with module-not-found when setuptools is missing from the resolved set."
+    },
+    {
+      "id": "mod-pil-image",
+      "module_aliases": ["Image"],
+      "provider_package": "Pillow",
+      "canonical_case_ids": ["3682135"],
+      "notes": "Legacy PIL import 'Image' is provided by Pillow; part of the touched family runtime."
+    },
+    {
+      "id": "mod-django-rest-framework",
+      "module_aliases": ["rest_framework"],
+      "provider_package": "djangorestframework",
+      "canonical_case_ids": [],
+      "notes": "rest_framework is the import path for djangorestframework; deterministic provider alias."
+    }
+  ],
+  "stop_reason_rules": [
+    {
+      "id": "stop-imp-removed",
+      "module_patterns": ["imp"],
+      "reason": "removed-runtime: imp module was removed in Python 3.12; use importlib instead",
+      "canonical_case_ids": ["1231964e784ab9acb65d"],
+      "notes": "The imp module is deprecated since Python 3.4 and removed in 3.12. Recovery retries cannot fix this."
+    },
+    {
+      "id": "stop-numpy-distutils",
+      "module_patterns": ["numpy.distutils"],
+      "reason": "removed-runtime: numpy.distutils was removed in NumPy 2.0; use setuptools or meson-python instead",
+      "canonical_case_ids": ["4882342eba2b57376ed1"],
+      "notes": "numpy.distutils was deprecated in NumPy 1.23 and removed in 2.0. Not recoverable by adding packages."
+    },
+    {
+      "id": "stop-elementtree",
+      "module_patterns": ["elementtree"],
+      "reason": "removed-runtime: standalone elementtree predates Python 2.5; xml.etree.ElementTree is the stdlib replacement",
+      "canonical_case_ids": [],
+      "notes": "The bare elementtree import references a long-removed standalone package that was merged into the stdlib."
+    },
+    {
+      "id": "stop-distance-wrap",
+      "module_patterns": ["_distance_wrap"],
+      "reason": "internal-extension: _distance_wrap is a compiled C extension internal to scipy.spatial",
+      "canonical_case_ids": [],
+      "notes": "Underscore-prefixed compiled extensions are not independently installable PyPI packages."
+    },
+    {
+      "id": "stop-project-local-api",
+      "module_patterns": ["api"],
+      "reason": "project-local: bare 'api' import is typically a project-local module, not a PyPI package",
+      "canonical_case_ids": [],
+      "notes": "The bare 'api' import appears in benchmark snippets as a project-local helper."
+    },
+    {
+      "id": "stop-taggit-autocomplete",
+      "module_patterns": ["taggit_autocomplete"],
+      "reason": "project-local: taggit_autocomplete is typically a project-local Django app or unmaintained fork",
+      "canonical_case_ids": [],
+      "notes": "Not a published PyPI package; recovery retries cannot resolve it."
+    },
+    {
+      "id": "stop-clips",
+      "module_patterns": ["clips"],
+      "reason": "project-local: clips import is typically a project-local module or the CLIPS expert system binding which is not pip-installable",
+      "canonical_case_ids": [],
+      "notes": "Not recoverable through standard pip resolution."
+    },
+    {
+      "id": "stop-pizzanuvola-teaser",
+      "module_patterns": ["pizzanuvola_teaser"],
+      "reason": "project-local: pizzanuvola_teaser is a project-specific Plone module, not a PyPI package",
+      "canonical_case_ids": [],
+      "notes": "Plone-specific add-on that is not independently installable via pip."
+    },
+    {
+      "id": "stop-gisutils",
+      "module_patterns": ["gisutils"],
+      "reason": "project-local: gisutils is typically a project-local GIS helper module",
+      "canonical_case_ids": [],
+      "notes": "Not a published PyPI package; recovery retries cannot resolve it."
+    }
+  ]
 }
