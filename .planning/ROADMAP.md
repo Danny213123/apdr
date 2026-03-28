@@ -18,7 +18,7 @@
 - [x] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection (completed 2026-03-28)
 - [x] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets (completed 2026-03-28)
 - [x] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps (completed 2026-03-28)
-- [ ] **Phase 11: Verification Backfill & State Repair** - Backfill missing verification artifacts and repair stale milestone-state docs so the completed work matches the audited repo state
+- [x] **Phase 11: Verification Backfill & State Repair** - Backfill missing verification artifacts and repair stale milestone-state docs so the completed work matches the audited repo state (completed 2026-03-28)
 - [ ] **Phase 12: Live Benchmark Proof & Requirement Reconciliation** - Close the recovery-proof gap with a live targeted rerun or reconcile the milestone requirements and closeout docs to the measured result
 
 ## Phase Details
@@ -106,7 +106,7 @@
 3. `ROADMAP.md`, `STATE.md`, and related milestone closeout references align with the actual completion status of Phases 7-10
 4. A re-audit no longer fails on missing verification artifacts or stale phase-state prose
 
-**Plans:** Pending planning
+**Plans:** 3/3 plans complete
 
 ---
 
@@ -135,7 +135,7 @@
 | 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Complete | 2026-03-28 |
 | 9. Targeted Tier3 Recovery Accuracy | REC-02, REC-03, REC-04 | Complete | 2026-03-28 |
 | 10. Benchmark Verification & Accuracy Closeout | REC-05, EVD-01, EVD-02 | Complete | 2026-03-28 |
-| 11. Verification Backfill & State Repair | FAM-01, FAM-02, FAM-03 | Not started |  |
+| 11. Verification Backfill & State Repair | FAM-01, FAM-02, FAM-03 | Complete    | 2026-03-28 |
 | 12. Live Benchmark Proof & Requirement Reconciliation | REC-02, REC-03, REC-04 | Not started |  |
 
 ---
@@ -160,4 +160,4 @@ Phase 7: Failure Baseline & Parity Slice (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-27*
-*Last updated: 2026-03-28 after v2.1 milestone gap planning*
+*Last updated: 2026-03-28 after Phase 11 completion*
