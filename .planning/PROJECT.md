@@ -13,7 +13,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - v2.0 shipped with 6 completed phases and 17 completed plans.
 - The Rust modernization milestone closed its benchmark and review gates, including BENCH-03 through direct APDR private-memory comparison and BENCH-05 through the inherited five-command Rust review loop.
 - The latest local stopped benchmark run is `runs\20260327-150339-apdr`, which processed 1,257 cases with 285 failures and 297 skips; 228 of the failures are tier3.
-- The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once, including 72 strong wins (`>= 5/10`) and 51 clean `10/10` `pllm` wins.
+- The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once; Phase 7 locked that surface into a canonical 70-case tier3 parity slice plus a 17-case watchlist outside the Phase 7 contract.
+- Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
 
 ## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
@@ -37,12 +38,12 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] The Rust codebase is reorganized into clearer modules with smaller reviewable units - v2.0
 - [x] Rust docs and comments explain non-obvious behavior, invariants, and fallbacks - v2.0
 - [x] Touched Rust modules meet stronger review gates for style, error handling, and maintainability - v2.0
+- [x] Benchmark evidence makes APDR recovery deltas inspectable at the case level - validated in Phase 7: failure-baseline-parity-slice
 
 ### Active
 
 - [ ] Data-driven family knowledge replaces hardcoded touched mapping logic
 - [ ] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets
-- [ ] Benchmark evidence makes APDR recovery deltas inspectable at the case level
 
 ### Out of Scope
 
@@ -80,8 +81,9 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Measure before optimizing | Benchmark speed and memory work needed baselines and regression checks, not intuition | Good |
 | Keep the Phase 5 five-command Rust review loop as the Phase 6 closeout contract | Final signoff needed to reuse the same reviewer gate instead of inventing a new one | Good |
 | Close BENCH-03 with direct APDR private-memory comparison instead of wrapper-level RSS | The targeted Rust workflow needed a direct process-level signal when wrapper RSS stayed noisy on Windows | Good |
-| Use `runs\20260327-150339-apdr` as the v2.1 accuracy baseline | The new milestone needs one concrete stopped-run reference before changing family knowledge and LLM recovery behavior | Pending |
+| Use `runs\20260327-150339-apdr` as the v2.1 accuracy baseline | The new milestone needs one concrete stopped-run reference before changing family knowledge and LLM recovery behavior | Good |
 | Skip external research for v2.1 by default | This milestone is driven by a local benchmark failure surface and the existing codebase, not by a new external product domain | Pending |
+| Lock the first v2.1 migration boundary to the Phase 7 canonical slice and touched-family fixtures | Phase 8 needs a stable baseline so data-driven family work can be measured instead of guessed | Good |
 
 ## Shipped Milestone Snapshot
 
@@ -115,4 +117,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after milestone v2.1 initialization*
+*Last updated: 2026-03-28 after Phase 7 completion*
