@@ -17,6 +17,7 @@ pub mod kgraph_db;
 pub mod pre_solve;
 pub mod pubgrub_solver;
 pub mod pypi_client;
+pub mod targeted_recovery;
 pub mod tier1_cache;
 pub mod tier2_heuristic;
 pub mod tier3_llm;
@@ -59,6 +60,8 @@ pub fn resolve_path(
     context::ensure_debug_layout(&config.output_dir)?;
     family_knowledge::init_curated_family_knowledge(tool_root)
         .map_err(|err| io::Error::other(format!("failed to initialize curated family knowledge: {err}")))?;
+    targeted_recovery::init_targeted_recovery_policy(tool_root)
+        .map_err(|err| io::Error::other(format!("failed to initialize targeted recovery policy: {err}")))?;
     let snippet_source = fs::read_to_string(snippet_path)?;
     let data_root = tool_root.join("data");
     let parse_result = parser::parse_snippet(snippet_path, &data_root, config.scan_config_files)?;
