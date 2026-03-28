@@ -116,7 +116,7 @@
 
 **Plans**:
 - [x] `05-01` - Reviewer Surface Documentation & Guide
-- [ ] `05-02` - Panic-Path Hardening & Invariant Cleanup
+- [x] `05-02` - Panic-Path Hardening & Invariant Cleanup
 - [ ] `05-03` - Consistency Sweep & Verification Closeout
 
 ---
@@ -147,7 +147,7 @@
 | 2. Resolver Memory & Algorithm Efficiency | 3/3 | Complete | 2026-03-27 |
 | 3. Validation Pipeline Throughput | 3/3 | Complete | 2026-03-27 |
 | 4. Module Layout & Boundary Cleanup | 3/3 | Complete   | 2026-03-27 |
-| 5. Documentation, Error Handling & Review Readiness | 1/3 | In Progress | - |
+| 5. Documentation, Error Handling & Review Readiness | 2/3 | In Progress | - |
 | 6. Benchmark Verification & v2 Closeout | 0/TBD | Not started | - |
 
 ---
@@ -172,5 +172,5 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 5 Plan 01*
+*Last updated: 2026-03-27 after Phase 5 Plan 02*
 

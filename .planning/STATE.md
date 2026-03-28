@@ -4,36 +4,36 @@ milestone: v2.0
 milestone_name: Rust Codebase Modernization
 current_phase: 05
 current_phase_name: documentation-error-handling-and-review-readiness
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: In progress on 05-02-PLAN.md
+stopped_at: In progress on 05-03-PLAN.md
 paused_at: None
-last_updated: "2026-03-27T23:55:16.081Z"
+last_updated: "2026-03-28T00:07:53.939Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-27
 **Current Phase:** 05
-**Current Plan:** 2
+**Current Plan:** 3
 **Current Phase Name:** documentation-error-handling-and-review-readiness
 **Total Phases:** 6
 **Total Plans in Phase:** 3
 **Status:** Executing Phase 05
-**Progress:** [#########-] 86%
+**Progress:** [#########-] 93%
 **Last Activity:** 2026-03-27
-**Last Activity Description:** Completed `05-01` reviewer docs and reviewer guide; continuing into `05-02` panic-path hardening
+**Last Activity Description:** Completed `05-02` panic-path hardening and invariant cleanup; continuing into `05-03` consistency and closeout verification
 **Paused At:** None
-**Last Date:** 2026-03-27T19:55:16.0814974-04:00
-**Stopped At:** In progress on 05-02-PLAN.md
-**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-02-PLAN.md
+**Last Date:** 2026-03-27T20:07:53.9396809-04:00
+**Stopped At:** In progress on 05-03-PLAN.md
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-03-PLAN.md
 
 ---
 
@@ -48,7 +48,7 @@ progress:
 ## Current Position
 
 Phase: 05 (documentation-error-handling-and-review-readiness) - EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Milestone Snapshot
 
@@ -68,9 +68,9 @@ None.
 
 ## Active TODOs
 
-- [ ] Complete `05-02` (`Panic-Path Hardening & Invariant Cleanup`)
 - [ ] Complete `05-03` (`Consistency Sweep & Verification Closeout`)
-- [ ] Run the Phase 5 full verification loop and close the remaining review-readiness requirements
+- [ ] Run the Phase 5 full fmt, test, and clippy verification loop
+- [ ] Close the remaining review-readiness requirement and phase metadata for Phase 5
 
 ## Deferred Items
 
@@ -80,9 +80,9 @@ None.
 
 ## Session
 
-**Last Date:** 2026-03-27T19:55:16.0814974-04:00
-**Stopped At:** In progress on 05-02-PLAN.md
-**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-02-PLAN.md
+**Last Date:** 2026-03-27T20:07:53.9396809-04:00
+**Stopped At:** In progress on 05-03-PLAN.md
+**Resume File:** .planning/phases/05-documentation-error-handling-and-review-readiness/05-03-PLAN.md
 
 ---
 
@@ -98,22 +98,23 @@ None.
 - Stabilized full-suite verification by making wheelhouse cache pruning deterministic when file mtimes tie on Windows.
 - Planned Phase 5 with reviewer docs, panic-path hardening, and consistency-closeout execution plans.
 - Completed `05-01` with reviewer-entrypoint docs in the five modernized Rust facades, a scoped reviewer guide, and passing targeted resolver and validation checks.
+- Completed `05-02` by removing Tier 3 startup panics, guarding env-backend escalation checks, and narrowing the remaining touched invariants to explicit reviewer-facing forms.
 
 ### What's Next
 
-**Immediate:** Execute `05-02-PLAN.md`.
+**Immediate:** Execute `05-03-PLAN.md`.
 
 **This milestone:** Finish review-readiness hardening, then close v2 with benchmark verification and milestone wrap-up.
 
-**Next Phase:** Harden runtime-facing panic paths and narrow invariants across the touched Rust surfaces without changing fallback ordering.
+**Next Phase:** Align final consistency language, run the full Phase 5 verification loop, and close the remaining review-readiness requirement.
 
 ### Context for Next Session
 
 1. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` for the locked Phase 5 decisions.
-2. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-SUMMARY.md` for the reviewer-doc and guide work that already landed.
-3. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-PLAN.md` and the linked `read_first` files.
+2. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-SUMMARY.md` and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-SUMMARY.md` for the work that already landed.
+3. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-03-PLAN.md` and the linked `read_first` files.
 4. Keep unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched.
-5. Resume execution from `05-02-PLAN.md`.
+5. Resume execution from `05-03-PLAN.md`.
 
 ---
 
@@ -131,7 +132,7 @@ None.
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-RESEARCH.md` - concentrated panic-path targets and reviewer-guide guidance
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` - Phase 5 verification contract
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-SUMMARY.md` - reviewer-surface documentation summary
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-PLAN.md` - panic-path hardening and invariant-cleanup plan
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-SUMMARY.md` - panic-path hardening and invariant-cleanup summary
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-03-PLAN.md` - consistency sweep and verification closeout plan
 
 **Key Commands**
@@ -143,4 +144,4 @@ None.
 
 ---
 
-*State updated after Phase 5 Plan 01 on 2026-03-27*
+*State updated after Phase 5 Plan 02 on 2026-03-27*
