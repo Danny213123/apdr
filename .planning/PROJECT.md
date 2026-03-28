@@ -16,6 +16,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once; Phase 7 locked that surface into a canonical 70-case tier3 parity slice plus a 17-case watchlist outside the Phase 7 contract.
 - Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
 - Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`.
+- Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior.
 
 ## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
@@ -41,10 +42,9 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Touched Rust modules meet stronger review gates for style, error handling, and maintainability - v2.0
 - [x] Benchmark evidence makes APDR recovery deltas inspectable at the case level - validated in Phase 7: failure-baseline-parity-slice
 - [x] Data-driven family knowledge replaces hardcoded touched mapping logic - validated in Phase 8: data-driven-family-knowledge-runtime
+- [x] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets - validated in Phase 9: targeted-tier3-recovery-accuracy
 
 ### Active
-
-- [ ] Tier3 recovery accuracy improves on the stopped benchmark's dominant failure buckets
 - [ ] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary
 
 ### Out of Scope
@@ -120,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after Phase 8 completion*
+*Last updated: 2026-03-28 after Phase 9 completion*
