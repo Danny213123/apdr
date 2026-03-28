@@ -25,7 +25,7 @@ Requirements for the v2.1 accuracy milestone. Each maps to exactly one roadmap p
 ### Benchmark Evidence
 
 - [x] **EVD-01**: Benchmark artifacts report case-level APDR versus baseline versus `pllm` deltas for the targeted slice
-- [ ] **EVD-02**: Milestone closeout records remaining unrecovered parity cases by dominant failure bucket with enough detail for follow-on planning
+- [x] **EVD-02**: Milestone closeout records remaining unrecovered parity cases by dominant failure bucket with enough detail for follow-on planning
 
 ## v2 Requirements
 
@@ -61,7 +61,7 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 | REC-04 | Phase 9 | Complete |
 | REC-05 | Phase 10 | Complete |
 | EVD-01 | Phase 10 | Complete |
-| EVD-02 | Phase 10 | Pending |
+| EVD-02 | Phase 10 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
