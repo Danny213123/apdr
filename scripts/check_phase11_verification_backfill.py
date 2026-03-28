@@ -28,6 +28,20 @@ def require_not_contains(text: str, needle: str, label: str, errors: list[str]) 
         errors.append(f"{label} still contains forbidden text: {needle}")
 
 
+def require_any_contains(
+    text: str,
+    option_sets: tuple[tuple[str, ...], ...],
+    label: str,
+    description: str,
+    errors: list[str],
+) -> None:
+    for option_set in option_sets:
+        if all(needle in text for needle in option_set):
+            return
+    formatted = " OR ".join(", ".join(option_set) for option_set in option_sets)
+    errors.append(f"{label} missing {description}: expected one of [{formatted}]")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Validate the Phase 11 verification backfill and state-repair artifacts."
@@ -78,13 +92,26 @@ def main() -> int:
     for needle in ("Phase 11", "Phase 12", "live benchmark proof"):
         require_contains(project_md, needle, "project-md", errors)
 
-    for needle in (
-        "current_phase: 11",
-        "current_phase_name: verification-backfill-and-state-repair",
-        "completed_phases: 4",
-        "total_phases: 6",
-    ):
-        require_contains(state_md, needle, "state-md", errors)
+    require_any_contains(
+        state_md,
+        (
+            (
+                "current_phase: 11",
+                "current_phase_name: verification-backfill-and-state-repair",
+                "completed_phases: 4",
+                "total_phases: 6",
+            ),
+            (
+                "current_phase: 12",
+                "current_phase_name: live-benchmark-proof-and-requirement-reconciliation",
+                "completed_phases: 5",
+                "total_phases: 6",
+            ),
+        ),
+        "state-md",
+        "either the active Phase 11 state or the completed handoff to Phase 12",
+        errors,
+    )
 
     for needle in ("not ready for milestone completion", "Phase 12"):
         require_contains(closeout_md, needle, "closeout-md", errors)
