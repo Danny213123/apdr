@@ -97,19 +97,19 @@ The 17-case watchlist (also all unrecovered) remains outside the canonical contr
 
 ## Final Signoff
 
-**Verdict: The v2.1 milestone is ready for completion.**
+**Verdict: The v2.1 milestone is not ready for milestone completion.**
 
-All three requirement verdicts passed:
+The evidence package itself still exists and remains useful, but the audit reopened milestone-level gaps that must close before signoff:
 
-| Requirement | Verdict | Evidence |
-|-------------|---------|----------|
-| REC-05 | PASS | All 11 preservation guards matched baseline (no regressions) |
-| EVD-01 | PASS | Machine-readable case-delta artifact covers all 70 canonical + 17 watchlist cases |
-| EVD-02 | PASS | Unrecovered gap report groups all 70 cases by bucket with follow-on notes |
+| Gate | Status | Evidence |
+|------|--------|----------|
+| Phase 11 verification/state repair | OPEN | Phase 8 verification backfill and stale planning-state repair must land so the milestone audit stops failing on orphaned family-runtime evidence and stale closeout prose |
+| Phase 12 live benchmark proof | OPEN | `REC-02`, `REC-03`, and `REC-04` still lack live rerun proof or explicit requirement reconciliation to the measured result |
+| REC-05 / EVD-01 / EVD-02 evidence package | COMPLETE | Preservation guards, machine-readable deltas, and unrecovered-gap reporting already exist and remain the base evidence surface |
 
-The carried-forward Phase 8 and Phase 9 verification suite stayed green alongside the Phase 10 checker. The Phase 8 migration boundary stayed locked. No named blockers remain for milestone completion.
+The carried-forward Phase 8 and Phase 9 verification suite stayed green alongside the Phase 10 checker, and the Phase 8 migration boundary stayed locked. That is necessary but not sufficient for milestone completion after the audit.
 
-The 0-of-70 canonical recovery rate is an honest outcome, not a failure: the Phase 9 policies are structurally sound and deterministically tested, but the canonical cases require infrastructure changes (Docker system libraries, Python 2 routing) that were correctly scoped outside v2.1. The follow-on notes in [10-UNRECOVERED-GAPS.md](10-UNRECOVERED-GAPS.md) provide actionable entry points for the next milestone.
+The milestone is not ready for milestone completion until Phase 11 clears the verification/state gaps and Phase 12 resolves the live benchmark proof gap. The 0-of-70 canonical recovery rate may still prove to be the honest result, but it must be carried forward through the gap-closure phases rather than treated as already signed off.
 
 ---
 
