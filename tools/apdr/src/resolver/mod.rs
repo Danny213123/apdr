@@ -57,6 +57,8 @@ pub fn resolve_path(
 ) -> io::Result<ResolveResult> {
     let started = Instant::now();
     context::ensure_debug_layout(&config.output_dir)?;
+    family_knowledge::init_curated_family_knowledge(tool_root)
+        .map_err(|err| io::Error::other(format!("failed to initialize curated family knowledge: {err}")))?;
     let snippet_source = fs::read_to_string(snippet_path)?;
     let data_root = tool_root.join("data");
     let parse_result = parser::parse_snippet(snippet_path, &data_root, config.scan_config_files)?;

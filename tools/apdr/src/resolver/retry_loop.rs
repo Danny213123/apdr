@@ -1151,19 +1151,10 @@ fn apply_recovery_fix(
             if retry_state.has_removed_import(&module_name) {
                 return None;
             }
-            // pkg_resources comes from setuptools â€” a common issue with modern pip
-            if module_name == "pkg_resources"
-                && upsert_dependency(
-                    resolved,
-                    "pkg_resources",
-                    "setuptools",
-                    None,
-                    "recovery:pkg-resources",
-                )
+            if let Some(note) =
+                family_knowledge::recover_curated_missing_module(&module_name, resolved)
             {
-                return Some(
-                    "Added setuptools to provide missing pkg_resources module.".to_string(),
-                );
+                return Some(note);
             }
             // pip module may be needed at import time by some packages
             if module_name == "pip" {

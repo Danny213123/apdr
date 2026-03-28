@@ -3,8 +3,150 @@ use super::detection::{
     uses_legacy_johnny_cache_stack, uses_legacy_pymc3_stack, uses_legacy_scrapy_stack,
     uses_legacy_tensorflow_stack, uses_simplecv_stack,
 };
+use super::{curated_family_knowledge_snapshot, CuratedBundleMember, CuratedRecoveryRule};
 use crate::docker;
 use crate::{ParseResult, ResolvedDependency};
+
+fn curated_rule(rule_id: &str) -> Option<CuratedRecoveryRule> {
+    curated_family_knowledge_snapshot().and_then(|curated| curated.recovery_rule(rule_id).cloned())
+}
+
+fn python_version_tuple(python_version: &str) -> Option<(u32, u32)> {
+    let mut parts = python_version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().unwrap_or("0").parse().ok()?;
+    Some((major, minor))
+}
+
+fn python_selector_matches(selector: &str, bundle_python: &str) -> bool {
+    match selector {
+        "any" => true,
+        "py2" => bundle_python.starts_with("2."),
+        "py3" => !bundle_python.starts_with("2."),
+        "py37" => bundle_python.starts_with("3.7"),
+        "py38" => bundle_python.starts_with("3.8"),
+        "py38-plus" => python_version_tuple(bundle_python)
+            .is_some_and(|(major, minor)| major > 3 || (major == 3 && minor >= 8)),
+        _ => false,
+    }
+}
+
+fn bundle_members_for_rule(rule_id: &str, bundle_python: &str) -> Option<Vec<CuratedBundleMember>> {
+    let rule = curated_rule(rule_id)?;
+    rule.bundle_variants
+        .iter()
+        .find(|variant| {
+            variant.python_selectors.is_empty()
+                || variant
+                    .python_selectors
+                    .iter()
+                    .any(|selector| python_selector_matches(selector, bundle_python))
+        })
+        .map(|variant| variant.members.clone())
+}
+
+fn render_template(template: &str, bundle_python: &str, changes: &[String]) -> String {
+    template
+        .replace("{bundle_python}", bundle_python)
+        .replace("{changes}", &changes.join(", "))
+}
+
+pub(super) fn render_rule_recovery_prefix(rule_id: &str, fallback: &str) -> String {
+    curated_rule(rule_id)
+        .and_then(|rule| rule.recovery_note_prefix)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+pub(super) fn render_rule_locked_note(
+    rule_id: &str,
+    bundle_python: &str,
+    fallback: &str,
+) -> String {
+    curated_rule(rule_id)
+        .and_then(|rule| rule.recovery_locked_note_template)
+        .map(|template| render_template(&template, bundle_python, &[]))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+pub(super) fn render_rule_unpinned_note(rule_id: &str, fallback: &str) -> String {
+    curated_rule(rule_id)
+        .and_then(|rule| rule.recovery_unpinned_note_template)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+pub(super) fn rule_log_matches_triggers(rule_id: &str, lowercase_log: &str) -> bool {
+    if let Some(rule) = curated_rule(rule_id) {
+        return rule
+            .trigger_substrings
+            .iter()
+            .any(|pattern| lowercase_log.contains(&pattern.to_ascii_lowercase()));
+    }
+
+    match rule_id {
+        "legacy-pymc3" => {
+            lowercase_log.contains("pymc3 3.11.5 depends on scipy<1.8.0")
+                || lowercase_log.contains("pymc3 3.11.5 depends on numpy<1.22.2")
+                || lowercase_log
+                    .contains("could not find a version that satisfies the requirement pandas==")
+                || lowercase_log.contains("no matching distribution found for pandas==")
+                || lowercase_log
+                    .contains("could not find a version that satisfies the requirement numpy==")
+                || lowercase_log.contains("no matching distribution found for numpy==")
+                || lowercase_log.contains("modulenotfounderror: no module named 'pkg_resources'")
+                || lowercase_log.contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
+                || lowercase_log.contains("requires a different python version")
+                || lowercase_log.contains("cannot import 'setuptools.build_meta'")
+                || lowercase_log.contains("resolutionimpossible")
+        }
+        "legacy-tensorflow" => {
+            lowercase_log.contains("requires a different python version")
+                || lowercase_log
+                    .contains("could not find a version that satisfies the requirement tensorflow==")
+                || lowercase_log.contains("no matching distribution found for tensorflow==")
+                || lowercase_log
+                    .contains("could not find a version that satisfies the requirement keras==")
+                || lowercase_log.contains("no matching distribution found for keras==")
+                || lowercase_log.contains("resolutionimpossible")
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn preferred_rule_python_order(
+    rule_id: &str,
+    execute_snippet: bool,
+    fallback_default_order: &[&str],
+) -> Vec<String> {
+    if let Some(rule) = curated_rule(rule_id) {
+        if let Some(order) = rule.preferred_python_order {
+            let selected = if execute_snippet && !order.execute_snippet.is_empty() {
+                order.execute_snippet
+            } else if !order.default_order.is_empty() {
+                order.default_order
+            } else {
+                Vec::new()
+            };
+            if !selected.is_empty() {
+                return selected;
+            }
+        }
+    }
+
+    match (rule_id, execute_snippet) {
+        ("legacy-pymc3", true) => vec!["2.7".to_string(), "3.10".to_string(), "3.9".to_string()],
+        ("legacy-tensorflow", true) => vec![
+            "2.7".to_string(),
+            "3.7".to_string(),
+            "3.8".to_string(),
+            "3.9".to_string(),
+            "3.10".to_string(),
+        ],
+        _ => fallback_default_order
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+    }
+}
 pub(super) fn apply_legacy_pymc3_bundle(
     parse_result: &ParseResult,
     resolved: &mut Vec<ResolvedDependency>,
@@ -19,17 +161,24 @@ pub(super) fn apply_legacy_pymc3_bundle(
     let bundle_python =
         preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
     let mut changes = Vec::new();
+    let rule = curated_rule("legacy-pymc3");
+    let strategy = rule
+        .as_ref()
+        .map(|rule| rule.strategy.as_str())
+        .unwrap_or("family:legacy-pymc3");
 
     for (import_name, package_name, version) in legacy_pymc3_bundle(&bundle_python) {
         if pin_dependency(
             resolved,
-            import_name,
-            package_name,
-            Some(version),
-            "family:legacy-pymc3",
+            &import_name,
+            &package_name,
+            version.as_deref(),
+            strategy,
             0.97,
         ) {
-            changes.push(format!("{package_name}=={version}"));
+            if let Some(version) = version {
+                changes.push(format!("{package_name}=={version}"));
+            }
         }
     }
 
@@ -37,10 +186,16 @@ pub(super) fn apply_legacy_pymc3_bundle(
         return None;
     }
 
-    Some(format!(
-        "Family knowledge targeted the legacy PyMC3 stack at Python {bundle_python} and pinned a coherent bundle: {}.",
-        changes.join(", ")
-    ))
+    Some(
+        rule.and_then(|rule| rule.apply_note_template)
+            .map(|template| render_template(&template, &bundle_python, &changes))
+            .unwrap_or_else(|| {
+                format!(
+                    "Family knowledge targeted the legacy PyMC3 stack at Python {bundle_python} and pinned a coherent bundle: {}.",
+                    changes.join(", ")
+                )
+            }),
+    )
 }
 
 pub(super) fn apply_legacy_flask_bundle(
@@ -235,31 +390,63 @@ pub(super) fn apply_legacy_ggplot_bundle(
     }
 
     let mut changes = Vec::new();
-    for (import_name, package_name, version) in [
-        ("ggplot", "ggplot", "0.11.5"),
-        ("pandas", "pandas", "0.24.2"),
-        ("matplotlib", "matplotlib", "2.2.5"),
-        ("numpy", "numpy", "1.16.6"),
-    ] {
+    let rule = curated_rule("legacy-ggplot");
+    let strategy = rule
+        .as_ref()
+        .map(|rule| rule.strategy.as_str())
+        .unwrap_or("family:legacy-ggplot");
+    let members = bundle_members_for_rule("legacy-ggplot", selected_python).unwrap_or_else(|| {
+        vec![
+            CuratedBundleMember {
+                import_name: "ggplot".to_string(),
+                package_name: "ggplot".to_string(),
+                version: Some("0.11.5".to_string()),
+            },
+            CuratedBundleMember {
+                import_name: "pandas".to_string(),
+                package_name: "pandas".to_string(),
+                version: Some("0.24.2".to_string()),
+            },
+            CuratedBundleMember {
+                import_name: "matplotlib".to_string(),
+                package_name: "matplotlib".to_string(),
+                version: Some("2.2.5".to_string()),
+            },
+            CuratedBundleMember {
+                import_name: "numpy".to_string(),
+                package_name: "numpy".to_string(),
+                version: Some("1.16.6".to_string()),
+            },
+        ]
+    });
+    for member in members {
         if pin_dependency(
             resolved,
-            import_name,
-            package_name,
-            Some(version),
-            "family:legacy-ggplot",
+            &member.import_name,
+            &member.package_name,
+            member.version.as_deref(),
+            strategy,
             0.93,
         ) {
-            changes.push(format!("{package_name}=={version}"));
+            if let Some(version) = member.version {
+                changes.push(format!("{}=={version}", member.package_name));
+            }
         }
     }
 
     if changes.is_empty() {
         None
     } else {
-        Some(format!(
-            "Family knowledge pinned the legacy ggplot/pandas bundle: {}.",
-            changes.join(", ")
-        ))
+        Some(
+            rule.and_then(|rule| rule.apply_note_template)
+                .map(|template| render_template(&template, selected_python, &changes))
+                .unwrap_or_else(|| {
+                    format!(
+                        "Family knowledge pinned the legacy ggplot/pandas bundle: {}.",
+                        changes.join(", ")
+                    )
+                }),
+        )
     }
 }
 
@@ -312,6 +499,11 @@ pub(super) fn apply_legacy_tensorflow_bundle(
     let bundle_python =
         preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
     let mut changes = Vec::new();
+    let rule = curated_rule("legacy-tensorflow");
+    let strategy = rule
+        .as_ref()
+        .map(|rule| rule.strategy.as_str())
+        .unwrap_or("family:legacy-tensorflow");
 
     for (import_name, package_name, version) in legacy_tensorflow_bundle(&bundle_python) {
         // Only pin bundle packages that already appear in the resolved list
@@ -319,33 +511,29 @@ pub(super) fn apply_legacy_tensorflow_bundle(
         // like gym or keras when the snippet only uses tensorflow.
         // Exception: protobuf is a critical transitive dep of TF that must be
         // pinned to avoid descriptor breakage — always include it.
-        let is_transitive_essential = *package_name == "protobuf";
+        let is_transitive_essential = package_name == "protobuf";
         let already_resolved = resolved.iter().any(|dep| {
-            dep.import_name.eq_ignore_ascii_case(import_name)
-                || normalize(&dep.package_name) == normalize(package_name)
+            dep.import_name.eq_ignore_ascii_case(&import_name)
+                || normalize(&dep.package_name) == normalize(&package_name)
         });
         if !already_resolved && !is_transitive_essential {
             continue;
         }
-        // Empty version means "let pip resolve freely" (Python 3.8+ path
-        // where TF 1.x has no wheels).
-        let version_opt = if version.is_empty() {
-            None
-        } else {
-            Some(*version)
-        };
         if pin_dependency(
             resolved,
-            import_name,
-            package_name,
-            version_opt,
-            "family:legacy-tensorflow",
+            &import_name,
+            &package_name,
+            version.as_deref(),
+            strategy,
             0.96,
         ) {
-            if version.is_empty() {
+            if version.is_none() {
                 changes.push(format!("{package_name} (unpinned)"));
             } else {
-                changes.push(format!("{package_name}=={version}"));
+                changes.push(format!(
+                    "{package_name}=={}",
+                    version.as_deref().unwrap_or_default()
+                ));
             }
         }
     }
@@ -354,10 +542,16 @@ pub(super) fn apply_legacy_tensorflow_bundle(
         return None;
     }
 
-    Some(format!(
-        "Family knowledge targeted the legacy TensorFlow/Keras stack at Python {bundle_python} and pinned a coherent bundle: {}.",
-        changes.join(", ")
-    ))
+    Some(
+        rule.and_then(|rule| rule.apply_note_template)
+            .map(|template| render_template(&template, &bundle_python, &changes))
+            .unwrap_or_else(|| {
+                format!(
+                    "Family knowledge targeted the legacy TensorFlow/Keras stack at Python {bundle_python} and pinned a coherent bundle: {}.",
+                    changes.join(", ")
+                )
+            }),
+    )
 }
 
 /// When standalone `keras` is resolved without any deep-learning backend
@@ -389,17 +583,32 @@ pub(super) fn ensure_keras_backend(
         return None;
     }
 
+    let rule = curated_rule("keras-backend");
+    let strategy = rule
+        .as_ref()
+        .map(|rule| rule.strategy.as_str())
+        .unwrap_or("family:keras-backend");
+    let member = bundle_members_for_rule("keras-backend", python_version)
+        .and_then(|members| members.into_iter().next())
+        .unwrap_or(CuratedBundleMember {
+            import_name: "tensorflow".to_string(),
+            package_name: "tensorflow".to_string(),
+            version: None,
+        });
     resolved.push(ResolvedDependency {
-        import_name: "tensorflow".to_string(),
-        package_name: "tensorflow".to_string(),
-        version: None,
-        strategy: "family:keras-backend".to_string(),
+        import_name: member.import_name,
+        package_name: member.package_name,
+        version: member.version,
+        strategy: strategy.to_string(),
         confidence: 0.92,
     });
 
     Some(
-        "Family knowledge added tensorflow as the default backend for standalone keras."
-            .to_string(),
+        rule.and_then(|rule| rule.apply_note_template)
+            .unwrap_or_else(|| {
+                "Family knowledge added tensorflow as the default backend for standalone keras."
+                    .to_string()
+            }),
     )
 }
 
@@ -412,39 +621,62 @@ pub(super) fn apply_legacy_pillow_pin(
         return None;
     }
 
-    let pil_markers = [
-        "pil",
-        "image",
-        "imagedraw",
-        "imagefont",
-        "imagefilter",
-        "imagechops",
-        "imageops",
-        "imageenhance",
-        "imagegrab",
-    ];
+    let rule = curated_rule("legacy-pillow");
+    let pil_markers = rule
+        .as_ref()
+        .map(|rule| {
+            rule.anchor_ids
+                .iter()
+                .map(|item| normalize(item))
+                .collect::<Vec<_>>()
+        })
+        .filter(|markers| !markers.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "pil".to_string(),
+                "image".to_string(),
+                "imagedraw".to_string(),
+                "imagefont".to_string(),
+                "imagefilter".to_string(),
+                "imagechops".to_string(),
+                "imageops".to_string(),
+                "imageenhance".to_string(),
+                "imagegrab".to_string(),
+            ]
+        });
+    let member = bundle_members_for_rule("legacy-pillow", selected_python)
+        .and_then(|members| members.into_iter().next())
+        .unwrap_or(CuratedBundleMember {
+            import_name: "PIL".to_string(),
+            package_name: "Pillow".to_string(),
+            version: Some("6.2.2".to_string()),
+        });
+    let strategy = rule
+        .as_ref()
+        .map(|rule| rule.strategy.as_str())
+        .unwrap_or("family:legacy-pillow");
     let references_pillow = parse_result
         .imports
         .iter()
         .map(|item| normalize(item))
-        .any(|item| pil_markers.contains(&item.as_str()))
+        .any(|item| pil_markers.iter().any(|marker| marker == &item))
         || resolved
             .iter()
-            .any(|dependency| normalize(&dependency.package_name) == "pillow");
+            .any(|dependency| normalize(&dependency.package_name) == normalize(&member.package_name));
     if !references_pillow {
         return None;
     }
 
     let mut changed = false;
     for dependency in resolved.iter_mut() {
-        if normalize(&dependency.package_name) == "pillow" {
-            let target_version = Some("6.2.2".to_string());
-            let row_changed = dependency.package_name != "Pillow"
+        if normalize(&dependency.package_name) == normalize(&member.package_name) {
+            let target_version = member.version.clone();
+            let row_changed = dependency.package_name != member.package_name
                 || dependency.version != target_version
-                || dependency.strategy != "family:legacy-pillow";
-            dependency.package_name = "Pillow".to_string();
-            dependency.version = Some("6.2.2".to_string());
-            dependency.strategy = "family:legacy-pillow".to_string();
+                || dependency.strategy != strategy;
+            dependency.package_name = member.package_name.clone();
+            dependency.version = target_version;
+            dependency.strategy = strategy.to_string();
             dependency.confidence = 0.95;
             changed |= row_changed;
         }
@@ -452,14 +684,14 @@ pub(super) fn apply_legacy_pillow_pin(
 
     if !resolved
         .iter()
-        .any(|dependency| normalize(&dependency.package_name) == "pillow")
+        .any(|dependency| normalize(&dependency.package_name) == normalize(&member.package_name))
     {
         pin_dependency(
             resolved,
-            "PIL",
-            "Pillow",
-            Some("6.2.2"),
-            "family:legacy-pillow",
+            &member.import_name,
+            &member.package_name,
+            member.version.as_deref(),
+            strategy,
             0.95,
         );
         changed = true;
@@ -467,8 +699,11 @@ pub(super) fn apply_legacy_pillow_pin(
 
     if changed {
         Some(
-            "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
-                .to_string(),
+            rule.and_then(|rule| rule.apply_note_template)
+                .unwrap_or_else(|| {
+                    "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+                        .to_string()
+                }),
         )
     } else {
         None
@@ -480,25 +715,15 @@ pub(super) fn preferred_legacy_pymc3_python(
     python_range: usize,
     execute_snippet: bool,
 ) -> String {
-    if execute_snippet {
-        return if selected_python.starts_with("3.10") || selected_python.starts_with("3.9") {
-            selected_python.to_string()
-        } else {
-            "2.7".to_string()
-        };
-    }
-
     let candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
-    if candidates.iter().any(|value| value == "3.10") {
-        "3.10".to_string()
-    } else if candidates.iter().any(|value| value == "3.9") {
-        "3.9".to_string()
-    } else if candidates.iter().any(|value| value == "2.7") {
-        "2.7".to_string()
-    } else {
-        selected_python.to_string()
-    }
+    let preferred = preferred_rule_python_order("legacy-pymc3", execute_snippet, &[
+        "3.10", "3.9", "2.7",
+    ]);
+    preferred
+        .into_iter()
+        .find(|version| candidates.iter().any(|candidate| candidate == version))
+        .unwrap_or_else(|| selected_python.to_string())
 }
 
 pub(super) fn preferred_legacy_tensorflow_python(
@@ -510,32 +735,13 @@ pub(super) fn preferred_legacy_tensorflow_python(
     let base_candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
 
-    if execute_snippet {
-        if selected_python.starts_with("2.") {
-            return "2.7".to_string();
-        }
-        // Only prefer 3.7 if it's actually available.
-        if base_candidates.iter().any(|v| v == "3.7") {
-            return "3.7".to_string();
-        }
-        // Fall through to the general logic below.
-    }
-
-    // Prefer 3.7 (TF 1.15.0 has cp37 wheels) but only if available.
-    if base_candidates.iter().any(|v| v == "3.7") {
-        "3.7".to_string()
-    } else if base_candidates.iter().any(|v| v == "2.7") {
-        "2.7".to_string()
-    } else if base_candidates.iter().any(|v| v == "3.8") {
-        // 3.8+: bundle will use unpinned TF (TF 2.x)
-        "3.8".to_string()
-    } else if base_candidates.iter().any(|v| v == "3.9") {
-        "3.9".to_string()
-    } else if base_candidates.iter().any(|v| v == "3.10") {
-        "3.10".to_string()
-    } else {
-        selected_python.to_string()
-    }
+    let preferred = preferred_rule_python_order("legacy-tensorflow", execute_snippet, &[
+        "3.7", "2.7", "3.8", "3.9", "3.10",
+    ]);
+    preferred
+        .into_iter()
+        .find(|version| base_candidates.iter().any(|candidate| candidate == version))
+        .unwrap_or_else(|| selected_python.to_string())
 }
 
 pub(super) fn legacy_tensorflow_candidate_versions(
@@ -555,62 +761,96 @@ pub(super) fn legacy_tensorflow_candidate_versions(
 
 pub(super) fn legacy_pymc3_bundle(
     bundle_python: &str,
-) -> &'static [(&'static str, &'static str, &'static str)] {
+) -> Vec<(String, String, Option<String>)> {
+    if let Some(members) = bundle_members_for_rule("legacy-pymc3", bundle_python) {
+        return members
+            .into_iter()
+            .map(|member| (member.import_name, member.package_name, member.version))
+            .collect();
+    }
+
     if bundle_python.starts_with("2.") {
-        &[
-            ("numpy", "numpy", "1.16.6"),
-            ("pandas", "pandas", "0.24.2"),
-            ("pymc3", "pymc3", "3.5"),
-            ("scipy", "scipy", "1.2.3"),
-            ("setuptools", "setuptools", "44.1.1"),
-            ("theano", "Theano", "1.0.5"),
+        vec![
+            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
+            ("pandas".to_string(), "pandas".to_string(), Some("0.24.2".to_string())),
+            ("pymc3".to_string(), "pymc3".to_string(), Some("3.5".to_string())),
+            ("scipy".to_string(), "scipy".to_string(), Some("1.2.3".to_string())),
+            ("setuptools".to_string(), "setuptools".to_string(), Some("44.1.1".to_string())),
+            ("theano".to_string(), "Theano".to_string(), Some("1.0.5".to_string())),
         ]
     } else {
-        &[
-            ("arviz", "arviz", "0.12.1"),
-            ("numpy", "numpy", "1.21.6"),
-            ("pandas", "pandas", "1.5.3"),
-            ("pymc3", "pymc3", "3.11.5"),
-            ("scipy", "scipy", "1.7.3"),
-            ("setuptools", "setuptools", "69.5.1"),
-            ("theano", "Theano-PyMC", "1.1.2"),
-            ("xarray", "xarray", "2022.9.0"),
-            ("xarray_einstats", "xarray-einstats", "0.6.0"),
+        vec![
+            ("arviz".to_string(), "arviz".to_string(), Some("0.12.1".to_string())),
+            ("numpy".to_string(), "numpy".to_string(), Some("1.21.6".to_string())),
+            ("pandas".to_string(), "pandas".to_string(), Some("1.5.3".to_string())),
+            ("pymc3".to_string(), "pymc3".to_string(), Some("3.11.5".to_string())),
+            ("scipy".to_string(), "scipy".to_string(), Some("1.7.3".to_string())),
+            ("setuptools".to_string(), "setuptools".to_string(), Some("69.5.1".to_string())),
+            ("theano".to_string(), "Theano-PyMC".to_string(), Some("1.1.2".to_string())),
+            ("xarray".to_string(), "xarray".to_string(), Some("2022.9.0".to_string())),
+            (
+                "xarray_einstats".to_string(),
+                "xarray-einstats".to_string(),
+                Some("0.6.0".to_string()),
+            ),
         ]
     }
 }
 
 pub(super) fn legacy_tensorflow_bundle(
     bundle_python: &str,
-) -> &'static [(&'static str, &'static str, &'static str)] {
+) -> Vec<(String, String, Option<String>)> {
+    if let Some(members) = bundle_members_for_rule("legacy-tensorflow", bundle_python) {
+        return members
+            .into_iter()
+            .map(|member| (member.import_name, member.package_name, member.version))
+            .collect();
+    }
+
     if bundle_python.starts_with("2.") {
         // gym 0.17+ dropped Python 2 support; protobuf must be <4 for TF 1.x
-        &[
-            ("gym", "gym", "0.16.0"),
-            ("keras", "keras", "2.3.1"),
-            ("numpy", "numpy", "1.16.6"),
-            ("protobuf", "protobuf", "3.20.3"),
-            ("tensorflow", "tensorflow", "1.15.0"),
+        vec![
+            ("gym".to_string(), "gym".to_string(), Some("0.16.0".to_string())),
+            ("keras".to_string(), "keras".to_string(), Some("2.3.1".to_string())),
+            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
+            (
+                "protobuf".to_string(),
+                "protobuf".to_string(),
+                Some("3.20.3".to_string()),
+            ),
+            (
+                "tensorflow".to_string(),
+                "tensorflow".to_string(),
+                Some("1.15.0".to_string()),
+            ),
         ]
     } else if bundle_python.starts_with("3.7") {
         // protobuf >=4 breaks TF 1.x descriptor generation
-        &[
-            ("gym", "gym", "0.17.3"),
-            ("keras", "keras", "2.3.1"),
-            ("numpy", "numpy", "1.16.6"),
-            ("protobuf", "protobuf", "3.20.3"),
-            ("tensorflow", "tensorflow", "1.15.0"),
+        vec![
+            ("gym".to_string(), "gym".to_string(), Some("0.17.3".to_string())),
+            ("keras".to_string(), "keras".to_string(), Some("2.3.1".to_string())),
+            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
+            (
+                "protobuf".to_string(),
+                "protobuf".to_string(),
+                Some("3.20.3".to_string()),
+            ),
+            (
+                "tensorflow".to_string(),
+                "tensorflow".to_string(),
+                Some("1.15.0".to_string()),
+            ),
         ]
     } else {
         // Python 3.8+: TF 1.15.0 has no wheels.  Leave versions empty so
         // pip can resolve freely — the latest compatible TF 2.x, keras, etc.
         // will be installed.  Empty-string version is treated as None by the
         // caller (apply_legacy_tensorflow_bundle).
-        &[
-            ("gym", "gym", ""),
-            ("keras", "keras", ""),
-            ("numpy", "numpy", ""),
-            ("tensorflow", "tensorflow", ""),
+        vec![
+            ("gym".to_string(), "gym".to_string(), None),
+            ("keras".to_string(), "keras".to_string(), None),
+            ("numpy".to_string(), "numpy".to_string(), None),
+            ("tensorflow".to_string(), "tensorflow".to_string(), None),
         ]
     }
 }

@@ -1,5 +1,5 @@
 use super::core::EXPLICIT_NAMESPACE_MAPPINGS;
-use super::{FamilyRegistry, PackageFamily};
+use super::{curated_family_knowledge_snapshot, FamilyRegistry, RuntimeFamily};
 use crate::{ParseResult, ResolvedDependency};
 use std::collections::BTreeSet;
 pub fn normalize(name: &str) -> String {
@@ -17,10 +17,16 @@ pub fn namespace_mapping_allowed(import_name: &str, package_name: &str) -> bool 
     }
 
     let registry = FamilyRegistry::new();
-    if let Some(family) = registry.family_for_package(package_name) {
+    if let Some(family) = registry.runtime_family_for_package(package_name) {
         if family_member_provides_import(family, &package_norm, import_name) {
             return true;
         }
+    }
+
+    if let Some(mapping) = curated_family_knowledge_snapshot()
+        .and_then(|curated| curated.explicit_namespace_mapping(import_name).cloned())
+    {
+        return normalize(&mapping.package_name) == package_norm;
     }
 
     EXPLICIT_NAMESPACE_MAPPINGS
@@ -156,19 +162,11 @@ fn collect_markers(
 }
 
 fn family_member_provides_import(
-    family: &PackageFamily,
+    family: RuntimeFamily,
     package_norm: &str,
     import_name: &str,
 ) -> bool {
-    let requested = normalize(import_name);
-    let top_level = normalize(import_name.split('.').next().unwrap_or(import_name));
-    family.members.iter().any(|member| {
-        normalize(member.package) == package_norm
-            && member.modules.iter().any(|module| {
-                let module_norm = normalize(module);
-                module_norm == requested || module_norm == top_level
-            })
-    })
+    family.member_provides_import(package_norm, import_name)
 }
 
 pub(super) fn uses_legacy_johnny_cache_stack(

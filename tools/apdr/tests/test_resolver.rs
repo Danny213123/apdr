@@ -1649,3 +1649,182 @@ fn data_driven_family_loader_rejects_unknown_rule_family() {
         "recovery rule `pkg-resources` references unknown family `missing-family`"
     );
 }
+
+fn family_runtime_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+fn resolve_inline_snippet(snippet_source: &str, output_name: &str) -> apdr::ResolveResult {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet_dir = tool_root.join("target").join(output_name);
+    std::fs::create_dir_all(&snippet_dir).unwrap();
+    let snippet_path = snippet_dir.join("snippet.py");
+    std::fs::write(&snippet_path, snippet_source).unwrap();
+
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = snippet_dir.join("artifacts");
+    config.validate = false;
+
+    apdr::resolver::resolve_path(&tool_root, &snippet_path, &config).unwrap()
+}
+
+struct CuratedFamilyOverride {
+    original_tool_root: PathBuf,
+    _temp_dir: tempfile::TempDir,
+}
+
+impl CuratedFamilyOverride {
+    fn from_modified_families<F>(transform: F) -> Self
+    where
+        F: FnOnce(String) -> String,
+    {
+        let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let temp_dir = tempfile::tempdir().unwrap();
+        let families_json =
+            std::fs::read_to_string(apdr::resolver::family_knowledge::touched_families_path(
+                &tool_root,
+            ))
+            .unwrap();
+        let recovery_rules_json = std::fs::read_to_string(
+            apdr::resolver::family_knowledge::touched_recovery_rules_path(&tool_root),
+        )
+        .unwrap();
+        write_curated_family_test_files(
+            temp_dir.path(),
+            &transform(families_json),
+            &recovery_rules_json,
+        );
+        apdr::resolver::family_knowledge::init_curated_family_knowledge(temp_dir.path()).unwrap();
+
+        Self {
+            original_tool_root: tool_root,
+            _temp_dir: temp_dir,
+        }
+    }
+}
+
+impl Drop for CuratedFamilyOverride {
+    fn drop(&mut self) {
+        let _ = apdr::resolver::family_knowledge::init_curated_family_knowledge(
+            &self.original_tool_root,
+        );
+    }
+}
+
+#[test]
+fn data_driven_family_runtime_registry_prefers_curated_touch_points() {
+    let _lock = family_runtime_test_lock();
+    let _override = CuratedFamilyOverride::from_modified_families(|json| {
+        json.replace("\"package\": \"scikit-learn\"", "\"package\": \"scikit-learn-modern\"")
+            .replace(
+                "\"package_name\": \"scikit-learn\"",
+                "\"package_name\": \"scikit-learn-modern\"",
+            )
+    });
+
+    assert_eq!(
+        apdr::resolver::family_knowledge::debug_family_registry_entry_for_package(
+            "scikit-learn-modern",
+        ),
+        Some(("curated".to_string(), "sklearn".to_string()))
+    );
+    assert!(apdr::resolver::family_knowledge::namespace_mapping_allowed(
+        "sklearn",
+        "scikit-learn-modern",
+    ));
+    assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed(
+        "sklearn",
+        "scikit-learn",
+    ));
+}
+
+#[test]
+fn data_driven_family_runtime_registry_keeps_untouched_static_families() {
+    let _lock = family_runtime_test_lock();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    apdr::resolver::family_knowledge::init_curated_family_knowledge(&tool_root).unwrap();
+
+    assert_eq!(
+        apdr::resolver::family_knowledge::debug_family_registry_entry_for_package("pyserial"),
+        Some(("static".to_string(), "serial".to_string()))
+    );
+    assert!(apdr::resolver::family_knowledge::namespace_mapping_allowed(
+        "serial",
+        "pyserial",
+    ));
+}
+
+#[test]
+fn data_driven_family_runtime_behavior_preserves_legacy_pillow_pin() {
+    let _lock = family_runtime_test_lock();
+    let result = resolve_fixture(
+        "python2_pil_stringio_snippet.py",
+        "test-data-driven-legacy-pillow-output",
+    );
+
+    assert!(result.requirements_txt.contains("Pillow==6.2.2"));
+    assert!(result.resolution_report.notes.iter().any(|note| note
+        .contains("Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility.")));
+}
+
+#[test]
+fn data_driven_family_runtime_behavior_preserves_legacy_pymc3_bundle() {
+    let _lock = family_runtime_test_lock();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/legacy_pymc3_py2_style_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root
+        .join("target")
+        .join("test-data-driven-legacy-pymc3-output");
+    config.validate = false;
+    config.execute_snippet = false;
+    config.python_version_range = 5;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+    let req_lower = result.requirements_txt.to_lowercase();
+
+    assert!(req_lower.contains("pymc3==3.11.5"));
+    assert!(req_lower.contains("theano-pymc==1.1.2"));
+    assert!(result
+        .resolution_report
+        .notes
+        .iter()
+        .any(|note| note.contains("Family knowledge targeted the legacy PyMC3 stack")));
+}
+
+#[test]
+fn data_driven_family_runtime_behavior_preserves_keras_backend_rule() {
+    let _lock = family_runtime_test_lock();
+    let result = resolve_inline_snippet("import keras\nmodel = keras.Sequential()\n", "test-data-driven-keras-backend-output");
+    let req_lower = result.requirements_txt.to_lowercase();
+
+    assert!(req_lower.contains("keras"));
+    assert!(req_lower.contains("tensorflow"));
+    assert!(result.resolution_report.notes.iter().any(|note| note
+        .contains("Family knowledge added tensorflow as the default backend for standalone keras.")));
+}
+
+#[test]
+fn data_driven_family_runtime_behavior_routes_pkg_resources_through_curated_mapping() {
+    let _lock = family_runtime_test_lock();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    apdr::resolver::family_knowledge::init_curated_family_knowledge(&tool_root).unwrap();
+
+    let (resolved, note) = apdr::resolver::family_knowledge::debug_curated_missing_module_recovery(
+        "pkg_resources",
+        Vec::new(),
+    );
+
+    assert_eq!(
+        note.as_deref(),
+        Some("Added setuptools to provide missing pkg_resources module.")
+    );
+    assert!(resolved.iter().any(|dependency| {
+        dependency.import_name == "pkg_resources"
+            && dependency.package_name == "setuptools"
+            && dependency.strategy == "recovery:missing-module"
+    }));
+}

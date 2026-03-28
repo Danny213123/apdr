@@ -8,9 +8,14 @@ use super::legacy_bundles::{
     apply_legacy_scrapy_bundle, apply_legacy_tensorflow_bundle, apply_simplecv_bundle,
     ensure_keras_backend, legacy_pymc3_bundle, legacy_tensorflow_bundle,
     legacy_tensorflow_candidate_versions, preferred_legacy_pymc3_python,
-    preferred_legacy_tensorflow_python,
+    preferred_legacy_tensorflow_python, preferred_rule_python_order, render_rule_locked_note,
+    render_rule_recovery_prefix, render_rule_unpinned_note, rule_log_matches_triggers,
 };
-use std::collections::BTreeMap;
+use super::{
+    curated_family_knowledge_snapshot, CuratedConflictKind, CuratedPackageFamily,
+    CuratedRuntimeScope,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::docker;
 use crate::{ParseResult, ResolvedDependency};
@@ -59,6 +64,86 @@ impl PackageFamily {
                     .find(|member| member.status == MemberStatus::Active)
             })
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum RuntimeFamily {
+    Static(&'static PackageFamily),
+    Curated(CuratedPackageFamily),
+}
+
+impl RuntimeFamily {
+    pub fn source(&self) -> &'static str {
+        match self {
+            Self::Static(_) => "static",
+            Self::Curated(_) => "curated",
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Static(family) => family.name,
+            Self::Curated(family) => &family.name,
+        }
+    }
+
+    pub fn notes(&self) -> &str {
+        match self {
+            Self::Static(family) => family.notes,
+            Self::Curated(family) => &family.notes,
+        }
+    }
+
+    pub fn conflict_kind(&self) -> ConflictKind {
+        match self {
+            Self::Static(family) => family.conflict_kind,
+            Self::Curated(family) => map_curated_conflict_kind(family.conflict_kind),
+        }
+    }
+
+    pub fn preferred_package(&self) -> Option<String> {
+        match self {
+            Self::Static(family) => family.preferred().map(|member| member.package.to_string()),
+            Self::Curated(family) => family.preferred().map(|member| member.package.clone()),
+        }
+    }
+
+    pub fn member_provides_import(&self, package_norm: &str, import_name: &str) -> bool {
+        let requested = normalize(import_name);
+        let top_level = normalize(import_name.split('.').next().unwrap_or(import_name));
+        match self {
+            Self::Static(family) => family.members.iter().any(|member| {
+                normalize(member.package) == package_norm
+                    && member.modules.iter().any(|module| {
+                        let module_norm = normalize(module);
+                        module_norm == requested || module_norm == top_level
+                    })
+            }),
+            Self::Curated(family) => family.members.iter().any(|member| {
+                normalize(&member.package) == package_norm
+                    && member.modules.iter().any(|module| {
+                        let module_norm = normalize(module);
+                        module_norm == requested || module_norm == top_level
+                    })
+            }),
+        }
+    }
+}
+
+fn map_curated_conflict_kind(kind: CuratedConflictKind) -> ConflictKind {
+    match kind {
+        CuratedConflictKind::Namespace => ConflictKind::Namespace,
+        CuratedConflictKind::Fork => ConflictKind::Fork,
+        CuratedConflictKind::Variant => ConflictKind::Variant,
+        CuratedConflictKind::Replacement => ConflictKind::Replacement,
+        CuratedConflictKind::Migration => ConflictKind::Migration,
+    }
+}
+
+fn curated_registry_family_exists(family_name: &str) -> bool {
+    curated_family_knowledge_snapshot()
+        .and_then(|curated| curated.family_named(family_name).cloned())
+        .is_some_and(|family| family.has_scope(CuratedRuntimeScope::Registry))
 }
 
 macro_rules! member {
@@ -782,6 +867,52 @@ impl FamilyRegistry {
             .map(|indices| indices.iter().map(|index| &FAMILIES[*index]).collect())
             .unwrap_or_default()
     }
+
+    pub fn runtime_family_for_package(&self, package: &str) -> Option<RuntimeFamily> {
+        if let Some(family) = curated_family_knowledge_snapshot()
+            .and_then(|curated| curated.registry_family_for_package(package).cloned())
+        {
+            return Some(RuntimeFamily::Curated(family));
+        }
+
+        let family = self.family_for_package(package)?;
+        if curated_registry_family_exists(family.name) {
+            return None;
+        }
+        Some(RuntimeFamily::Static(family))
+    }
+
+    pub fn runtime_families_for_module(&self, module: &str) -> Vec<RuntimeFamily> {
+        let mut families = Vec::new();
+        let mut seen = BTreeSet::new();
+
+        if let Some(curated) = curated_family_knowledge_snapshot() {
+            for family in curated.registry_families_for_module(module) {
+                if seen.insert(normalize(&family.name)) {
+                    families.push(RuntimeFamily::Curated(family.clone()));
+                }
+            }
+        }
+
+        for family in self.families_for_module(module) {
+            if curated_registry_family_exists(family.name) {
+                continue;
+            }
+            if seen.insert(normalize(family.name)) {
+                families.push(RuntimeFamily::Static(family));
+            }
+        }
+
+        families
+    }
+}
+
+#[doc(hidden)]
+pub fn debug_family_registry_entry_for_package(package_name: &str) -> Option<(String, String)> {
+    let registry = FamilyRegistry::new();
+    registry
+        .runtime_family_for_package(package_name)
+        .map(|family| (family.source().to_string(), family.name().to_string()))
 }
 
 pub fn apply_family_knowledge(
@@ -847,19 +978,7 @@ pub fn recover_family_knowledge(
 ) -> Option<String> {
     let lowercase = log.to_ascii_lowercase();
     if uses_legacy_pymc3_stack(parse_result, resolved)
-        && (lowercase.contains("pymc3 3.11.5 depends on scipy<1.8.0")
-            || lowercase.contains("pymc3 3.11.5 depends on numpy<1.22.2")
-            || lowercase
-                .contains("could not find a version that satisfies the requirement pandas==")
-            || lowercase.contains("no matching distribution found for pandas==")
-            || lowercase
-                .contains("could not find a version that satisfies the requirement numpy==")
-            || lowercase.contains("no matching distribution found for numpy==")
-            || lowercase.contains("modulenotfounderror: no module named 'pkg_resources'")
-            || lowercase.contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
-            || lowercase.contains("requires a different python version")
-            || lowercase.contains("cannot import 'setuptools.build_meta'")
-            || lowercase.contains("resolutionimpossible"))
+        && rule_log_matches_triggers("legacy-pymc3", &lowercase)
     {
         if let Some(note) = apply_legacy_pymc3_bundle(
             parse_result,
@@ -869,25 +988,26 @@ pub fn recover_family_knowledge(
             execute_snippet,
         ) {
             return Some(format!(
-                "Family-aware recovery reapplied the legacy PyMC3 stack. {note}"
+                "{}{note}",
+                render_rule_recovery_prefix(
+                    "legacy-pymc3",
+                    "Family-aware recovery reapplied the legacy PyMC3 stack. ",
+                )
             ));
         }
         let bundle_python =
             preferred_legacy_pymc3_python(selected_python, python_range, execute_snippet);
-        return Some(format!(
-            "Family-aware recovery kept the legacy PyMC3 stack pinned at the curated Python {bundle_python} bundle."
+        return Some(render_rule_locked_note(
+            "legacy-pymc3",
+            &bundle_python,
+            &format!(
+                "Family-aware recovery kept the legacy PyMC3 stack pinned at the curated Python {bundle_python} bundle."
+            ),
         ));
     }
 
     if uses_legacy_tensorflow_stack(parse_result, resolved)
-        && (lowercase.contains("requires a different python version")
-            || lowercase
-                .contains("could not find a version that satisfies the requirement tensorflow==")
-            || lowercase.contains("no matching distribution found for tensorflow==")
-            || lowercase
-                .contains("could not find a version that satisfies the requirement keras==")
-            || lowercase.contains("no matching distribution found for keras==")
-            || lowercase.contains("resolutionimpossible"))
+        && rule_log_matches_triggers("legacy-tensorflow", &lowercase)
     {
         if let Some(note) = apply_legacy_tensorflow_bundle(
             parse_result,
@@ -897,7 +1017,11 @@ pub fn recover_family_knowledge(
             execute_snippet,
         ) {
             return Some(format!(
-                "Family-aware recovery reapplied the legacy TensorFlow/Keras stack. {note}"
+                "{}{note}",
+                render_rule_recovery_prefix(
+                    "legacy-tensorflow",
+                    "Family-aware recovery reapplied the legacy TensorFlow/Keras stack. ",
+                )
             ));
         }
 
@@ -913,17 +1037,21 @@ pub fn recover_family_knowledge(
             }
         }
         if stripped {
-            return Some(
+            return Some(render_rule_unpinned_note(
+                "legacy-tensorflow",
                 "Family-aware recovery unpinned legacy TensorFlow bundle versions \
-                 (pinned versions unavailable for target Python — letting pip resolve freely)."
-                    .to_string(),
-            );
+                 (pinned versions unavailable for target Python — letting pip resolve freely).",
+            ));
         }
 
         let bundle_python =
             preferred_legacy_tensorflow_python(selected_python, python_range, execute_snippet);
-        return Some(format!(
-            "Family-aware recovery kept the legacy TensorFlow/Keras stack pinned at the curated Python {bundle_python} bundle."
+        return Some(render_rule_locked_note(
+            "legacy-tensorflow",
+            &bundle_python,
+            &format!(
+                "Family-aware recovery kept the legacy TensorFlow/Keras stack pinned at the curated Python {bundle_python} bundle."
+            ),
         ));
     }
 
@@ -1005,9 +1133,7 @@ pub fn protects_family_version(
         // freely), so there's nothing to protect.
         if legacy_tensorflow_bundle(&bundle_python)
             .iter()
-            .any(|(_, candidate, version)| {
-                normalize(candidate) == normalized && !version.is_empty()
-            })
+            .any(|(_, candidate, version)| normalize(candidate) == normalized && version.is_some())
         {
             return true;
         }
@@ -1026,15 +1152,12 @@ pub fn validation_candidate_versions(
     if uses_legacy_pymc3_stack(parse_result, resolved) {
         let candidates =
             docker::parallel::candidate_versions(selected_python, python_range, None, None);
-        let preferred = if execute_snippet {
-            vec!["2.7", "3.10", "3.9"]
-        } else {
-            vec!["3.10", "3.9", "2.7"]
-        };
+        let preferred = preferred_rule_python_order("legacy-pymc3", execute_snippet, &[
+            "3.10", "3.9", "2.7",
+        ]);
         let ordered = preferred
             .into_iter()
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
-            .map(str::to_string)
             .collect::<Vec<_>>();
         return Some(if ordered.is_empty() {
             candidates
@@ -1045,17 +1168,12 @@ pub fn validation_candidate_versions(
 
     if uses_legacy_tensorflow_stack(parse_result, resolved) {
         let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
-        // Prefer 3.7 if available (TF 1.15.0 has cp37 wheels), then 2.7,
-        // then 3.8+ (will use unpinned TF 2.x).
-        let preferred = if execute_snippet {
-            vec!["2.7", "3.7", "3.8", "3.9", "3.10"]
-        } else {
-            vec!["3.7", "2.7", "3.8", "3.9", "3.10"]
-        };
+        let preferred = preferred_rule_python_order("legacy-tensorflow", execute_snippet, &[
+            "3.7", "2.7", "3.8", "3.9", "3.10",
+        ]);
         let ordered = preferred
             .into_iter()
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
-            .map(str::to_string)
             .collect::<Vec<_>>();
         return Some(if ordered.is_empty() {
             candidates
@@ -1067,25 +1185,100 @@ pub fn validation_candidate_versions(
     None
 }
 
+pub fn recover_curated_missing_module(
+    module_name: &str,
+    resolved: &mut Vec<ResolvedDependency>,
+) -> Option<String> {
+    if module_name != "pkg_resources" {
+        return None;
+    }
+
+    let Some(curated) = curated_family_knowledge_snapshot() else {
+        return None;
+    };
+    let Some(rule) = curated.recovery_rule("pkg-resources") else {
+        return None;
+    };
+    let Some(member) = rule
+        .bundle_variants
+        .iter()
+        .flat_map(|variant| variant.members.iter())
+        .find(|member| normalize(&member.import_name) == normalize(module_name))
+    else {
+        return None;
+    };
+
+    let mut changed = false;
+    for dependency in resolved.iter_mut() {
+        if dependency.import_name.eq_ignore_ascii_case(&member.import_name)
+            || normalize(&dependency.package_name) == normalize(&member.package_name)
+        {
+            let row_changed = dependency.package_name != member.package_name
+                || dependency.version != member.version
+                || dependency.strategy != rule.strategy;
+            dependency.import_name = member.import_name.clone();
+            dependency.package_name = member.package_name.clone();
+            dependency.version = member.version.clone();
+            dependency.strategy = rule.strategy.clone();
+            dependency.confidence = 0.78;
+            changed |= row_changed;
+        }
+    }
+
+    if !resolved.iter().any(|dependency| {
+        dependency.import_name.eq_ignore_ascii_case(&member.import_name)
+            || normalize(&dependency.package_name) == normalize(&member.package_name)
+    }) {
+        resolved.push(ResolvedDependency {
+            import_name: member.import_name.clone(),
+            package_name: member.package_name.clone(),
+            version: member.version.clone(),
+            strategy: rule.strategy.clone(),
+            confidence: 0.78,
+        });
+        changed = true;
+    }
+
+    if changed {
+        Some(
+            rule.apply_note_template
+                .clone()
+                .unwrap_or_else(|| "Added setuptools to provide missing pkg_resources module.".to_string()),
+        )
+    } else {
+        None
+    }
+}
+
+#[doc(hidden)]
+pub fn debug_curated_missing_module_recovery(
+    module_name: &str,
+    mut resolved: Vec<ResolvedDependency>,
+) -> (Vec<ResolvedDependency>, Option<String>) {
+    let note = recover_curated_missing_module(module_name, &mut resolved);
+    (resolved, note)
+}
+
 fn prune_family_conflicts(resolved: &mut Vec<ResolvedDependency>) -> Vec<String> {
     let registry = FamilyRegistry::new();
-    let mut by_family: BTreeMap<&'static str, Vec<usize>> = BTreeMap::new();
+    let mut by_family: BTreeMap<String, (RuntimeFamily, Vec<usize>)> = BTreeMap::new();
     for (index, dependency) in resolved.iter().enumerate() {
-        if let Some(family) = registry.family_for_package(&dependency.package_name) {
-            by_family.entry(family.name).or_default().push(index);
+        if let Some(family) = registry.runtime_family_for_package(&dependency.package_name) {
+            let key = normalize(family.name());
+            let entry = by_family
+                .entry(key)
+                .or_insert_with(|| (family.clone(), Vec::new()));
+            entry.1.push(index);
         }
     }
 
     let mut keep = vec![true; resolved.len()];
     let mut notes = Vec::new();
-    for (family_name, indices) in by_family {
+    for (_, (family, indices)) in by_family {
         if indices.len() < 2 {
             continue;
         }
-        let Some(family) = registry.family_for_package(&resolved[indices[0]].package_name) else {
-            continue;
-        };
-        let preferred = family.preferred().map(|member| normalize(member.package));
+        let preferred = family.preferred_package().map(|member| normalize(&member));
         let mut chosen_index = indices[0];
         if let Some(preferred_name) = preferred {
             if let Some(index) = indices
@@ -1108,8 +1301,8 @@ fn prune_family_conflicts(resolved: &mut Vec<ResolvedDependency>) -> Vec<String>
         }
         notes.push(format!(
             "Family knowledge pruned the {} {:?} conflict: kept `{}` and removed {}. {}",
-            family_name,
-            family.conflict_kind,
+            family.name(),
+            family.conflict_kind(),
             resolved[chosen_index].package_name,
             packages
                 .into_iter()
@@ -1117,7 +1310,7 @@ fn prune_family_conflicts(resolved: &mut Vec<ResolvedDependency>) -> Vec<String>
                 .map(|package| format!("`{package}`"))
                 .collect::<Vec<_>>()
                 .join(", "),
-            family.notes
+            family.notes()
         ));
     }
 
