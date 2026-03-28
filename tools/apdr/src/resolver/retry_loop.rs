@@ -540,23 +540,35 @@ pub(super) fn validate_with_retries(
             "ModuleNotFound" | "ImportError"
         ) {
             if let Some(module) = extract_missing_module(&last_log) {
+                // Phase 9: before concluding mapping failure, check if a
+                // targeted recovery provider rule can still recover this module.
                 if module_requirement_sets
                     .get(&normalize_package_key(&module))
                     .map(|seen| seen.len() >= 2)
                     .unwrap_or(false)
                 {
-                    let note = format!(
-                        "Missing module `{module}` persisted across multiple dependency sets; ending recovery as a mapping failure."
-                    );
-                    repeat_failure_signature = Some(current_signature.clone());
-                    report.notes.push(note.clone());
-                    validation.iteration_history.push(note.clone());
-                    validation.reason = Some(note.clone());
-                    validation.root_cause = Some(note.clone());
-                    if let Some(last_attempt) = validation.attempts.last_mut() {
-                        last_attempt.fix_applied = Some(note);
+                    // Consult targeted_recovery for a deterministic provider
+                    // rule before falling through to the generic break.
+                    let has_targeted_provider = targeted_recovery::get_targeted_recovery_policy()
+                        .and_then(|policy| policy.module_rule_for_alias(&module).cloned())
+                        .is_some();
+
+                    if !has_targeted_provider {
+                        let note = format!(
+                            "Missing module `{module}` persisted across multiple dependency sets; ending recovery as a mapping failure."
+                        );
+                        repeat_failure_signature = Some(current_signature.clone());
+                        report.notes.push(note.clone());
+                        validation.iteration_history.push(note.clone());
+                        validation.reason = Some(note.clone());
+                        validation.root_cause = Some(note.clone());
+                        if let Some(last_attempt) = validation.attempts.last_mut() {
+                            last_attempt.fix_applied = Some(note);
+                        }
+                        break;
                     }
-                    break;
+                    // If we have a targeted provider rule, fall through to
+                    // apply_recovery_fix which will use it instead of breaking.
                 }
             }
         }
@@ -1155,6 +1167,26 @@ fn apply_recovery_fix(
                 family_knowledge::recover_curated_missing_module(&module_name, resolved)
             {
                 return Some(note);
+            }
+            // Phase 9: consult targeted recovery module-provider rules before
+            // generic mapping-failure logic.  This gives deterministic provider
+            // aliases (pkg_resources -> setuptools, Image -> Pillow, etc.) a
+            // chance to recover the case without burning LLM retries.
+            if let Some(policy) = targeted_recovery::get_targeted_recovery_policy() {
+                if let Some(rule) = policy.module_rule_for_alias(&module_name) {
+                    if upsert_dependency(
+                        resolved,
+                        &module_name,
+                        &rule.provider_package,
+                        None,
+                        "recovery:targeted-provider",
+                    ) {
+                        return Some(format!(
+                            "Phase 9 targeted recovery: mapped missing module `{}` to provider package `{}` (rule {}).",
+                            module_name, rule.provider_package, rule.id
+                        ));
+                    }
+                }
             }
             // pip module may be needed at import time by some packages
             if module_name == "pip" {

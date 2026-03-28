@@ -2138,3 +2138,59 @@ fn phase9_targeted_policy_rejects_unknown_case_ids() {
         "error should mention the rule ID, got: {err}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 targeted module recovery tests (plan 09-02)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn phase9_targeted_module_recovers_pkg_resources_provider() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let rule = policy
+        .module_rule_for_alias("pkg_resources")
+        .expect("should find a provider rule for pkg_resources");
+    assert_eq!(
+        rule.provider_package, "setuptools",
+        "pkg_resources should be provided by setuptools"
+    );
+    assert_eq!(rule.id, "mod-pkg-resources");
+    assert!(
+        !rule.canonical_case_ids.is_empty(),
+        "pkg_resources provider rule should reference canonical case IDs"
+    );
+}
+
+#[test]
+fn phase9_targeted_module_recovers_image_provider() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let rule = policy
+        .module_rule_for_alias("Image")
+        .expect("should find a provider rule for Image");
+    assert_eq!(
+        rule.provider_package, "Pillow",
+        "Image should be provided by Pillow"
+    );
+    assert_eq!(rule.id, "mod-pil-image");
+}
+
+#[test]
+fn phase9_targeted_module_recovers_rest_framework_provider() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let rule = policy
+        .module_rule_for_alias("rest_framework")
+        .expect("should find a provider rule for rest_framework");
+    assert_eq!(
+        rule.provider_package, "djangorestframework",
+        "rest_framework should be provided by djangorestframework"
+    );
+    assert_eq!(rule.id, "mod-django-rest-framework");
+}
