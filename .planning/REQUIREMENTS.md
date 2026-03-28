@@ -49,10 +49,10 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 ### Benchmark Outcomes
 
-- [ ] **BENCH-01**: End-to-end benchmark runtime improves measurably versus the v2 baseline
-- [ ] **BENCH-02**: Validation-heavy cases complete faster than the v2 baseline
-- [ ] **BENCH-03**: Memory churn or peak memory indicators improve on the targeted Rust workflows
-- [ ] **BENCH-04**: Benchmark pass rate is maintained or improved after modernization work
+- [x] **BENCH-01**: End-to-end benchmark runtime improves measurably versus the v2 baseline
+- [x] **BENCH-02**: Validation-heavy cases complete faster than the v2 baseline
+- [x] **BENCH-03**: Memory churn or peak memory indicators improve on the targeted Rust workflows
+- [x] **BENCH-04**: Benchmark pass rate is maintained or improved after modernization work
 - [ ] **BENCH-05**: The final milestone package can survive a codebase review focused on performance, layout, docs, and standards
 
 ## v2 Requirements
@@ -105,10 +105,10 @@ Deferred to a later milestone after the core modernization work lands.
 | QUAL-03 | Phase 5 | Complete |
 | QUAL-04 | Phase 5 | Complete |
 | QUAL-05 | Phase 5 | Complete |
-| BENCH-01 | Phase 6 | Pending |
-| BENCH-02 | Phase 6 | Pending |
-| BENCH-03 | Phase 6 | Pending |
-| BENCH-04 | Phase 6 | Pending |
+| BENCH-01 | Phase 6 | Complete |
+| BENCH-02 | Phase 6 | Complete |
+| BENCH-03 | Phase 6 | Complete |
+| BENCH-04 | Phase 6 | Complete |
 | BENCH-05 | Phase 6 | Pending |
 
 **Coverage:**
@@ -118,4 +118,4 @@ Deferred to a later milestone after the core modernization work lands.
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 5 completion*
+*Last updated: 2026-03-27 after Phase 6 Plan 01 execution*
