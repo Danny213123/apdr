@@ -13,7 +13,7 @@
 - [x] **Phase 3: Validation Pipeline Throughput** - Improve env and Docker validation efficiency, cache reuse, and retry cost
 - [x] **Phase 4: Module Layout & Boundary Cleanup** - Split oversized Rust modules and make responsibilities easier to review (completed 2026-03-27)
 - [x] **Phase 5: Documentation, Error Handling & Review Readiness** - Raise clarity, docs, and standards compliance in touched Rust code (completed 2026-03-27)
-- [ ] **Phase 6: Benchmark Verification & v2 Closeout** - Prove the modernization work with before/after benchmarks and review gates
+- [ ] **Phase 6: Benchmark Verification & v2 Closeout** - Prove the modernization work with before/after benchmarks and review gates (execution complete, blocked on BENCH-03 and the final Rust gate)
 
 ## Phase Details
 
@@ -138,7 +138,7 @@
 **Plans**:
 - [x] `06-01` - Bounded Continuity Benchmark & Memory Refresh
 - [x] `06-02` - Hard-Gists Slice & Benchmark Verification Package
-- [ ] `06-03` - Milestone Review Gate & Closeout Signoff
+- [x] `06-03` - Milestone Review Gate & Closeout Signoff
 
 ---
 
@@ -151,7 +151,7 @@
 | 3. Validation Pipeline Throughput | 3/3 | Complete | 2026-03-27 |
 | 4. Module Layout & Boundary Cleanup | 3/3 | Complete   | 2026-03-27 |
 | 5. Documentation, Error Handling & Review Readiness | 3/3 | Complete | 2026-03-27 |
-| 6. Benchmark Verification & v2 Closeout | 2/3 | In Progress | - |
+| 6. Benchmark Verification & v2 Closeout | 3/3 | Blocked | - |
 
 ---
 
@@ -175,5 +175,5 @@ Phase 1: Baseline & Guardrails (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 6 Plan 02 execution*
+*Last updated: 2026-03-27 after Phase 6 Plan 03 execution*
 

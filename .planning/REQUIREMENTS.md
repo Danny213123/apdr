@@ -33,11 +33,11 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 ### Codebase Layout
 
-- [ ] **ARCH-01**: Oversized Rust modules are split into smaller files with coherent responsibilities
-- [ ] **ARCH-02**: Public and internal APIs between Rust modules are easier to follow and less entangled
-- [ ] **ARCH-03**: Complex recovery and validation logic is extracted behind named helpers or submodules instead of giant functions
-- [ ] **ARCH-04**: File and module naming better reflects responsibility and ownership boundaries
-- [ ] **ARCH-05**: Refactors reduce cognitive load for code review on the most active Rust areas
+- [x] **ARCH-01**: Oversized Rust modules are split into smaller files with coherent responsibilities
+- [x] **ARCH-02**: Public and internal APIs between Rust modules are easier to follow and less entangled
+- [x] **ARCH-03**: Complex recovery and validation logic is extracted behind named helpers or submodules instead of giant functions
+- [x] **ARCH-04**: File and module naming better reflects responsibility and ownership boundaries
+- [x] **ARCH-05**: Refactors reduce cognitive load for code review on the most active Rust areas
 
 ### Documentation & Review Quality
 
@@ -95,11 +95,11 @@ Deferred to a later milestone after the core modernization work lands.
 | VAL-03 | Phase 3 | Complete |
 | VAL-04 | Phase 3 | Complete |
 | VAL-05 | Phase 3 | Complete |
-| ARCH-01 | Phase 4 | Pending |
-| ARCH-02 | Phase 4 | Pending |
-| ARCH-03 | Phase 4 | Pending |
-| ARCH-04 | Phase 4 | Pending |
-| ARCH-05 | Phase 4 | Pending |
+| ARCH-01 | Phase 4 | Complete |
+| ARCH-02 | Phase 4 | Complete |
+| ARCH-03 | Phase 4 | Complete |
+| ARCH-04 | Phase 4 | Complete |
+| ARCH-05 | Phase 4 | Complete |
 | QUAL-01 | Phase 5 | Complete |
 | QUAL-02 | Phase 5 | Complete |
 | QUAL-03 | Phase 5 | Complete |
@@ -107,9 +107,9 @@ Deferred to a later milestone after the core modernization work lands.
 | QUAL-05 | Phase 5 | Complete |
 | BENCH-01 | Phase 6 | Complete |
 | BENCH-02 | Phase 6 | Complete |
-| BENCH-03 | Phase 6 | Pending |
+| BENCH-03 | Phase 6 | Mixed |
 | BENCH-04 | Phase 6 | Complete |
-| BENCH-05 | Phase 6 | Pending |
+| BENCH-05 | Phase 6 | Blocked |
 
 **Coverage:**
 - v1 requirements: 30 total
@@ -118,4 +118,4 @@ Deferred to a later milestone after the core modernization work lands.
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 6 Plan 02 execution*
+*Last updated: 2026-03-27 after Phase 6 Plan 03 execution*

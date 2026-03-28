@@ -5,16 +5,16 @@ milestone_name: Rust Codebase Modernization
 current_phase: 06
 current_phase_name: Benchmark Verification & v2 Closeout
 current_plan: 3
-status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-28T02:03:58.637Z"
+status: blocked
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-28T02:16:47.588Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 17
-  completed_plans: 16
-  percent: 94
+  completed_plans: 17
+  percent: 100
 ---
 
 # Project State: APDR
@@ -25,13 +25,13 @@ progress:
 **Current Phase Name:** Benchmark Verification & v2 Closeout
 **Total Phases:** 6
 **Total Plans in Phase:** 3
-**Status:** Executing Phase 06
-**Progress:** [█████████░] 94%
+**Status:** Blocked in Phase 06
+**Progress:** [##########] 100%
 **Last Activity:** 2026-03-28
-**Last Activity Description:** Completed 06-02 and advanced to 06-03
-**Last Date:** 2026-03-28T02:03:58.634Z
-**Stopped At:** Completed 06-02-PLAN.md
-**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-03-PLAN.md
+**Last Activity Description:** Completed 06-03 and recorded milestone blockers in the closeout package
+**Last Date:** 2026-03-28T02:16:47.588Z
+**Stopped At:** Completed 06-03-PLAN.md
+**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md
 
 ---
 
@@ -39,13 +39,13 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 06 — Benchmark Verification & v2 Closeout
+**Current Focus:** Phase 06 - Benchmark Verification & v2 Closeout blocker follow-up
 
 ---
 
 ## Current Position
 
-Phase: 06 (Benchmark Verification & v2 Closeout) — EXECUTING
+Phase: 06 (Benchmark Verification & v2 Closeout) - BLOCKED
 Plan: 3 of 3
 
 ## Milestone Snapshot
@@ -62,14 +62,17 @@ Plan: 3 of 3
 
 ## Current Blockers
 
-None.
+- `cargo test --manifest-path tools/apdr/Cargo.toml -- --nocapture` failed in `wheelhouse_prune_removes_oldest_files`; the current `prune_wheelhouse(...)` tie-break can remove both files when `old.whl` and `new.whl` share the same mtime on this filesystem.
+- `BENCH-03` remains mixed because the representative `peak_rss_bytes` rerun increased by `249,856` bytes (`+1.28%`) versus the committed baseline.
 
 ## Active TODOs
 
-- [ ] Execute Phase `06` (`Benchmark Verification & v2 Closeout`)
+- [x] Execute Phase `06` (`Benchmark Verification & v2 Closeout`)
 - [x] Refresh the bounded continuity benchmark and representative memory artifact against the committed Phase 1 baseline
 - [x] Capture the bounded hard-gists slice and assemble the benchmark-verification package
-- [ ] Rerun the final Rust review gate and write the milestone closeout artifact
+- [x] Rerun the final Rust review gate and write the milestone closeout artifact
+- [ ] Resolve the `wheelhouse_prune_removes_oldest_files` blocker and rerun the exact five-command review gate
+- [ ] Decide whether `BENCH-03` needs stronger memory evidence or an explicit milestone exception before archive
 
 ## Deferred Items
 
@@ -79,9 +82,9 @@ None.
 
 ## Session
 
-**Last Date:** 2026-03-28T02:03:58.634Z
-**Stopped At:** Completed 06-02-PLAN.md
-**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-03-PLAN.md
+**Last Date:** 2026-03-28T02:16:47.588Z
+**Stopped At:** Completed 06-03-PLAN.md
+**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md
 
 ---
 
@@ -104,22 +107,23 @@ None.
 - Planned Phase 6 with `06-RESEARCH.md`, `06-VALIDATION.md`, and three execution plans focused on bounded continuity refresh, hard-gists benchmark verification, and milestone closeout signoff.
 - Completed `06-01` with a fresh bounded continuity benchmark, a representative memory refresh, and `06-CONTINUITY-DELTA.md` tying the continuity gate back to the retained Phase 3 host-variance evidence.
 - Completed `06-02` with a bounded hard-gists slice, a split benchmark-verification package, and an explicit BENCH verdict table that keeps BENCH-03 mixed rather than overstating the representative memory result.
+- Completed `06-03` by rerunning the exact five-command Rust review gate, recording the `wheelhouse_prune_removes_oldest_files` blocker honestly, and writing `06-MILESTONE-CLOSEOUT.md` instead of forcing a false milestone signoff.
 
 ### What's Next
 
-**Immediate:** Execute Phase 6 from `06-03-PLAN.md`.
+**Immediate:** Resolve the wheelhouse-pruning blocker and decide how to handle the mixed BENCH-03 memory evidence before milestone completion.
 
-**This milestone:** Turn the committed baseline, delta, memory, and reviewer-readiness artifacts into the final v2 benchmark-verification and milestone-closeout package.
+**This milestone:** Use `06-MILESTONE-CLOSEOUT.md` as the source of truth for the remaining blockers, then rerun the inherited Phase 5 review gate after the blocker is fixed.
 
-**Next Phase:** None - Phase 6 is the final roadmap phase. If execution finishes cleanly, the next workflow is milestone completion or archive.
+**Next Phase:** None. Phase 6 is the final roadmap phase. The next workflow is blocker resolution, then milestone completion if the gate turns green.
 
 ### Context for Next Session
 
-1. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTEXT.md` for the locked Phase 6 decisions.
-2. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-RESEARCH.md` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-VALIDATION.md`.
-3. Read `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md`, `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md`, and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md`.
+1. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md`.
+2. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md` and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md`.
+3. Inspect `tools/apdr/tests/test_cache.rs` and `tools/apdr/src/cache/maintenance.rs` for the wheelhouse-pruning blocker.
 4. Keep unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched.
-5. Resume from `.planning/phases/06-benchmark-verification-and-v2-closeout/06-03-PLAN.md`.
+5. Resume from the blocker described in `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md`.
 
 ---
 
@@ -135,23 +139,14 @@ None.
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-SUMMARY.md` - support module boundary cleanup summary
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md` - reviewer-facing guide for the five modernized Rust areas
 - `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` - exact review-readiness verification command set
-- `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` - Phase 2 benchmark comparison
-- `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md` - Phase 3 validation throughput comparison
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTEXT.md` - locked Phase 6 benchmark and closeout decisions
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-RESEARCH.md` - implementation research for the final benchmark-verification package
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-VALIDATION.md` - Phase 6 validation contract for benchmark capture and milestone signoff
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-01-SUMMARY.md` - continuity refresh summary with the official bounded regression gate
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-02-SUMMARY.md` - hard-gists slice and benchmark-verification summary with the explicit BENCH verdict table
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTINUITY-DELTA.md` - exact pass-rate, duration, and memory deltas versus the committed Phase 1 baseline
 - `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md` - separated continuity, hard-gists, memory, and host-variance evidence package
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-01-PLAN.md` - bounded continuity benchmark and memory refresh plan
-- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-02-PLAN.md` - hard-gists slice and benchmark-verification package plan
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md` - final signoff package with the current milestone blockers
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-03-SUMMARY.md` - final gate and signoff-plan execution summary
 - `.planning/phases/06-benchmark-verification-and-v2-closeout/06-03-PLAN.md` - milestone review gate and closeout signoff plan
 
 **Key Commands**
 
-- `$gsd-execute-phase 6` - execute the benchmark-verification and milestone-closeout plans
-- `$gsd-progress` - confirm that Phase 6 is planned and ready to execute
+- `$gsd-progress` - inspect the blocked milestone state and next action
 - `cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check`
 - `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture`
 - `cargo test --manifest-path tools/apdr/Cargo.toml validation_pipeline_ -- --nocapture`
@@ -160,4 +155,4 @@ None.
 
 ---
 
-*State updated after Phase 6 Plan 02 execution on 2026-03-27*
+*State updated after Phase 6 Plan 03 execution on 2026-03-27*
