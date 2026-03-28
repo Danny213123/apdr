@@ -1,17 +1,17 @@
 ---
 phase: 07-failure-baseline-parity-slice
-verified: 2026-03-28T16:59:12Z
-status: human_needed
+verified: 2026-03-28T22:29:44Z
+status: passed
 score: 4/4 automated must-haves verified
-re_verification: false
+re_verification: true
 ---
 
 # Phase 7: Failure Baseline & Parity Slice Verification Report
 
 **Phase Goal:** Turn the stopped APDR run and `pllm` comparison into a reproducible, bounded milestone target before changing behavior.
-**Verified:** 2026-03-28T16:59:12Z
-**Status:** human_needed
-**Re-verification:** No - initial verification
+**Verified:** 2026-03-28T22:29:44Z
+**Status:** passed
+**Re-verification:** Yes - manual approval backfill
 
 ## Goal Achievement
 
@@ -56,16 +56,16 @@ re_verification: false
 
 ### Human Verification Required
 
-All automated checks passed. Two document-review items still require human confirmation:
+The previously pending document-review items were approved on 2026-03-28:
 
-1. Confirm that `07-TIER3-PARITY-MANIFEST.md` and `07-BASELINE.md` both keep the 17 tier1 overlap cases outside the Phase 7 contract instead of treating them as part of the canonical baseline.
-2. Confirm that the `selection_reasons` described in `07-FAMILY-SNAPSHOTS.md` stay anchored to `family:` markers, `Family knowledge` notes, or the explicit namespace and bundle anchors owned by the current family runtime.
+1. `07-TIER3-PARITY-MANIFEST.md` and `07-BASELINE.md` keep the 17 tier1 overlap cases outside the Phase 7 contract as a watchlist, not part of the canonical baseline.
+2. `07-FAMILY-SNAPSHOTS.md` keeps the touched-family selection rationale anchored to `family:` markers, `Family knowledge` notes, and the explicit namespace or bundle anchors owned by the current family runtime.
 
 ### Gaps Summary
 
-No automated gaps found. Phase 7's generated artifacts, checker, and targeted resolver gate all passed. Remaining work is limited to the human review items above.
+No automated gaps found. Phase 7's generated artifacts, checker, and targeted resolver gate all passed, and there are no remaining human verification blockers after the approved 2026-03-28 review.
 
 ---
 
-_Verified: 2026-03-28T16:59:12Z_
-_Verifier: Codex inline fallback_
+_Verified: 2026-03-28T22:29:44Z_
+_Verifier: Codex inline backfill_
