@@ -16,7 +16,7 @@ Requirements for the v2.1 accuracy milestone. Each maps to exactly one roadmap p
 
 ### Recovery Accuracy
 
-- [ ] **REC-01**: The repo has a reproducible target slice derived from `runs\20260327-150339-apdr` and `pllm_results\csv\summary-all-runs.csv` for APDR-failed but `pllm`-passing cases
+- [x] **REC-01**: The repo has a reproducible target slice derived from `runs\20260327-150339-apdr` and `pllm_results\csv\summary-all-runs.csv` for APDR-failed but `pllm`-passing cases
 - [ ] **REC-02**: APDR reduces `module-not-found` outcomes on the targeted parity slice compared with the 2026-03-27 baseline
 - [ ] **REC-03**: APDR reduces `version-not-found` and dependency-mapping failures on the targeted parity slice compared with the 2026-03-27 baseline
 - [ ] **REC-04**: APDR improves the number of APDR-failed but `pllm`-passing cases it can recover on the targeted slice
@@ -55,7 +55,7 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 | FAM-02 | Phase 8 | Pending |
 | FAM-03 | Phase 8 | Pending |
 | FAM-04 | Phase 7 | Pending |
-| REC-01 | Phase 7 | Pending |
+| REC-01 | Phase 7 | Complete |
 | REC-02 | Phase 9 | Pending |
 | REC-03 | Phase 9 | Pending |
 | REC-04 | Phase 9 | Pending |
