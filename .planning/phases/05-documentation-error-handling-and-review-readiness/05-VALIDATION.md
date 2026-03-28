@@ -17,7 +17,7 @@ created: 2026-03-27
 
 | Property | Value |
 |----------|-------|
-| **Framework** | `cargo test`, `cargo clippy`, and structural `rg` checks |
+| **Framework** | `cargo fmt --check`, `cargo test`, `cargo clippy`, and structural `rg` checks |
 | **Config file** | `tools/apdr/Cargo.toml` |
 | **Quick run command** | `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture && cargo test --manifest-path tools/apdr/Cargo.toml validation_pipeline_ -- --nocapture` |
 | **Full suite command** | `cargo fmt --manifest-path tools/apdr/Cargo.toml --all --check && cargo test --manifest-path tools/apdr/Cargo.toml -- --nocapture && cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings` |

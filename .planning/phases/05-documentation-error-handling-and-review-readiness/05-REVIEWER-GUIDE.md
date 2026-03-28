@@ -133,16 +133,16 @@ history.
 Tier 3 LLM is a late-stage recovery subsystem, not the primary resolver path.
 Its job is to assess whether an LLM-assisted recovery attempt is warranted and,
 when it is, supply candidate packages or recovery notes back to the resolver.
-At the start of Phase 5, `process.rs` still contains runtime-facing panic paths
-around Python service startup and pipe capture; Wave 2 is responsible for
-hardening those into normal error returns or existing fallback behavior.
+`process.rs` now degrades Python service startup and pipe-capture failures into
+normal Tier 3 LLM unavailability behavior, so host-state problems do not abort
+the resolver process before earlier fallback paths can continue.
 
 ### Reviewer Checks
 
 Confirm the facade docs use the term `Tier 3 LLM` and keep the public entry
 surface small. Then inspect `core.rs` for the public recovery entrypoints and
-`process.rs` for the runtime-facing panic sites that Phase 5 Wave 2 is expected
-to remove or downgrade.
+`process.rs` for the warning-based unavailability path that replaced the prior
+runtime-facing startup panics.
 
 ## Verification Commands
 
