@@ -20,11 +20,11 @@ Requirements for the v2.1 accuracy milestone. Each maps to exactly one roadmap p
 - [x] **REC-02**: APDR reduces `module-not-found` outcomes on the targeted parity slice compared with the 2026-03-27 baseline
 - [x] **REC-03**: APDR reduces `version-not-found` and dependency-mapping failures on the targeted parity slice compared with the 2026-03-27 baseline
 - [x] **REC-04**: APDR improves the number of APDR-failed but `pllm`-passing cases it can recover on the targeted slice
-- [ ] **REC-05**: Recovery changes preserve existing passed cases and expected skip behavior for host-runtime, unsolvable, and local-helper cases on the rerun
+- [x] **REC-05**: Recovery changes preserve existing passed cases and expected skip behavior for host-runtime, unsolvable, and local-helper cases on the rerun
 
 ### Benchmark Evidence
 
-- [ ] **EVD-01**: Benchmark artifacts report case-level APDR versus baseline versus `pllm` deltas for the targeted slice
+- [x] **EVD-01**: Benchmark artifacts report case-level APDR versus baseline versus `pllm` deltas for the targeted slice
 - [ ] **EVD-02**: Milestone closeout records remaining unrecovered parity cases by dominant failure bucket with enough detail for follow-on planning
 
 ## v2 Requirements
@@ -59,8 +59,8 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 | REC-02 | Phase 9 | Complete |
 | REC-03 | Phase 9 | Complete |
 | REC-04 | Phase 9 | Complete |
-| REC-05 | Phase 10 | Pending |
-| EVD-01 | Phase 10 | Pending |
+| REC-05 | Phase 10 | Complete |
+| EVD-01 | Phase 10 | Complete |
 | EVD-02 | Phase 10 | Pending |
 
 **Coverage:**
