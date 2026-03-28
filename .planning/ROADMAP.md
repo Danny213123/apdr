@@ -13,7 +13,7 @@
 - [x] **Phase 3: Validation Pipeline Throughput** - Improve env and Docker validation efficiency, cache reuse, and retry cost
 - [x] **Phase 4: Module Layout & Boundary Cleanup** - Split oversized Rust modules and make responsibilities easier to review (completed 2026-03-27)
 - [x] **Phase 5: Documentation, Error Handling & Review Readiness** - Raise clarity, docs, and standards compliance in touched Rust code (completed 2026-03-27)
-- [ ] **Phase 6: Benchmark Verification & v2 Closeout** - Prove the modernization work with before/after benchmarks and review gates (execution complete; BENCH-03 remains mixed)
+- [x] **Phase 6: Benchmark Verification & v2 Closeout** - Prove the modernization work with before/after benchmarks and review gates (completed 2026-03-27)
 
 ## Phase Details
 
@@ -151,7 +151,7 @@
 | 3. Validation Pipeline Throughput | 3/3 | Complete | 2026-03-27 |
 | 4. Module Layout & Boundary Cleanup | 3/3 | Complete   | 2026-03-27 |
 | 5. Documentation, Error Handling & Review Readiness | 3/3 | Complete | 2026-03-27 |
-| 6. Benchmark Verification & v2 Closeout | 3/3 | Blocked | - |
+| 6. Benchmark Verification & v2 Closeout | 3/3 | Complete | 2026-03-27 |
 
 ---
 

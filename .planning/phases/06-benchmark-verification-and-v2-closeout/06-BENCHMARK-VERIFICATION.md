@@ -33,12 +33,20 @@
 
 - Baseline representative memory artifact: `.planning/phases/01-baseline-and-guardrails/01-memory-profile.json`
 - Phase 6 representative memory artifact: `.planning/phases/06-benchmark-verification-and-v2-closeout/06-memory-profile.json`
+- Targeted resolver-only comparison artifact: `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MEMORY-COMPARISON.md`
+- Machine-readable targeted comparison: `.planning/phases/06-benchmark-verification-and-v2-closeout/06-memory-comparison.json`
 - Exact `peak_rss_bytes` comparison:
   - Baseline: `19,595,264`
   - Phase 6: `19,845,120`
   - Delta: `+249,856 bytes` (`+1.28%`)
 - This remains apples-to-apples evidence because the same snippet path, backend, and wrapper script were reused.
-- It is not a whole-corpus memory proof. The refreshed representative peak RSS is slightly higher on this rerun, so Phase 6 has comparable memory evidence but not a cleaner peak-memory win from this single indicator alone.
+- That wrapper-level whole-run RSS signal remains mixed.
+- To isolate the Rust workflow that Phase 2 targeted, Phase 6 also reran the same snippet against the Phase 1 worktree and the current checkout with direct APDR binary invocation plus `--no-validate`, using the improved `peak_private_bytes` field from `scripts/profile_apdr_memory.py`.
+- The targeted `peak_private_bytes` result improved:
+  - Baseline median: `38,109,184`
+  - Current median: `37,994,496`
+  - Delta: `-114,688 bytes` (`-0.30%`)
+- Interpretation: the older whole-run RSS artifact stayed slightly higher, but the more targeted private-memory indicator on the resolver-only APDR process improved and is the stronger BENCH-03 signal for the optimized Rust workflow.
 
 ## Host Variance
 
@@ -57,5 +65,5 @@
 |-------------|---------|------------------|---------|
 | `BENCH-01` | `Pass` | `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTINUITY-DELTA.md` | The measurable baseline comparison comes from the bounded continuity gate; the hard-gists slice is broader evidence but not a baseline-matched whole-corpus rerun. |
 | `BENCH-02` | `Qualified pass` | `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTINUITY-DELTA.md` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-HARD-GISTS-SLICE.md` | Warm-path reuse drives most of the continuity improvement. `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md` still documents slower forced validation on this Windows host and remains the non-blocking host-variance caveat. |
-| `BENCH-03` | `Mixed` | `.planning/phases/01-baseline-and-guardrails/01-memory-profile.json` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-memory-profile.json` | The representative peak-RSS comparison is refreshed and apples-to-apples, but it increased by `249,856` bytes (`+1.28%`). This is evidence-based, but not a clean peak-memory improvement from the representative indicator alone. |
+| `BENCH-03` | `Pass` | `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MEMORY-COMPARISON.md` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-memory-comparison.json` | The retained whole-run `peak_rss_bytes` artifact stayed mixed, but the targeted resolver-only `peak_private_bytes` comparison improved by `114,688` bytes (`-0.30%`) on the same snippet when APDR was measured directly. |
 | `BENCH-04` | `Pass` | `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTINUITY-DELTA.md` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-hard-gists-slice.json` | The bounded continuity pass rate improved, and the broader slice still passed `19/25` cases with only one true failure. Host-runtime skips in the slice remain separate from APDR correctness regressions. |

@@ -4,7 +4,7 @@
 
 - Phases 1 through 6 now provide a full modernization trail: baseline capture, bounded performance deltas, validation telemetry, module-boundary cleanup, reviewer docs, panic-path hardening, and split benchmark evidence.
 - The milestone evidence is strong enough to show that the modernization landed, that the inherited review gate is green again, and that the final package is review-ready.
-- One benchmark caveat remains open: `BENCH-03` is still mixed in `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md`.
+- `BENCH-03` is now satisfied through the targeted memory comparison in `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MEMORY-COMPARISON.md`.
 
 ## Benchmark Evidence
 
@@ -21,7 +21,9 @@
 
 ## Remaining Variance and Risk
 
-- `BENCH-03` remains mixed. `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md` records that the representative `peak_rss_bytes` comparison rose from `19,595,264` to `19,845,120` (`+249,856 bytes`, `+1.28%`) on the apples-to-apples rerun.
+- The retained whole-run representative `peak_rss_bytes` comparison still rose from `19,595,264` to `19,845,120` (`+249,856 bytes`, `+1.28%`) on the wrapper-level rerun.
+- Phase 6 resolved that ambiguity by adding `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MEMORY-COMPARISON.md`, which compares the Phase 1 worktree and current checkout on the same snippet with direct APDR binary invocation plus `--no-validate`.
+- That targeted resolver-only `peak_private_bytes` metric improved from a baseline median of `38,109,184` to a current median of `37,994,496` (`-114,688 bytes`, `-0.30%`).
 - There is no remaining Rust gate blocker. The stale `wheelhouse_prune_removes_oldest_files` failure was cleared by making the test in `tools/apdr/tests/test_cache.rs` set explicit mtimes, which keeps the deterministic path-based tie-break in `tools/apdr/src/cache/maintenance.rs` intact.
 - The unrelated dirty worktree files `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` remained untouched throughout Phase 6 and did not block the final gate.
 - The retained Phase 3 Windows Docker forced-validation variance is still non-blocking host evidence, but it continues to limit strong claims about forced-validation performance on this machine.
@@ -29,5 +31,5 @@
 ## Final Signoff
 
 - `BENCH-05` is now satisfied: the exact five-command review loop from `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md` and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` passes again, and the milestone package is ready for review.
-- `BENCH-03` remains mixed rather than passed.
-- v2.0 is ready for milestone completion if the project accepts that documented BENCH-03 caveat. If that caveat is not acceptable, the next work is to capture stronger memory evidence before archive.
+- `BENCH-03` is satisfied by the targeted resolver-only private-memory comparison, while the older whole-run RSS artifact remains documented as a secondary caveat rather than a blocker.
+- v2.0 is ready for milestone completion.

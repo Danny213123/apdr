@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shlex
@@ -25,7 +26,7 @@ TEST_EXECUTOR = REPO_ROOT / "tools" / "apdr" / "test_executor.py"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Capture peak memory for a representative APDR test_executor.py run."
+        description="Capture memory for a representative APDR resolve run."
     )
     parser.add_argument("--snippet", required=True, help="Snippet file to profile.")
     parser.add_argument("--output-json", required=True, help="Path for the memory profile JSON artifact.")
@@ -33,14 +34,29 @@ def parse_args() -> argparse.Namespace:
         "--validation-backend",
         choices=("env", "docker", "llm"),
         default="env",
-        help="Validation backend forwarded to tools/apdr/test_executor.py.",
+        help="Validation backend forwarded to the APDR resolve command.",
     )
     parser.add_argument(
         "--python-command",
         default=sys.executable,
-        help="Python launcher used to invoke tools/apdr/test_executor.py.",
+        help="Retained for backward compatibility with older wrapper-driven captures.",
+    )
+    parser.add_argument(
+        "--test-executor",
+        default=str(TEST_EXECUTOR),
+        help="Path to the test_executor.py wrapper for the APDR checkout being profiled.",
+    )
+    parser.add_argument(
+        "--apdr-command",
+        default="",
+        help="Optional direct APDR command override, for example 'tools/apdr/target/debug/apdr.exe'.",
     )
     parser.add_argument("--context-log", default="", help="Optional APDR benchmark context log path.")
+    parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip validation to isolate resolver-side memory when needed.",
+    )
     parser.add_argument(
         "--force-validate",
         action="store_true",
@@ -116,12 +132,17 @@ def latest_output(case_output_dir: Path) -> Path | None:
     return outputs[0] if outputs else None
 
 
-def query_peak_working_set_windows(pid: int) -> int:
+def query_process_memory_windows(pid: int) -> tuple[int, int]:
     command = [
         "powershell.exe",
         "-NoProfile",
         "-Command",
-        f"$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; if ($p) {{ $p.PeakWorkingSet64 }}",
+        (
+            f"$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; "
+            "if ($p) { "
+            'Write-Output "$($p.PeakWorkingSet64),$($p.PrivateMemorySize64)" '
+            "}"
+        ),
     ]
     completed = subprocess.run(
         command,
@@ -129,7 +150,10 @@ def query_peak_working_set_windows(pid: int) -> int:
         text=True,
         check=False,
     )
-    return parse_int(completed.stdout.strip())
+    parts = str(completed.stdout or "").strip().split(",", 1)
+    if len(parts) != 2:
+        return 0, 0
+    return parse_int(parts[0]), parse_int(parts[1])
 
 
 def normalize_ru_maxrss(ru_maxrss: int) -> int:
@@ -140,28 +164,62 @@ def normalize_ru_maxrss(ru_maxrss: int) -> int:
     return int(ru_maxrss) * 1024
 
 
+def load_test_executor_module(path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location(
+        f"apdr_test_executor_{abs(hash(str(path)))}",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load test executor from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> int:
     args = parse_args()
     snippet = Path(args.snippet).expanduser().resolve()
     output_json = Path(args.output_json).expanduser().resolve()
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    python_command = parse_python_command(args.python_command)
+    test_executor = Path(args.test_executor).expanduser().resolve()
+    test_executor_module = load_test_executor_module(test_executor)
+    tool_dir = test_executor.parent
     case_output_dir = output_json.parent / ".memory-profile-run"
     if case_output_dir.exists():
         shutil.rmtree(case_output_dir)
     case_output_dir.mkdir(parents=True, exist_ok=True)
 
-    command = python_command + [
-        str(TEST_EXECUTOR),
-        "-f",
-        str(snippet),
-        "--output-dir",
-        str(case_output_dir),
-        "--validation-backend",
-        str(args.validation_backend),
-    ]
+    command = (
+        parse_python_command(args.apdr_command)
+        if str(args.apdr_command).strip()
+        else test_executor_module.choose_command(tool_dir)
+    )
+    command.extend(
+        [
+            "resolve",
+            str(snippet),
+            "--output",
+            str(case_output_dir),
+            "--range",
+            "1",
+            "--max-retries",
+            "5",
+            "--docker-timeout",
+            "900",
+            "--validation-backend",
+            str(args.validation_backend),
+            "--llm-provider",
+            "ollama",
+            "--llm-model",
+            "qwen3.5:9b",
+            "--llm-base-url",
+            "http://localhost:11434",
+        ]
+    )
     if args.context_log:
         command.extend(["--benchmark-context-log", args.context_log])
+    if args.no_validate:
+        command.append("--no-validate")
     if args.force_validate:
         command.append("--force-validate")
 
@@ -169,18 +227,23 @@ def main() -> int:
     started = time.perf_counter()
     process = subprocess.Popen(
         command,
-        cwd=REPO_ROOT,
+        cwd=tool_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
 
     peak_rss_bytes = 0
+    peak_private_bytes = 0
     if os.name == "nt":
         while process.poll() is None:
-            peak_rss_bytes = max(peak_rss_bytes, query_peak_working_set_windows(process.pid))
-            time.sleep(0.2)
-        peak_rss_bytes = max(peak_rss_bytes, query_peak_working_set_windows(process.pid))
+            rss_bytes, private_bytes = query_process_memory_windows(process.pid)
+            peak_rss_bytes = max(peak_rss_bytes, rss_bytes)
+            peak_private_bytes = max(peak_private_bytes, private_bytes)
+            time.sleep(0.1)
+        rss_bytes, private_bytes = query_process_memory_windows(process.pid)
+        peak_rss_bytes = max(peak_rss_bytes, rss_bytes)
+        peak_private_bytes = max(peak_private_bytes, private_bytes)
 
     stdout, stderr = process.communicate()
     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -192,8 +255,25 @@ def main() -> int:
             resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
         )
 
-    output_path = latest_output(case_output_dir)
-    metadata = parse_simple_yaml(output_path) if output_path else {}
+    summary = test_executor_module.parse_summary(stdout)
+    output_path = None
+    metadata: dict[str, str] = {}
+    if summary:
+        fake_args = argparse.Namespace(
+            base="http://localhost:11434",
+            model="qwen3.5:9b",
+            temp="0.7",
+            loop=5,
+            range=1,
+            rag="true" if args.validation_backend == "llm" else "false",
+        )
+        output_path = test_executor_module.write_output_file(
+            case_output_dir,
+            summary.get("PYTHON_VERSION", "3.11"),
+            summary,
+            fake_args,
+        )
+        metadata = parse_simple_yaml(output_path)
     requirements_path = Path(normalize_path_text(metadata.get("requirements_path"))) if metadata.get("requirements_path") else case_output_dir / "requirements.txt"
     report_path = Path(normalize_path_text(metadata.get("report_path"))) if metadata.get("report_path") else case_output_dir / "resolution-report.txt"
 
@@ -201,9 +281,11 @@ def main() -> int:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "snippet": str(snippet),
         "command": command_display,
+        "test_executor": str(test_executor),
         "validation_backend": args.validation_backend,
         "duration_ms": duration_ms,
         "peak_rss_bytes": peak_rss_bytes,
+        "peak_private_bytes": peak_private_bytes,
         "status": classify_status(process.returncode, metadata, output_path is not None),
         "validation_succeeded": parse_bool(metadata.get("validation_succeeded")),
         "validation_status": str(metadata.get("validation_status") or "").strip(),
