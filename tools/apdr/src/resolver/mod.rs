@@ -218,7 +218,7 @@ pub fn resolve_path(
     }
 
     // Run tier1 (cache) + tier2 (heuristic) first â€” these are fast (~ms)
-    // In LLM-only mode, skip these tiers and go straight to tier3.
+    // In LLM-only mode, skip these tiers and go straight to Tier 3 LLM.
     let mut resolved = Vec::new();
     let mut unresolved = if config.llm_only_mode {
         report
@@ -316,7 +316,7 @@ pub fn resolve_path(
                 });
             }
 
-            // Run tier3 (LLM) for remaining unresolved imports
+            // Run Tier 3 LLM for remaining unresolved imports.
             let mut stage3 = tier3_llm::resolve(
                 &unresolved,
                 &parse_result,
@@ -1357,7 +1357,7 @@ fn retry_with_llm_for_missing_packages(
             // This dependency maps to a package with no metadata - retry it
             imports_to_retry.push(dep.import_name.clone());
             report.notes.push(format!(
-                "Package `{}` has no KGraph metadata. Retrying import `{}` with tier3_llm.",
+                "Package `{}` has no KGraph metadata. Retrying import `{}` with Tier 3 LLM fallback.",
                 dep.package_name, dep.import_name
             ));
         } else {
@@ -1370,7 +1370,7 @@ fn retry_with_llm_for_missing_packages(
         return (resolved.to_vec(), Vec::new());
     }
 
-    // Call tier3_llm with additional context about the missing metadata
+    // Call Tier 3 LLM with additional context about the missing metadata.
     let llm_result = tier3_llm::resolve_with_context(
         &imports_to_retry,
         snippet_source,

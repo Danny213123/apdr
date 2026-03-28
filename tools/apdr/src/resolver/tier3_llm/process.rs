@@ -98,7 +98,7 @@ fn spawn_python_process() -> Option<Mutex<LlmProcess>> {
         .spawn()
         .map_err(|err| {
             eprintln!(
-                "[tier3-llm] Python LLM service unavailable: failed to spawn `{python} -m llm_py` from {}: {err}",
+                "[Tier 3 LLM] Python service unavailable: failed to spawn `{python} -m llm_py` from {}: {err}",
                 parent.display()
             );
             err
@@ -106,13 +106,13 @@ fn spawn_python_process() -> Option<Mutex<LlmProcess>> {
         .ok()?;
 
     let Some(stdin) = child.stdin.take() else {
-        eprintln!("[tier3-llm] Python LLM service unavailable: failed to capture stdin");
+        eprintln!("[Tier 3 LLM] Python service unavailable: failed to capture stdin");
         let _ = child.kill();
         let _ = child.wait();
         return None;
     };
     let Some(stdout) = child.stdout.take() else {
-        eprintln!("[tier3-llm] Python LLM service unavailable: failed to capture stdout");
+        eprintln!("[Tier 3 LLM] Python service unavailable: failed to capture stdout");
         let _ = child.kill();
         let _ = child.wait();
         return None;
@@ -123,7 +123,7 @@ fn spawn_python_process() -> Option<Mutex<LlmProcess>> {
     if reader.read_line(&mut ready_line).is_ok() {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&ready_line) {
             if json.get("ready").and_then(|v| v.as_bool()) != Some(true) {
-                eprintln!("Warning: Python LLM service did not send ready signal");
+                eprintln!("[Tier 3 LLM] Python service did not send a ready signal");
             }
         }
     }
