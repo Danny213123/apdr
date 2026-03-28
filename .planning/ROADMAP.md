@@ -34,6 +34,11 @@
 3. Touched family-knowledge cases have regression fixtures or snapshots that lock current intended behavior before migration
 4. The milestone has a bounded improvement target rather than an open-ended accuracy wish list
 
+**Plans**:
+- [ ] `07-01` - Canonical Tier3 Parity Manifest
+- [ ] `07-02` - Touched Family Snapshot Corpus
+- [ ] `07-03` - Baseline Checker & Phase 8 Handoff
+
 ---
 
 ### Phase 8: Data-Driven Family Knowledge Runtime
@@ -85,7 +90,7 @@
 
 | Phase | Requirements | Status | Completed |
 |-------|--------------|--------|-----------|
-| 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Not started | - |
+| 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Planned | - |
 | 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Not started | - |
 | 9. Targeted Tier3 Recovery Accuracy | REC-02, REC-03, REC-04 | Not started | - |
 | 10. Benchmark Verification & Accuracy Closeout | REC-05, EVD-01, EVD-02 | Not started | - |
@@ -110,4 +115,4 @@ Phase 7: Failure Baseline & Parity Slice (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-27*
-*Last updated: 2026-03-27 after milestone v2.1 roadmap creation*
+*Last updated: 2026-03-28 after Phase 7 planning*
