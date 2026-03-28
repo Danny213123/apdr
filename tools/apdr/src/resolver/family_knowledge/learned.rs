@@ -210,12 +210,9 @@ pub fn check_learned_family(module_name: &str, package_name: &str) -> Option<Lea
 
 /// Get all learned alternatives for a module
 pub fn get_learned_alternatives(module_name: &str) -> Vec<String> {
-    let learned = LEARNED_FAMILIES.lock().ok();
-    if learned.is_none() {
+    let Some(learned) = LEARNED_FAMILIES.lock().ok() else {
         return Vec::new();
-    }
-
-    let learned = learned.unwrap();
+    };
     let normalized_module = normalize(module_name);
 
     let mut alternatives = Vec::new();

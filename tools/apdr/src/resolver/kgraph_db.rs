@@ -23,7 +23,9 @@ struct PooledConnection<'a> {
 impl std::ops::Deref for PooledConnection<'_> {
     type Target = Connection;
     fn deref(&self) -> &Connection {
-        self.conn.as_ref().unwrap()
+        self.conn
+            .as_ref()
+            .expect("pooled connection invariant violated: connection is taken only during drop")
     }
 }
 

@@ -46,11 +46,11 @@ impl SolveState {
 
     fn restore(&mut self, checkpoint: usize) {
         while self.undo_stack.len() > checkpoint {
-            match self.undo_stack.pop().unwrap() {
-                UndoOp::InsertSelected(package) => {
+            match self.undo_stack.pop() {
+                Some(UndoOp::InsertSelected(package)) => {
                     self.selected.remove(&package);
                 }
-                UndoOp::SetConstraint(package, old_value) => match old_value {
+                Some(UndoOp::SetConstraint(package, old_value)) => match old_value {
                     Some(value) => {
                         self.constraints.insert(package, value);
                     }
@@ -58,6 +58,13 @@ impl SolveState {
                         self.constraints.remove(&package);
                     }
                 },
+                None => {
+                    debug_assert!(
+                        false,
+                        "undo stack length was checked before restore pop"
+                    );
+                    break;
+                }
             }
         }
     }
