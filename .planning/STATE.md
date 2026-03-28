@@ -5,10 +5,10 @@ milestone_name: Rust Codebase Modernization
 current_phase: 06
 current_phase_name: benchmark-verification-and-v2-closeout
 current_plan: Not started
-status: paused
-stopped_at: Phase 6 context gathered
+status: ready_to_execute
+stopped_at: Phase 6 planned
 paused_at: None
-last_updated: "2026-03-28T01:15:55.350Z"
+last_updated: "2026-03-28T01:34:43.032Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 6
@@ -23,17 +23,17 @@ progress:
 **Last Updated:** 2026-03-27
 **Current Phase:** 06
 **Current Plan:** Not started
-**Current Phase Name:** benchmark-verification-and-v2-closeout
+**Current Phase Name:** Benchmark Verification & v2 Closeout
 **Total Phases:** 6
-**Total Plans in Phase:** TBD
-**Status:** Ready to plan Phase 06
-**Progress:** [##########] 100%
-**Last Activity:** 2026-03-27
-**Last Activity Description:** Completed Phase 05 and closed the reviewer-doc, panic-hardening, and consistency-verification work; next step is Phase 06 planning
-**Paused At:** None
-**Last Date:** 2026-03-28T01:15:55.346Z
-**Stopped At:** Phase 6 context gathered
-**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTEXT.md
+**Total Plans in Phase:** 3
+**Status:** Ready to execute
+**Progress:** 0%
+**Last Activity:** Phase 6 planned
+**Last Activity Description:** Added `06-RESEARCH.md`, `06-VALIDATION.md`, and three execution plans covering continuity benchmarking, hard-gists verification, and milestone closeout.
+**Paused At:** Phase 6 execution handoff
+**Last Date:** 2026-03-27T21:34:43.0321831-04:00
+**Stopped At:** Phase 6 planned
+**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-01-PLAN.md
 
 ---
 
@@ -47,8 +47,8 @@ progress:
 
 ## Current Position
 
-Phase: 06 (benchmark-verification-and-v2-closeout) - READY TO PLAN
-Plan: Not started
+Phase: 06 (benchmark-verification-and-v2-closeout) - READY TO EXECUTE
+Plan: Not started (3 plans queued)
 
 ## Milestone Snapshot
 
@@ -68,9 +68,9 @@ None.
 
 ## Active TODOs
 
-- [ ] Discuss or plan Phase `06` (`Benchmark Verification & v2 Closeout`)
-- [ ] Turn the Phase 2 and Phase 3 benchmark artifacts into explicit Phase 6 execution plans
-- [ ] Run any final review or verification flow for completed Phase 5 if needed
+- [ ] Execute Phase `06` (`Benchmark Verification & v2 Closeout`)
+- [ ] Refresh the bounded continuity benchmark and representative memory artifact against the committed Phase 1 baseline
+- [ ] Build the split benchmark-verification and milestone-closeout package for v2.0
 
 ## Deferred Items
 
@@ -80,9 +80,9 @@ None.
 
 ## Session
 
-**Last Date:** 2026-03-27T20:21:23.7954210-04:00
-**Stopped At:** Phase 5 complete
-**Resume File:** None
+**Last Date:** 2026-03-27T21:34:43.0321831-04:00
+**Stopped At:** Phase 6 planned
+**Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-01-PLAN.md
 
 ---
 
@@ -101,22 +101,24 @@ None.
 - Completed `05-02` by removing Tier 3 startup panics, guarding env-backend escalation checks, and narrowing the remaining touched invariants to explicit reviewer-facing forms.
 - Completed `05-03` by aligning reviewer terminology, syncing the guide with the validation contract, and passing fmt, targeted tests, the full Rust suite, and clippy.
 - Phase 5 is now complete.
+- Captured `06-CONTEXT.md` and `06-DISCUSSION-LOG.md` for Phase 6, locking the hybrid benchmark policy, host-variance handling, split closeout package, and hybrid final gate.
+- Planned Phase 6 with `06-RESEARCH.md`, `06-VALIDATION.md`, and three execution plans focused on bounded continuity refresh, hard-gists benchmark verification, and milestone closeout signoff.
 
 ### What's Next
 
-**Immediate:** Run `$gsd-discuss-phase 6` or `$gsd-plan-phase 6`.
+**Immediate:** Execute Phase 6 from `06-01-PLAN.md`.
 
-**This milestone:** Use the validated Phase 2 through Phase 5 outputs to prove the modernization work with explicit benchmark and closeout plans.
+**This milestone:** Turn the committed baseline, delta, memory, and reviewer-readiness artifacts into the final v2 benchmark-verification and milestone-closeout package.
 
-**Next Phase:** Create benchmark-verification and milestone-closeout plans against the committed baseline, candidate, and delta artifacts.
+**Next Phase:** None - Phase 6 is the final roadmap phase. If execution finishes cleanly, the next workflow is milestone completion or archive.
 
 ### Context for Next Session
 
-1. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` for the locked Phase 5 decisions.
-2. Read `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-SUMMARY.md`, `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-SUMMARY.md`, and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-03-SUMMARY.md`.
-3. Read `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` and `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md`.
+1. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTEXT.md` for the locked Phase 6 decisions.
+2. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-RESEARCH.md` and `.planning/phases/06-benchmark-verification-and-v2-closeout/06-VALIDATION.md`.
+3. Read `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md`, `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md`, and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md`.
 4. Keep unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched.
-5. Start with `$gsd-discuss-phase 6` or `$gsd-plan-phase 6`.
+5. Start with `$gsd-execute-phase 6`.
 
 ---
 
@@ -130,24 +132,27 @@ None.
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-01-SUMMARY.md` - resolver facade split summary
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-02-SUMMARY.md` - validation builder split summary
 - `.planning/phases/04-module-layout-and-boundary-cleanup/04-03-SUMMARY.md` - support module boundary cleanup summary
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-CONTEXT.md` - locked Phase 5 decisions
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-RESEARCH.md` - concentrated panic-path targets and reviewer-guide guidance
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` - Phase 5 verification contract
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-01-SUMMARY.md` - reviewer-surface documentation summary
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-02-SUMMARY.md` - panic-path hardening and invariant-cleanup summary
-- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-03-SUMMARY.md` - consistency sweep and verification closeout summary
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md` - reviewer-facing guide for the five modernized Rust areas
+- `.planning/phases/05-documentation-error-handling-and-review-readiness/05-VALIDATION.md` - exact review-readiness verification command set
 - `.planning/phases/02-resolver-memory-and-algorithm-efficiency/02-RESOLVER-DELTA.md` - Phase 2 benchmark comparison
 - `.planning/phases/03-validation-pipeline-throughput/03-VALIDATION-DELTA.md` - Phase 3 validation throughput comparison
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTEXT.md` - locked Phase 6 benchmark and closeout decisions
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-RESEARCH.md` - implementation research for the final benchmark-verification package
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-VALIDATION.md` - Phase 6 validation contract for benchmark capture and milestone signoff
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-01-PLAN.md` - bounded continuity benchmark and memory refresh plan
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-02-PLAN.md` - hard-gists slice and benchmark-verification package plan
+- `.planning/phases/06-benchmark-verification-and-v2-closeout/06-03-PLAN.md` - milestone review gate and closeout signoff plan
 
 **Key Commands**
 
-- `$gsd-discuss-phase 6` - capture the benchmark-closeout context before planning
-- `$gsd-plan-phase 6` - create the Phase 6 execution plans
-- `$gsd-progress` - confirm that Phase 5 is complete and Phase 6 is next
+- `$gsd-execute-phase 6` - execute the benchmark-verification and milestone-closeout plans
+- `$gsd-progress` - confirm that Phase 6 is planned and ready to execute
+- `python scripts/measure_apdr_baseline.py --fixtures-root tools/apdr/tests/fixtures --limit 3 --validation-backend env --output-json .planning/phases/06-benchmark-verification-and-v2-closeout/06-continuity-candidate.json --output-md .planning/phases/06-benchmark-verification-and-v2-closeout/06-CONTINUITY-CANDIDATE.md`
+- `python scripts/profile_apdr_memory.py --snippet tools/apdr/tests/fixtures/sample_snippet.py --validation-backend env --output-json .planning/phases/06-benchmark-verification-and-v2-closeout/06-memory-profile.json`
 - `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture`
 - `cargo test --manifest-path tools/apdr/Cargo.toml validation_pipeline_ -- --nocapture`
 - `cargo clippy --manifest-path tools/apdr/Cargo.toml --all-targets -- -D warnings`
 
 ---
 
-*State updated after Phase 5 completion on 2026-03-27*
+*State updated after Phase 6 planning on 2026-03-27*
