@@ -2,11 +2,11 @@
 
 **Project:** APDR v2.1 - Data-Driven Family Knowledge & LLM Recovery Accuracy
 **Created:** 2026-03-27
-**Granularity:** Standard (4 phases)
+**Granularity:** Standard (6 phases)
 
 ## Milestones
 
-- [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - Phases 7-10
+- [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - Phases 7-12
 - [x] `v2.0` Rust Codebase Modernization - shipped 2026-03-28, archived in `.planning/milestones/v2.0-ROADMAP.md`
 - [x] `v1.0` Accuracy & Performance - shipped 2026-03-27, archived in `.planning/milestones/v1.0-ROADMAP.md`
 
@@ -16,8 +16,10 @@
 
 - [x] **Phase 7: Failure Baseline & Parity Slice** - Turn the stopped APDR run and `pllm` summary into a reproducible target slice with baseline fixtures (completed 2026-03-28)
 - [x] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection (completed 2026-03-28)
-- [ ] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets
+- [x] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets (completed 2026-03-28)
 - [x] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps (completed 2026-03-28)
+- [ ] **Phase 11: Verification Backfill & State Repair** - Backfill missing verification artifacts and repair stale milestone-state docs so the completed work matches the audited repo state
+- [ ] **Phase 12: Live Benchmark Proof & Requirement Reconciliation** - Close the recovery-proof gap with a live targeted rerun or reconcile the milestone requirements and closeout docs to the measured result
 
 ## Phase Details
 
@@ -68,6 +70,8 @@
 3. APDR recovers more of the 87 APDR-failed but `pllm`-passing cases than the March 27, 2026 baseline
 4. Recovery changes keep failure reasons inspectable instead of hiding them behind generic retries
 
+**Plans:** 3/3 plans complete
+
 ---
 
 ### Phase 10: Benchmark Verification & Accuracy Closeout
@@ -83,6 +87,44 @@
 3. Remaining unrecovered parity cases are grouped by dominant failure bucket with follow-on notes
 4. Milestone closeout leaves the next benchmark comparison path repeatable and reviewer-readable
 
+**Plans:** 3/3 plans complete
+
+---
+
+### Phase 11: Verification Backfill & State Repair
+**Goal**: Backfill missing verification artifacts and stale planning-state documents so the v2.1 repo history matches the completed work and milestone audit
+
+**Depends on**: Phases 7-10 (existing artifacts, summaries, and checkers)
+
+**Requirements**: FAM-01, FAM-02, FAM-03
+
+**Gap Closure:** Closes the audit's orphaned family-knowledge requirements and the stale planning-state debt called out in `v2.1-MILESTONE-AUDIT.md`
+
+**Success Criteria** (what must be TRUE):
+1. Phase 8 has a repo-backed verification report anchored to its existing tests and checker so `FAM-01`, `FAM-02`, and `FAM-03` are no longer orphaned
+2. Phase 7's accepted manual-review outcome is reflected in repo artifacts instead of lingering as unresolved `human_needed` debt
+3. `ROADMAP.md`, `STATE.md`, and related milestone closeout references align with the actual completion status of Phases 7-10
+4. A re-audit no longer fails on missing verification artifacts or stale phase-state prose
+
+**Plans:** Pending planning
+
+---
+
+### Phase 12: Live Benchmark Proof & Requirement Reconciliation
+**Goal**: Close the audited recovery-proof gap by running a live targeted rerun or explicitly reconciling the milestone requirements and closeout docs to the measured benchmark outcome
+
+**Depends on**: Phase 11 (verification backfill and state repair), Phase 10 (targeted rerun tooling and evidence package)
+
+**Requirements**: REC-02, REC-03, REC-04
+
+**Gap Closure:** Closes the audit's broken Phase 9 -> Phase 10 proof flow and the failed live-rerun milestone flow in `v2.1-MILESTONE-AUDIT.md`
+
+**Success Criteria** (what must be TRUE):
+1. Phase 10 rerun artifacts are regenerated from a live APDR benchmark run rather than dry-run-only data, or the repo records a hard blocker for why live proof cannot run
+2. The repo either demonstrates measured recovery improvement on the canonical slice or explicitly re-scopes the recovery requirements and milestone closeout to the observed benchmark result
+3. Benchmark verification and milestone closeout docs no longer overclaim recovery improvement relative to the measured evidence
+4. A re-audit no longer reports the recovery-proof flow as broken
+
 ---
 
 ## Progress
@@ -91,8 +133,10 @@
 |-------|--------------|--------|-----------|
 | 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Complete | 2026-03-28 |
 | 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Complete | 2026-03-28 |
-| 9. Targeted Tier3 Recovery Accuracy | 1/3 | In Progress|  |
-| 10. Benchmark Verification & Accuracy Closeout | 3/3 | Complete    | 2026-03-28 |
+| 9. Targeted Tier3 Recovery Accuracy | REC-02, REC-03, REC-04 | Complete | 2026-03-28 |
+| 10. Benchmark Verification & Accuracy Closeout | REC-05, EVD-01, EVD-02 | Complete | 2026-03-28 |
+| 11. Verification Backfill & State Repair | FAM-01, FAM-02, FAM-03 | Not started |  |
+| 12. Live Benchmark Proof & Requirement Reconciliation | REC-02, REC-03, REC-04 | Not started |  |
 
 ---
 
@@ -103,15 +147,17 @@ Phase 7: Failure Baseline & Parity Slice (FOUNDATION)
    -> Phase 8: Data-Driven Family Knowledge Runtime
       -> Phase 9: Targeted Tier3 Recovery Accuracy
          -> Phase 10: Benchmark Verification & Accuracy Closeout
+            -> Phase 11: Verification Backfill & State Repair
+               -> Phase 12: Live Benchmark Proof & Requirement Reconciliation
 ```
 
-**Critical Path**: Phase 7 -> Phase 8 -> Phase 9 -> Phase 10
+**Critical Path**: Phase 7 -> Phase 8 -> Phase 9 -> Phase 10 -> Phase 11 -> Phase 12
 
 **Parallel Opportunities**:
-- Small data-model validation helpers can begin once the Phase 7 slice and baseline fixtures exist
-- Phase 10 artifact structure can be outlined while Phase 9 fixes are landing, but final evidence waits on the rerun
+- Verification-report scaffolding and stale-doc reconciliation can begin before the live benchmark rerun infrastructure is available
+- Benchmark command validation and environment readiness checks can begin while the verification backfill phase is landing, but the final proof artifact waits on the live rerun
 
 ---
 
 *Roadmap created: 2026-03-27*
-*Last updated: 2026-03-28 after Phase 8 completion*
+*Last updated: 2026-03-28 after v2.1 milestone gap planning*
