@@ -211,6 +211,35 @@ impl TargetedRecoveryPolicy {
         }
         None
     }
+
+    /// Find a compatibility cluster whose `trigger_substrings` match the log.
+    pub fn compatibility_cluster_for_log(&self, log: &str) -> Option<&CompatibilityCluster> {
+        let lower = log.to_ascii_lowercase();
+        for cluster in &self.compatibility_clusters {
+            for trigger in &cluster.trigger_substrings {
+                if lower.contains(&trigger.to_ascii_lowercase()) {
+                    return Some(cluster);
+                }
+            }
+        }
+        None
+    }
+
+    /// Find a companion-package rule for a given trigger package.
+    pub fn companion_rule_for_package(&self, package: &str) -> Option<&CompanionPackageRule> {
+        let key = normalize_key(package);
+        self.companion_rules
+            .iter()
+            .find(|r| normalize_key(&r.trigger_package) == key)
+    }
+
+    /// Find a Python ceiling rule for a given trigger package.
+    pub fn python_ceiling_for_package(&self, package: &str) -> Option<&PythonCeilingRule> {
+        let key = normalize_key(package);
+        self.python_ceiling_rules
+            .iter()
+            .find(|r| normalize_key(&r.trigger_package) == key)
+    }
 }
 
 // ---------------------------------------------------------------------------

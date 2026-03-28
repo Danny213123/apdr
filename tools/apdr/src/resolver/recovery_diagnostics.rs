@@ -402,6 +402,40 @@ pub(super) fn extract_package_and_version(log: &str) -> Option<(String, Option<S
     None
 }
 
+/// Normalize a PEP 508-style requirement specifier into a (package_key, constraint)
+/// pair. This handles range specifiers like `PyJWT>=2.0.0`, `python-dateutil<2.0,>=2.1`,
+/// and plain `==` pins. The package key is lowercased and dash-normalized.
+///
+/// Returns `None` if the input does not look like a requirement spec (no comparator
+/// operator found).
+pub(super) fn normalize_requirement_spec(spec: &str) -> Option<(String, String)> {
+    let trimmed = spec.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Find the first comparator operator: ==, !=, >=, <=, ~=, >, <
+    let operators = ["==", "!=", ">=", "<=", "~=", ">", "<"];
+    let mut split_pos: Option<usize> = None;
+    for op in &operators {
+        if let Some(pos) = trimmed.find(op) {
+            split_pos = Some(match split_pos {
+                Some(existing) if existing <= pos => existing,
+                _ => pos,
+            });
+        }
+    }
+    let pos = split_pos?;
+    if pos == 0 {
+        return None;
+    }
+    let package_raw = trimmed[..pos].trim_end();
+    let constraint = trimmed[pos..].trim().to_string();
+    if package_raw.is_empty() || constraint.is_empty() {
+        return None;
+    }
+    Some((normalize_package_key(package_raw), constraint))
+}
+
 /// Extract the package name from "error in {package} setup command" log lines.
 /// e.g. "error in plac setup command: use_2to3 is invalid." â†’ Some("plac")
 pub(super) fn extract_setup_error_package(log: &str) -> Option<String> {

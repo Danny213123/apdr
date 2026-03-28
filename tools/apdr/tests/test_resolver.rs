@@ -2278,3 +2278,160 @@ fn phase9_targeted_module_marks_project_local_case() {
         stop_dw.reason
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 targeted compatibility recovery tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn phase9_targeted_compatibility_recovers_torch_cluster() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // The torch compatibility cluster should be found by package lookup.
+    let cluster = policy
+        .compatibility_cluster_for_package("torch")
+        .expect("should find a compatibility cluster for torch");
+    assert_eq!(cluster.id, "compat-torch");
+    assert!(
+        cluster.preferred_versions.contains_key("torch"),
+        "compat-torch should have a preferred version for torch"
+    );
+    assert!(
+        cluster.preferred_versions.contains_key("torchvision"),
+        "compat-torch should have a preferred version for torchvision"
+    );
+
+    // The cluster should also be found by log trigger substring.
+    let log = "ERROR: contradictory pins for torch - cannot install torch==1.9.0 and torch==2.1.0";
+    let cluster_from_log = policy
+        .compatibility_cluster_for_log(log)
+        .expect("should find a compatibility cluster from torch log");
+    assert_eq!(
+        cluster_from_log.id, "compat-torch",
+        "log-triggered cluster should be compat-torch"
+    );
+
+    // Also check torchvision anchor.
+    let tv_cluster = policy
+        .compatibility_cluster_for_package("torchvision")
+        .expect("should find a compatibility cluster for torchvision");
+    assert_eq!(tv_cluster.id, "compat-torch");
+
+    // Verify the cluster notes reference the canonical recovery behavior.
+    assert!(
+        cluster.notes.contains("torch") && cluster.notes.contains("torchvision"),
+        "compat-torch notes should reference both torch and torchvision, got: {}",
+        cluster.notes
+    );
+}
+
+#[test]
+fn phase9_targeted_compatibility_recovers_tensorflow_cluster() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // The tensorflow compatibility cluster should be found by package lookup.
+    let cluster = policy
+        .compatibility_cluster_for_package("tensorflow")
+        .expect("should find a compatibility cluster for tensorflow");
+    assert_eq!(cluster.id, "compat-tensorflow");
+    assert!(
+        cluster.preferred_versions.contains_key("tensorflow"),
+        "compat-tensorflow should have a preferred version for tensorflow"
+    );
+    assert!(
+        cluster.preferred_versions.contains_key("keras"),
+        "compat-tensorflow should have a preferred version for keras"
+    );
+    assert!(
+        cluster.preferred_versions.contains_key("tensorboard"),
+        "compat-tensorflow should have a preferred version for tensorboard"
+    );
+
+    // keras and tensorboard should also resolve to the same cluster.
+    let keras_cluster = policy
+        .compatibility_cluster_for_package("keras")
+        .expect("should find a compatibility cluster for keras");
+    assert_eq!(keras_cluster.id, "compat-tensorflow");
+
+    let tb_cluster = policy
+        .compatibility_cluster_for_package("tensorboard")
+        .expect("should find a compatibility cluster for tensorboard");
+    assert_eq!(tb_cluster.id, "compat-tensorflow");
+
+    // The cluster should be found by a keras log trigger.
+    let log = "ERROR: Cannot install keras==3.0.0 and tensorflow==2.18.0";
+    let cluster_from_log = policy
+        .compatibility_cluster_for_log(log)
+        .expect("should find a compatibility cluster from keras log");
+    assert_eq!(cluster_from_log.id, "compat-tensorflow");
+
+    // The cluster should reference the Phase 8 family runtime.
+    assert!(
+        cluster.family_ref.as_deref() == Some("legacy-tensorflow"),
+        "compat-tensorflow should reference family_ref legacy-tensorflow, got: {:?}",
+        cluster.family_ref
+    );
+
+    // Verify companions include keras and tensorboard.
+    let companion_packages: Vec<&str> = cluster
+        .companions
+        .iter()
+        .map(|c| c.package.as_str())
+        .collect();
+    assert!(
+        companion_packages.contains(&"keras"),
+        "compat-tensorflow companions should include keras"
+    );
+    assert!(
+        companion_packages.contains(&"tensorboard"),
+        "compat-tensorflow companions should include tensorboard"
+    );
+}
+
+#[test]
+fn phase9_targeted_compatibility_normalizes_transitive_specifier() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    // PyJWT>=2.0.0 should be parseable, and the companion rule should fire.
+    let pyjwt_companion = policy
+        .companion_rule_for_package("pyjwt")
+        .expect("should find a companion rule for PyJWT");
+    assert_eq!(
+        pyjwt_companion.companion_package, "cryptography",
+        "PyJWT companion should be cryptography"
+    );
+
+    // python-dateutil should also have a companion rule.
+    let dateutil_companion = policy
+        .companion_rule_for_package("python-dateutil")
+        .expect("should find a companion rule for python-dateutil");
+    assert_eq!(
+        dateutil_companion.companion_package, "six",
+        "python-dateutil companion should be six"
+    );
+
+    // Verify that the cluster lookup confirms the normalization pipeline works.
+    let numpy_cluster = policy
+        .compatibility_cluster_for_package("numpy")
+        .expect("should find a compatibility cluster for numpy");
+    assert_eq!(numpy_cluster.id, "compat-numpy");
+    assert!(
+        numpy_cluster.preferred_versions.contains_key("numpy"),
+        "compat-numpy should have a preferred version for numpy"
+    );
+
+    // Also verify the pymc ceiling rule works.
+    let pymc_ceiling = policy
+        .python_ceiling_for_package("pymc3")
+        .expect("should find a python ceiling rule for pymc3");
+    assert_eq!(
+        pymc_ceiling.max_python, "3.11",
+        "pymc3 ceiling should be 3.11"
+    );
+}
