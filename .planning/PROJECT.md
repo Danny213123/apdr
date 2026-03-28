@@ -15,10 +15,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The latest local stopped benchmark run is `runs\20260327-150339-apdr`, which processed 1,257 cases with 285 failures and 297 skips; 228 of the failures are tier3.
 - The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once; Phase 7 locked that surface into a canonical 70-case tier3 parity slice plus a 17-case watchlist outside the Phase 7 contract.
 - Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
-- Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`. Phase 11 is backfilling the missing repo-level verification report so `FAM-01`, `FAM-02`, and `FAM-03` are no longer orphaned in the milestone audit.
+- Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`. Phase 11 completed the repo-backed verification backfill so `FAM-01`, `FAM-02`, and `FAM-03` are now closed at the milestone level.
 - Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior, but live benchmark proof for `REC-02`, `REC-03`, and `REC-04` remains open.
-- Phase 10 produced the v2.1 evidence package with machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap reporting. The package is useful, but the on-disk rerun proof is still dry-run only, so the milestone audit opened Phase 11 and Phase 12 instead of allowing milestone completion.
-- Phase 11 and Phase 12 now serve as explicit gap-closure phases: Phase 11 repairs verification/state truth, and Phase 12 owns the live benchmark proof and requirement reconciliation work.
+- Phase 10 produced the v2.1 evidence package with machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap reporting. The package is useful, but the on-disk rerun proof is still dry-run only.
+- Phase 11 closed the verification/state audit debt by backfilling `08-VERIFICATION.md`, backfilling the approved Phase 7 manual review, repairing milestone-state docs, adding `check_phase11_verification_backfill.py`, and refreshing the audit so only the live-proof recovery gaps remain.
+- Phase 12 is now the only remaining milestone gate. It owns live benchmark proof and requirement reconciliation for `REC-02`, `REC-03`, and `REC-04`.
 
 ## Current Milestone: v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy
 
@@ -44,11 +45,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Touched Rust modules meet stronger review gates for style, error handling, and maintainability - v2.0
 - [x] Benchmark evidence makes APDR recovery deltas inspectable at the case level - validated in Phase 7: failure-baseline-parity-slice
 - [x] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary - validated in Phase 10: benchmark-verification-accuracy-closeout
+- [x] Data-driven family knowledge now has repo-backed milestone verification coverage for the touched runtime boundary - validated in Phase 11: verification-backfill-and-state-repair
 
 ### Active
 
-- [ ] Backfill repo-backed verification coverage for the shipped Phase 8 family-runtime work so `FAM-01`, `FAM-02`, and `FAM-03` are no longer audit orphans - Phase 11
-- [ ] Repair milestone state and closeout docs so the repo reflects the post-audit reality instead of the pre-audit completion claim - Phase 11
 - [ ] Close the live benchmark proof gap and reconcile `REC-02`, `REC-03`, and `REC-04` against measured rerun evidence - Phase 12
 
 ### Out of Scope
@@ -125,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 during Phase 11 verification and state repair*
+*Last updated: 2026-03-28 after Phase 11 completion*
