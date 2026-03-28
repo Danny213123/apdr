@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-03-28T23:22:03Z",
+  "requested_mode": "live-proof",
+  "actual_mode": "probe-only",
+  "live_ready": true,
+  "terminal_state": "ready-for-live-rerun",
+  "blocker_reason": "",
+  "blockers": [],
+  "probe_only": true,
+  "require_live": true,
+  "dry_run": false,
+  "manifest": ".planning/phases/10-benchmark-verification-accuracy-closeout/10-targeted-rerun-manifest.json",
+  "baseline_summary": "runs/20260327-150339-apdr/summary.json",
+  "pllm_csv": "pllm_results/csv/summary-all-runs.csv",
+  "apdr_command": "D:\\apdr\\tools\\apdr\\target\\debug\\apdr.exe",
+  "canonical_case_count": 70,
+  "watchlist_case_count": 17,
+  "preservation_guard_count": 11,
+  "prerequisites": {
+    "manifest_exists": true,
+    "manifest_error": "",
+    "baseline_summary_exists": true,
+    "pllm_csv_exists": true,
+    "apdr_command_provided": true,
+    "apdr_command_exists": true,
+    "apdr_command_invocable": true,
+    "apdr_command_returncode": 0,
+    "apdr_command_error": ""
+  }
+}
