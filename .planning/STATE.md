@@ -7,7 +7,7 @@ current_phase_name: Benchmark Verification & v2 Closeout
 current_plan: 3
 status: blocked
 stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-03-28T02:16:47.588Z"
+last_updated: "2026-03-28T02:31:27.915Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 6
@@ -28,8 +28,8 @@ progress:
 **Status:** Blocked in Phase 06
 **Progress:** [##########] 100%
 **Last Activity:** 2026-03-28
-**Last Activity Description:** Completed 06-03 and recorded milestone blockers in the closeout package
-**Last Date:** 2026-03-28T02:16:47.588Z
+**Last Activity Description:** Cleared the final Rust gate and left BENCH-03 as the only remaining Phase 6 caveat
+**Last Date:** 2026-03-28T02:31:27.915Z
 **Stopped At:** Completed 06-03-PLAN.md
 **Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md
 
@@ -39,7 +39,7 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 06 - Benchmark Verification & v2 Closeout blocker follow-up
+**Current Focus:** Phase 06 - Benchmark Verification & v2 Closeout signoff follow-up
 
 ---
 
@@ -62,7 +62,6 @@ Plan: 3 of 3
 
 ## Current Blockers
 
-- `cargo test --manifest-path tools/apdr/Cargo.toml -- --nocapture` failed in `wheelhouse_prune_removes_oldest_files`; the current `prune_wheelhouse(...)` tie-break can remove both files when `old.whl` and `new.whl` share the same mtime on this filesystem.
 - `BENCH-03` remains mixed because the representative `peak_rss_bytes` rerun increased by `249,856` bytes (`+1.28%`) versus the committed baseline.
 
 ## Active TODOs
@@ -71,8 +70,7 @@ Plan: 3 of 3
 - [x] Refresh the bounded continuity benchmark and representative memory artifact against the committed Phase 1 baseline
 - [x] Capture the bounded hard-gists slice and assemble the benchmark-verification package
 - [x] Rerun the final Rust review gate and write the milestone closeout artifact
-- [ ] Resolve the `wheelhouse_prune_removes_oldest_files` blocker and rerun the exact five-command review gate
-- [ ] Decide whether `BENCH-03` needs stronger memory evidence or an explicit milestone exception before archive
+- [ ] Decide whether `BENCH-03` needs stronger memory evidence or an explicit milestone caveat before archive
 
 ## Deferred Items
 
@@ -82,7 +80,7 @@ Plan: 3 of 3
 
 ## Session
 
-**Last Date:** 2026-03-28T02:16:47.588Z
+**Last Date:** 2026-03-28T02:31:27.915Z
 **Stopped At:** Completed 06-03-PLAN.md
 **Resume File:** .planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md
 
@@ -107,13 +105,13 @@ Plan: 3 of 3
 - Planned Phase 6 with `06-RESEARCH.md`, `06-VALIDATION.md`, and three execution plans focused on bounded continuity refresh, hard-gists benchmark verification, and milestone closeout signoff.
 - Completed `06-01` with a fresh bounded continuity benchmark, a representative memory refresh, and `06-CONTINUITY-DELTA.md` tying the continuity gate back to the retained Phase 3 host-variance evidence.
 - Completed `06-02` with a bounded hard-gists slice, a split benchmark-verification package, and an explicit BENCH verdict table that keeps BENCH-03 mixed rather than overstating the representative memory result.
-- Completed `06-03` by rerunning the exact five-command Rust review gate, recording the `wheelhouse_prune_removes_oldest_files` blocker honestly, and writing `06-MILESTONE-CLOSEOUT.md` instead of forcing a false milestone signoff.
+- Cleared the stale `wheelhouse_prune_removes_oldest_files` blocker by making its cache test set explicit mtimes, then reran the exact five-command Rust review gate to green.
 
 ### What's Next
 
-**Immediate:** Resolve the wheelhouse-pruning blocker and decide how to handle the mixed BENCH-03 memory evidence before milestone completion.
+**Immediate:** Decide how to handle the mixed BENCH-03 memory evidence before milestone completion.
 
-**This milestone:** Use `06-MILESTONE-CLOSEOUT.md` as the source of truth for the remaining blockers, then rerun the inherited Phase 5 review gate after the blocker is fixed.
+**This milestone:** Use `06-MILESTONE-CLOSEOUT.md` as the source of truth for the remaining signoff caveat.
 
 **Next Phase:** None. Phase 6 is the final roadmap phase. The next workflow is blocker resolution, then milestone completion if the gate turns green.
 
@@ -121,9 +119,9 @@ Plan: 3 of 3
 
 1. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md`.
 2. Read `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md` and `.planning/phases/05-documentation-error-handling-and-review-readiness/05-REVIEWER-GUIDE.md`.
-3. Inspect `tools/apdr/tests/test_cache.rs` and `tools/apdr/src/cache/maintenance.rs` for the wheelhouse-pruning blocker.
+3. Inspect `.planning/phases/06-benchmark-verification-and-v2-closeout/06-BENCHMARK-VERIFICATION.md` and the representative memory artifacts if stronger BENCH-03 proof is needed.
 4. Keep unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched.
-5. Resume from the blocker described in `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md`.
+5. Resume from the BENCH-03 caveat described in `.planning/phases/06-benchmark-verification-and-v2-closeout/06-MILESTONE-CLOSEOUT.md`.
 
 ---
 

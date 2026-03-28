@@ -53,7 +53,7 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 - [x] **BENCH-02**: Validation-heavy cases complete faster than the v2 baseline
 - [ ] **BENCH-03**: Memory churn or peak memory indicators improve on the targeted Rust workflows
 - [x] **BENCH-04**: Benchmark pass rate is maintained or improved after modernization work
-- [ ] **BENCH-05**: The final milestone package can survive a codebase review focused on performance, layout, docs, and standards
+- [x] **BENCH-05**: The final milestone package can survive a codebase review focused on performance, layout, docs, and standards
 
 ## v2 Requirements
 
@@ -109,7 +109,7 @@ Deferred to a later milestone after the core modernization work lands.
 | BENCH-02 | Phase 6 | Complete |
 | BENCH-03 | Phase 6 | Mixed |
 | BENCH-04 | Phase 6 | Complete |
-| BENCH-05 | Phase 6 | Blocked |
+| BENCH-05 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total
