@@ -1,0 +1,343 @@
+{
+  "families": [
+    {
+      "name": "setuptools",
+      "runtime_scopes": [
+        "registry"
+      ],
+      "modules": [
+        "setuptools",
+        "pkg_resources"
+      ],
+      "conflict_kind": "replacement",
+      "members": [
+        {
+          "package": "setuptools",
+          "modules": [
+            "setuptools",
+            "pkg_resources"
+          ],
+          "status": "active",
+          "preferred": true
+        },
+        {
+          "package": "distribute",
+          "modules": [
+            "setuptools"
+          ],
+          "status": "unmaintained",
+          "preferred": false
+        }
+      ],
+      "notes": "distribute was merged back into setuptools."
+    },
+    {
+      "name": "pil",
+      "runtime_scopes": [
+        "registry"
+      ],
+      "modules": [
+        "PIL",
+        "Image",
+        "ImageDraw",
+        "ImageFont",
+        "ImageEnhance",
+        "ImageGrab",
+        "ImageFilter",
+        "ImageChops",
+        "ImageOps"
+      ],
+      "conflict_kind": "replacement",
+      "members": [
+        {
+          "package": "PIL",
+          "modules": [
+            "PIL",
+            "Image"
+          ],
+          "status": "unmaintained",
+          "preferred": false
+        },
+        {
+          "package": "Pillow",
+          "modules": [
+            "PIL",
+            "Image",
+            "ImageDraw",
+            "ImageFont",
+            "ImageEnhance",
+            "ImageGrab",
+            "ImageFilter",
+            "ImageChops",
+            "ImageOps"
+          ],
+          "status": "active",
+          "preferred": true
+        }
+      ],
+      "notes": "Pillow is the maintained fork of PIL."
+    },
+    {
+      "name": "sklearn",
+      "runtime_scopes": [
+        "registry"
+      ],
+      "modules": [
+        "sklearn"
+      ],
+      "conflict_kind": "namespace",
+      "members": [
+        {
+          "package": "scikit-learn",
+          "modules": [
+            "sklearn"
+          ],
+          "status": "active",
+          "preferred": true
+        },
+        {
+          "package": "sklearn",
+          "modules": [
+            "sklearn"
+          ],
+          "status": "deprecated",
+          "preferred": false
+        }
+      ],
+      "notes": "The sklearn package is a deprecated shim."
+    },
+    {
+      "name": "legacy-pymc3",
+      "runtime_scopes": [
+        "bundle"
+      ],
+      "modules": [
+        "pymc3",
+        "theano",
+        "lasagne",
+        "arviz",
+        "xarray",
+        "xarray_einstats"
+      ],
+      "conflict_kind": "migration",
+      "members": [
+        {
+          "package": "pymc3",
+          "modules": [
+            "pymc3"
+          ],
+          "status": "active",
+          "preferred": true
+        },
+        {
+          "package": "Theano",
+          "modules": [
+            "theano"
+          ],
+          "status": "unmaintained",
+          "preferred": false
+        },
+        {
+          "package": "Theano-PyMC",
+          "modules": [
+            "theano"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "arviz",
+          "modules": [
+            "arviz"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "numpy",
+          "modules": [
+            "numpy"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "pandas",
+          "modules": [
+            "pandas"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "scipy",
+          "modules": [
+            "scipy"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "setuptools",
+          "modules": [
+            "setuptools",
+            "pkg_resources"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "xarray",
+          "modules": [
+            "xarray"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "xarray-einstats",
+          "modules": [
+            "xarray_einstats"
+          ],
+          "status": "active",
+          "preferred": false
+        }
+      ],
+      "notes": "Curated legacy PyMC3 compatibility bundle rooted in the Phase 7 touched snapshot."
+    },
+    {
+      "name": "legacy-tensorflow",
+      "runtime_scopes": [
+        "bundle"
+      ],
+      "modules": [
+        "tensorflow",
+        "keras",
+        "gym"
+      ],
+      "conflict_kind": "migration",
+      "members": [
+        {
+          "package": "tensorflow",
+          "modules": [
+            "tensorflow"
+          ],
+          "status": "active",
+          "preferred": true
+        },
+        {
+          "package": "keras",
+          "modules": [
+            "keras"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "gym",
+          "modules": [
+            "gym"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "numpy",
+          "modules": [
+            "numpy"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "protobuf",
+          "modules": [
+            "google.protobuf"
+          ],
+          "status": "active",
+          "preferred": false
+        }
+      ],
+      "notes": "Curated legacy TensorFlow/Keras bundle rooted in the Phase 7 touched snapshot."
+    },
+    {
+      "name": "legacy-ggplot",
+      "runtime_scopes": [
+        "bundle"
+      ],
+      "modules": [
+        "ggplot"
+      ],
+      "conflict_kind": "migration",
+      "members": [
+        {
+          "package": "ggplot",
+          "modules": [
+            "ggplot"
+          ],
+          "status": "active",
+          "preferred": true
+        },
+        {
+          "package": "pandas",
+          "modules": [
+            "pandas"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "matplotlib",
+          "modules": [
+            "matplotlib"
+          ],
+          "status": "active",
+          "preferred": false
+        },
+        {
+          "package": "numpy",
+          "modules": [
+            "numpy"
+          ],
+          "status": "active",
+          "preferred": false
+        }
+      ],
+      "notes": "Curated legacy ggplot compatibility bundle rooted in the Phase 7 touched snapshot."
+    }
+  ],
+  "explicit_namespace_mappings": [
+    {
+      "import_alias": "pkg_resources",
+      "package_name": "setuptools"
+    },
+    {
+      "import_alias": "PIL",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "Image",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "ImageDraw",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "ImageFont",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "ImageEnhance",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "ImageGrab",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "sklearn",
+      "package_name": "scikit-learn"
+    }
+  ]
+}

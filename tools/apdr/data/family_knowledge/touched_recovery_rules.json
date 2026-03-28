@@ -1,0 +1,399 @@
+{
+  "rules": [
+    {
+      "id": "pkg-resources",
+      "family": "setuptools",
+      "kind": "retry-module-provider",
+      "strategy": "recovery:missing-module",
+      "anchor_ids": [
+        "pkg_resources"
+      ],
+      "trigger_substrings": [
+        "modulenotfounderror: no module named 'pkg_resources'"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "any"
+          ],
+          "members": [
+            {
+              "import_name": "pkg_resources",
+              "package_name": "setuptools",
+              "version": null
+            }
+          ]
+        }
+      ],
+      "apply_note_template": "Added setuptools to provide missing pkg_resources module."
+    },
+    {
+      "id": "legacy-pillow",
+      "family": "pil",
+      "kind": "pin",
+      "strategy": "family:legacy-pillow",
+      "anchor_ids": [
+        "PIL",
+        "Image",
+        "ImageDraw",
+        "ImageFont",
+        "ImageEnhance",
+        "ImageGrab",
+        "ImageFilter",
+        "ImageChops",
+        "ImageOps"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "py2"
+          ],
+          "members": [
+            {
+              "import_name": "PIL",
+              "package_name": "Pillow",
+              "version": "6.2.2"
+            }
+          ]
+        }
+      ],
+      "apply_note_template": "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+    },
+    {
+      "id": "legacy-pymc3",
+      "family": "legacy-pymc3",
+      "kind": "bundle",
+      "strategy": "family:legacy-pymc3",
+      "anchor_ids": [
+        "pymc3",
+        "theano",
+        "theano-pymc",
+        "lasagne",
+        "arviz",
+        "xarray-einstats"
+      ],
+      "trigger_substrings": [
+        "pymc3 3.11.5 depends on scipy<1.8.0",
+        "pymc3 3.11.5 depends on numpy<1.22.2",
+        "could not find a version that satisfies the requirement pandas==",
+        "no matching distribution found for pandas==",
+        "could not find a version that satisfies the requirement numpy==",
+        "no matching distribution found for numpy==",
+        "modulenotfounderror: no module named 'pkg_resources'",
+        "typeerror: 'numpy._dtypemeta' object is not subscriptable",
+        "requires a different python version",
+        "cannot import 'setuptools.build_meta'",
+        "resolutionimpossible"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "py2"
+          ],
+          "members": [
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": "1.16.6"
+            },
+            {
+              "import_name": "pandas",
+              "package_name": "pandas",
+              "version": "0.24.2"
+            },
+            {
+              "import_name": "pymc3",
+              "package_name": "pymc3",
+              "version": "3.5"
+            },
+            {
+              "import_name": "scipy",
+              "package_name": "scipy",
+              "version": "1.2.3"
+            },
+            {
+              "import_name": "setuptools",
+              "package_name": "setuptools",
+              "version": "44.1.1"
+            },
+            {
+              "import_name": "theano",
+              "package_name": "Theano",
+              "version": "1.0.5"
+            }
+          ]
+        },
+        {
+          "python_selectors": [
+            "py3"
+          ],
+          "members": [
+            {
+              "import_name": "arviz",
+              "package_name": "arviz",
+              "version": "0.12.1"
+            },
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": "1.21.6"
+            },
+            {
+              "import_name": "pandas",
+              "package_name": "pandas",
+              "version": "1.5.3"
+            },
+            {
+              "import_name": "pymc3",
+              "package_name": "pymc3",
+              "version": "3.11.5"
+            },
+            {
+              "import_name": "scipy",
+              "package_name": "scipy",
+              "version": "1.7.3"
+            },
+            {
+              "import_name": "setuptools",
+              "package_name": "setuptools",
+              "version": "69.5.1"
+            },
+            {
+              "import_name": "theano",
+              "package_name": "Theano-PyMC",
+              "version": "1.1.2"
+            },
+            {
+              "import_name": "xarray",
+              "package_name": "xarray",
+              "version": "2022.9.0"
+            },
+            {
+              "import_name": "xarray_einstats",
+              "package_name": "xarray-einstats",
+              "version": "0.6.0"
+            }
+          ]
+        }
+      ],
+      "preferred_python_order": {
+        "execute_snippet": [
+          "2.7",
+          "3.10",
+          "3.9"
+        ],
+        "default": [
+          "3.10",
+          "3.9",
+          "2.7"
+        ]
+      },
+      "apply_note_template": "Family knowledge targeted the legacy PyMC3 stack at Python {bundle_python} and pinned a coherent bundle: {changes}.",
+      "recovery_note_prefix": "Family-aware recovery reapplied the legacy PyMC3 stack. ",
+      "recovery_locked_note_template": "Family-aware recovery kept the legacy PyMC3 stack pinned at the curated Python {bundle_python} bundle."
+    },
+    {
+      "id": "legacy-tensorflow",
+      "family": "legacy-tensorflow",
+      "kind": "bundle",
+      "strategy": "family:legacy-tensorflow",
+      "anchor_ids": [
+        "tensorflow",
+        "keras"
+      ],
+      "trigger_substrings": [
+        "requires a different python version",
+        "could not find a version that satisfies the requirement tensorflow==",
+        "no matching distribution found for tensorflow==",
+        "could not find a version that satisfies the requirement keras==",
+        "no matching distribution found for keras==",
+        "resolutionimpossible"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "py2"
+          ],
+          "members": [
+            {
+              "import_name": "gym",
+              "package_name": "gym",
+              "version": "0.16.0"
+            },
+            {
+              "import_name": "keras",
+              "package_name": "keras",
+              "version": "2.3.1"
+            },
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": "1.16.6"
+            },
+            {
+              "import_name": "protobuf",
+              "package_name": "protobuf",
+              "version": "3.20.3"
+            },
+            {
+              "import_name": "tensorflow",
+              "package_name": "tensorflow",
+              "version": "1.15.0"
+            }
+          ]
+        },
+        {
+          "python_selectors": [
+            "py37"
+          ],
+          "members": [
+            {
+              "import_name": "gym",
+              "package_name": "gym",
+              "version": "0.17.3"
+            },
+            {
+              "import_name": "keras",
+              "package_name": "keras",
+              "version": "2.3.1"
+            },
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": "1.16.6"
+            },
+            {
+              "import_name": "protobuf",
+              "package_name": "protobuf",
+              "version": "3.20.3"
+            },
+            {
+              "import_name": "tensorflow",
+              "package_name": "tensorflow",
+              "version": "1.15.0"
+            }
+          ]
+        },
+        {
+          "python_selectors": [
+            "py38-plus"
+          ],
+          "members": [
+            {
+              "import_name": "gym",
+              "package_name": "gym",
+              "version": null
+            },
+            {
+              "import_name": "keras",
+              "package_name": "keras",
+              "version": null
+            },
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": null
+            },
+            {
+              "import_name": "tensorflow",
+              "package_name": "tensorflow",
+              "version": null
+            }
+          ]
+        }
+      ],
+      "preferred_python_order": {
+        "execute_snippet": [
+          "2.7",
+          "3.7",
+          "3.8",
+          "3.9",
+          "3.10"
+        ],
+        "default": [
+          "3.7",
+          "2.7",
+          "3.8",
+          "3.9",
+          "3.10"
+        ]
+      },
+      "apply_note_template": "Family knowledge targeted the legacy TensorFlow/Keras stack at Python {bundle_python} and pinned a coherent bundle: {changes}.",
+      "recovery_note_prefix": "Family-aware recovery reapplied the legacy TensorFlow/Keras stack. ",
+      "recovery_locked_note_template": "Family-aware recovery kept the legacy TensorFlow/Keras stack pinned at the curated Python {bundle_python} bundle.",
+      "recovery_unpinned_note_template": "Family-aware recovery unpinned legacy TensorFlow bundle versions (pinned versions unavailable for target Python - letting pip resolve freely)."
+    },
+    {
+      "id": "keras-backend",
+      "family": "legacy-tensorflow",
+      "kind": "companion",
+      "strategy": "family:keras-backend",
+      "anchor_ids": [
+        "keras"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "py3"
+          ],
+          "members": [
+            {
+              "import_name": "tensorflow",
+              "package_name": "tensorflow",
+              "version": null
+            }
+          ]
+        }
+      ],
+      "apply_note_template": "Family knowledge added tensorflow as the default backend for standalone keras."
+    },
+    {
+      "id": "legacy-ggplot",
+      "family": "legacy-ggplot",
+      "kind": "bundle",
+      "strategy": "family:legacy-ggplot",
+      "anchor_ids": [
+        "ggplot"
+      ],
+      "trigger_substrings": [
+        "pandas",
+        "ggplot",
+        "cannot import name",
+        "attributeerror"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": [
+            "py2",
+            "py37",
+            "py38"
+          ],
+          "members": [
+            {
+              "import_name": "ggplot",
+              "package_name": "ggplot",
+              "version": "0.11.5"
+            },
+            {
+              "import_name": "pandas",
+              "package_name": "pandas",
+              "version": "0.24.2"
+            },
+            {
+              "import_name": "matplotlib",
+              "package_name": "matplotlib",
+              "version": "2.2.5"
+            },
+            {
+              "import_name": "numpy",
+              "package_name": "numpy",
+              "version": "1.16.6"
+            }
+          ]
+        }
+      ],
+      "apply_note_template": "Family knowledge pinned the legacy ggplot/pandas bundle: {changes}.",
+      "recovery_note_prefix": "Family-aware recovery applied the legacy ggplot bundle. "
+    }
+  ]
+}

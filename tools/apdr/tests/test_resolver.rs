@@ -1470,3 +1470,182 @@ fn resolver_prefers_mecab_python_for_python2_snippets() {
         result.requirements_txt,
     );
 }
+
+fn write_curated_family_test_files(
+    tool_root: &std::path::Path,
+    families_json: &str,
+    recovery_rules_json: &str,
+) {
+    let family_dir = tool_root.join("data").join("family_knowledge");
+    std::fs::create_dir_all(&family_dir).unwrap();
+    std::fs::write(family_dir.join("touched_families.json"), families_json).unwrap();
+    std::fs::write(
+        family_dir.join("touched_recovery_rules.json"),
+        recovery_rules_json,
+    )
+    .unwrap();
+}
+
+#[test]
+fn data_driven_family_loader_reads_touched_seed() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let curated = apdr::resolver::family_knowledge::load_curated_family_knowledge(&tool_root)
+        .expect("expected touched family seed to load");
+
+    assert_eq!(curated.families().len(), 6);
+    assert_eq!(curated.recovery_rules().len(), 6);
+    assert!(curated.family_named("legacy-pymc3").is_some());
+    assert_eq!(
+        curated
+            .explicit_namespace_mapping("pkg_resources")
+            .map(|mapping| mapping.package_name.as_str()),
+        Some("setuptools")
+    );
+    assert_eq!(
+        curated
+            .explicit_namespace_mapping("Image")
+            .map(|mapping| mapping.package_name.as_str()),
+        Some("Pillow")
+    );
+    assert_eq!(
+        curated
+            .recovery_rule("pkg-resources")
+            .map(|rule| rule.family.as_str()),
+        Some("setuptools")
+    );
+}
+
+#[test]
+fn data_driven_family_loader_rejects_duplicate_namespace_mappings() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    write_curated_family_test_files(
+        temp_dir.path(),
+        r#"{
+  "families": [
+    {
+      "name": "pil",
+      "runtime_scopes": ["registry"],
+      "modules": ["PIL", "Image"],
+      "conflict_kind": "replacement",
+      "members": [
+        {
+          "package": "Pillow",
+          "modules": ["PIL", "Image"],
+          "status": "active",
+          "preferred": true
+        }
+      ],
+      "notes": "Pillow is the maintained fork of PIL."
+    }
+  ],
+  "explicit_namespace_mappings": [
+    {
+      "import_alias": "Image",
+      "package_name": "Pillow"
+    },
+    {
+      "import_alias": "Image",
+      "package_name": "PIL"
+    }
+  ]
+}"#,
+        r#"{
+  "rules": [
+    {
+      "id": "legacy-pillow",
+      "family": "pil",
+      "kind": "pin",
+      "strategy": "family:legacy-pillow",
+      "anchor_ids": ["Image"],
+      "bundle_variants": [
+        {
+          "python_selectors": ["py2"],
+          "members": [
+            {
+              "import_name": "PIL",
+              "package_name": "Pillow",
+              "version": "6.2.2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}"#,
+    );
+
+    let err = apdr::resolver::family_knowledge::load_curated_family_knowledge(temp_dir.path())
+        .expect_err("expected duplicate namespace mapping to fail");
+
+    assert_eq!(
+        err,
+        "duplicate explicit namespace mapping for alias `Image`: `Pillow` conflicts with `PIL`"
+    );
+}
+
+#[test]
+fn data_driven_family_loader_rejects_unknown_rule_family() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    write_curated_family_test_files(
+        temp_dir.path(),
+        r#"{
+  "families": [
+    {
+      "name": "setuptools",
+      "runtime_scopes": ["registry"],
+      "modules": ["setuptools", "pkg_resources"],
+      "conflict_kind": "replacement",
+      "members": [
+        {
+          "package": "setuptools",
+          "modules": ["setuptools", "pkg_resources"],
+          "status": "active",
+          "preferred": true
+        }
+      ],
+      "notes": "distribute was merged back into setuptools."
+    }
+  ],
+  "explicit_namespace_mappings": [
+    {
+      "import_alias": "pkg_resources",
+      "package_name": "setuptools"
+    }
+  ]
+}"#,
+        r#"{
+  "rules": [
+    {
+      "id": "pkg-resources",
+      "family": "missing-family",
+      "kind": "retry-module-provider",
+      "strategy": "recovery:missing-module",
+      "anchor_ids": ["pkg_resources"],
+      "trigger_substrings": [
+        "modulenotfounderror: no module named 'pkg_resources'"
+      ],
+      "bundle_variants": [
+        {
+          "python_selectors": ["any"],
+          "members": [
+            {
+              "import_name": "pkg_resources",
+              "package_name": "setuptools",
+              "version": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}"#,
+    );
+
+    let err = apdr::resolver::family_knowledge::load_curated_family_knowledge(temp_dir.path())
+        .expect_err("expected unknown rule family to fail");
+
+    assert_eq!(
+        err,
+        "recovery rule `pkg-resources` references unknown family `missing-family`"
+    );
+}
