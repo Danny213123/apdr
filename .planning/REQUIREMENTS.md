@@ -43,7 +43,7 @@ Requirements for the v2 modernization milestone. Each maps to exactly one roadma
 
 - [x] **QUAL-01**: Non-obvious Rust behavior, invariants, and fallbacks are documented where reviewers need context
 - [x] **QUAL-02**: Touched production Rust code removes avoidable `unwrap()` or `expect()` panic paths or documents why they are safe
-- [ ] **QUAL-03**: Touched Rust modules pass formatting, linting, and targeted tests without style regressions
+- [x] **QUAL-03**: Touched Rust modules pass formatting, linting, and targeted tests without style regressions
 - [x] **QUAL-04**: The codebase has a clear reviewer-facing guide to benchmark-critical modules and their responsibilities
 - [x] **QUAL-05**: Code changes align with consistent error-handling and naming conventions across Rust modules
 
@@ -102,7 +102,7 @@ Deferred to a later milestone after the core modernization work lands.
 | ARCH-05 | Phase 4 | Pending |
 | QUAL-01 | Phase 5 | Complete |
 | QUAL-02 | Phase 5 | Complete |
-| QUAL-03 | Phase 5 | Pending |
+| QUAL-03 | Phase 5 | Complete |
 | QUAL-04 | Phase 5 | Complete |
 | QUAL-05 | Phase 5 | Complete |
 | BENCH-01 | Phase 6 | Pending |
@@ -118,4 +118,4 @@ Deferred to a later milestone after the core modernization work lands.
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 5 Plan 02*
+*Last updated: 2026-03-27 after Phase 5 completion*
