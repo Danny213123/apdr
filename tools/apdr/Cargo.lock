@@ -24,6 +24,7 @@ dependencies = [
 name = "apdr"
 version = "0.2.14"
 dependencies = [
+ "filetime",
  "flate2",
  "mimalloc",
  "once_cell",

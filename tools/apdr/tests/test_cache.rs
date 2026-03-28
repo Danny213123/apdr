@@ -4,6 +4,8 @@ use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use filetime::{set_file_mtime, FileTime};
+
 fn unique_cache_dir(tool_root: &Path, label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -297,15 +299,23 @@ fn wheelhouse_prune_removes_oldest_files() {
     let wheelhouse = cache_path.join("wheelhouse");
     fs::create_dir_all(&wheelhouse).unwrap();
 
+    let old_wheel = wheelhouse.join("old.whl");
+    let new_wheel = wheelhouse.join("new.whl");
+
     // Create files with different sizes
-    fs::write(wheelhouse.join("old.whl"), vec![0u8; 100]).unwrap();
-    fs::write(wheelhouse.join("new.whl"), vec![0u8; 50]).unwrap();
+    fs::write(&old_wheel, vec![0u8; 100]).unwrap();
+    fs::write(&new_wheel, vec![0u8; 50]).unwrap();
+
+    // Force a real oldest/newest split so the test checks prune order rather
+    // than depending on whatever timestamp resolution the host filesystem uses.
+    set_file_mtime(&old_wheel, FileTime::from_unix_time(1_700_000_000, 0)).unwrap();
+    set_file_mtime(&new_wheel, FileTime::from_unix_time(1_700_000_100, 0)).unwrap();
 
     // Prune to 60 bytes max (should remove old.whl to get under limit)
     let removed = apdr::cache::maintenance::prune_wheelhouse(&wheelhouse, Some(60)).unwrap();
     assert_eq!(removed, 100);
-    assert!(!wheelhouse.join("old.whl").exists());
-    assert!(wheelhouse.join("new.whl").exists());
+    assert!(!old_wheel.exists());
+    assert!(new_wheel.exists());
 
     fs::remove_dir_all(cache_path).unwrap();
 }
