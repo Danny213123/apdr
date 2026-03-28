@@ -14,8 +14,8 @@
 
 ## Phases
 
-- [ ] **Phase 7: Failure Baseline & Parity Slice** - Turn the stopped APDR run and `pllm` summary into a reproducible target slice with baseline fixtures
-- [ ] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection
+- [x] **Phase 7: Failure Baseline & Parity Slice** - Turn the stopped APDR run and `pllm` summary into a reproducible target slice with baseline fixtures (completed 2026-03-28)
+- [x] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection (completed 2026-03-28)
 - [ ] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets
 - [ ] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps
 
@@ -34,10 +34,7 @@
 3. Touched family-knowledge cases have regression fixtures or snapshots that lock current intended behavior before migration
 4. The milestone has a bounded improvement target rather than an open-ended accuracy wish list
 
-**Plans**:
-- [ ] `07-01` - Canonical Tier3 Parity Manifest
-- [ ] `07-02` - Touched Family Snapshot Corpus
-- [ ] `07-03` - Baseline Checker & Phase 8 Handoff
+**Plans:** 3/3 plans complete
 
 ---
 
@@ -53,6 +50,8 @@
 2. Maintainers can update aliases, mappings, and rejection hints for touched families without changing Rust code
 3. Invalid or conflicting family-knowledge data fails with actionable diagnostics
 4. Existing intended family-knowledge behavior for the touched slice stays covered by tests or fixtures
+
+**Plans:** 3/3 plans complete
 
 ---
 
@@ -90,8 +89,8 @@
 
 | Phase | Requirements | Status | Completed |
 |-------|--------------|--------|-----------|
-| 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Planned | - |
-| 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Not started | - |
+| 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Complete | 2026-03-28 |
+| 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Complete | 2026-03-28 |
 | 9. Targeted Tier3 Recovery Accuracy | REC-02, REC-03, REC-04 | Not started | - |
 | 10. Benchmark Verification & Accuracy Closeout | REC-05, EVD-01, EVD-02 | Not started | - |
 
@@ -115,4 +114,4 @@ Phase 7: Failure Baseline & Parity Slice (FOUNDATION)
 ---
 
 *Roadmap created: 2026-03-27*
-*Last updated: 2026-03-28 after Phase 7 planning*
+*Last updated: 2026-03-28 after Phase 8 completion*

@@ -9,9 +9,9 @@ Requirements for the v2.1 accuracy milestone. Each maps to exactly one roadmap p
 
 ### Family Knowledge
 
-- [ ] **FAM-01**: Maintainers can define touched family aliases, package mappings, and rejection hints in data files instead of hardcoded Rust tables
-- [ ] **FAM-02**: APDR loads and applies data-driven family knowledge for the touched families used in the milestone accuracy slice
-- [ ] **FAM-03**: Invalid or conflicting family-knowledge data fails with actionable validation errors before it can silently change recovery behavior
+- [x] **FAM-01**: Maintainers can define touched family aliases, package mappings, and rejection hints in data files instead of hardcoded Rust tables
+- [x] **FAM-02**: APDR loads and applies data-driven family knowledge for the touched families used in the milestone accuracy slice
+- [x] **FAM-03**: Invalid or conflicting family-knowledge data fails with actionable validation errors before it can silently change recovery behavior
 - [x] **FAM-04**: Touched family-knowledge behavior is covered by regression fixtures or tests so the data migration preserves intended outcomes
 
 ### Recovery Accuracy
@@ -51,9 +51,9 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FAM-01 | Phase 8 | Pending |
-| FAM-02 | Phase 8 | Pending |
-| FAM-03 | Phase 8 | Pending |
+| FAM-01 | Phase 8 | Complete |
+| FAM-02 | Phase 8 | Complete |
+| FAM-03 | Phase 8 | Complete |
 | FAM-04 | Phase 7 | Complete |
 | REC-01 | Phase 7 | Complete |
 | REC-02 | Phase 9 | Pending |
@@ -70,4 +70,4 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after milestone roadmap creation*
+*Last updated: 2026-03-28 after Phase 8 completion*

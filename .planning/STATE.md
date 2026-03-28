@@ -2,38 +2,38 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Data-Driven Family Knowledge & LLM Recovery Accuracy
-current_phase: 08
-current_phase_name: data-driven-family-knowledge-runtime
-current_plan: 2
-status: paused
-stopped_at: Completed 07-03-PLAN.md
-paused_at: Phase 7 execution handoff
-last_updated: "2026-03-28T17:40:00.664Z"
+current_phase: 09
+current_phase_name: targeted-tier3-recovery-accuracy
+current_plan: Not started
+status: ready_to_plan
+stopped_at: Completed 08-03-SUMMARY.md
+paused_at: Phase 8 completion handoff
+last_updated: "2026-03-28T18:30:00.000Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 6
   percent: 50
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-28
-**Current Phase:** 08
-**Current Plan:** 2
-**Current Phase Name:** data-driven-family-knowledge-runtime
+**Current Phase:** 09
+**Current Plan:** Not started
+**Current Phase Name:** targeted-tier3-recovery-accuracy
 **Total Phases:** 4
 **Total Plans in Phase:** 3
-**Status:** Executing Phase 08
-**Progress:** [█████░░░░░] 50%
+**Status:** Ready to plan
+**Progress:** [#####.....] 50%
 **Last Activity:** 2026-03-28
-**Last Activity Description:** Phase 08 execution started
-**Paused At:** Phase 7 execution handoff
-**Last Date:** 2026-03-28T17:40:00.654Z
-**Stopped At:** Completed 07-03-PLAN.md
-**Resume File:** None
+**Last Activity Description:** Phase 08 complete, transitioned to Phase 09
+**Paused At:** Phase 8 completion handoff
+**Last Date:** 2026-03-28T18:30:00.000Z
+**Stopped At:** Completed 08-03-SUMMARY.md
+**Resume File:** .planning/phases/08-data-driven-family-knowledge-runtime/08-FAMILY-RUNTIME.md
 
 ---
 
@@ -41,14 +41,14 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 08 — data-driven-family-knowledge-runtime
+**Current Focus:** Phase 09 - targeted-tier3-recovery-accuracy
 
 ---
 
 ## Current Position
 
-Phase: 08 (data-driven-family-knowledge-runtime) — EXECUTING
-Plan: 2 of 3
+Phase: 09 (targeted-tier3-recovery-accuracy) - READY TO PLAN
+Plan: Not started
 
 ## Milestone Snapshot
 
@@ -77,12 +77,11 @@ None.
 
 - [x] Define v2.1 requirements
 - [x] Create the v2.1 roadmap
-- [x] Discuss Phase `07`
-- [x] Plan Phase `07`
-- [ ] Execute Phase `07` (`Failure Baseline & Parity Slice`)
-- [ ] Build the generated tier3 parity manifest and Markdown summary
-- [ ] Add benchmark-derived regression snapshots for touched family-knowledge cases
-- [ ] Add the baseline checker and Phase 8 handoff note
+- [x] Execute Phase `07` (`Failure Baseline & Parity Slice`)
+- [x] Execute Phase `08` (`Data-Driven Family Knowledge Runtime`)
+- [ ] Plan Phase `09` (`Targeted Tier3 Recovery Accuracy`)
+- [ ] Reduce the parity-slice `module-not-found`, `version-not-found`, and dependency-mapping failures without reopening the Phase 8 migration boundary
+- [ ] Preserve the Phase 7 parity baseline and the Phase 8 family-runtime checker while targeted recovery work lands
 
 ## Deferred Items
 
@@ -93,9 +92,9 @@ None.
 
 ## Session
 
-**Last Date:** 2026-03-28T00:45:23.5979582-04:00
-**Stopped At:** Phase 7 planned
-**Resume File:** .planning/phases/07-failure-baseline-parity-slice/07-01-PLAN.md
+**Last Date:** 2026-03-28T18:30:00.000Z
+**Stopped At:** Phase 8 complete
+**Resume File:** .planning/phases/08-data-driven-family-knowledge-runtime/08-FAMILY-RUNTIME.md
 
 ---
 
@@ -105,25 +104,23 @@ None.
 
 - Archived milestone v2.0 and tagged it locally as `v2.0`
 - Started milestone v2.1 with scope centered on data-driven family knowledge and LLM recovery accuracy
-- Confirmed the stopped APDR benchmark baseline in `runs\20260327-150339-apdr`
-- Confirmed the matching `pllm` parity source in `pllm_results\csv\summary-all-runs.csv`
-- Defined 11 scoped v2.1 requirements and mapped them across 4 new phases
-- Captured Phase 07 context with the canonical slice fixed to the `70` tier3 parity cases, JSON-plus-Markdown baseline artifacts, benchmark-derived touched-family snapshots, and normalized milestone buckets
-- Planned Phase 07 with `07-RESEARCH.md`, `07-VALIDATION.md`, and three execution plans covering the canonical tier3 parity manifest, the touched-family snapshot corpus, and the final baseline checker plus Phase 8 handoff note
+- Locked the stopped APDR benchmark baseline in `runs\20260327-150339-apdr` against the matching `pllm` parity source in `pllm_results\csv\summary-all-runs.csv`
+- Completed Phase 07 with the canonical `70`-case parity slice, the `17`-case watchlist, the `17`-case touched-family fixture corpus, and the deterministic baseline checker
+- Completed Phase 08 with curated touched-family JSON data, resolver runtime wiring that consumes that data, bounded Phase 7 family regression tests, and `scripts/check_phase8_family_runtime.py`
 - Left unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched
 
 ### What's Next
 
-**Immediate:** Execute Phase `07` from `07-01-PLAN.md`.
+**Immediate:** Plan Phase `09` with `$gsd-plan-phase 9`.
 
-**After that:** Generate the canonical parity manifest, build the touched-family snapshot corpus, and close the baseline with the local checker and targeted resolver guardrail.
+**After that:** Land targeted recovery changes against the locked parity slice while keeping the Phase 8 family-runtime checker green.
 
 ### Context for Next Session
 
 1. Read `.planning/PROJECT.md`
 2. Read `.planning/REQUIREMENTS.md` and `.planning/ROADMAP.md`
-3. Read `.planning/phases/07-failure-baseline-parity-slice/07-CONTEXT.md`, `07-RESEARCH.md`, and `07-VALIDATION.md`
-4. Read `.planning/phases/07-failure-baseline-parity-slice/07-01-PLAN.md`, `07-02-PLAN.md`, and `07-03-PLAN.md`
+3. Read `.planning/phases/08-data-driven-family-knowledge-runtime/08-RESEARCH.md`, `08-VALIDATION.md`, `08-FAMILY-RUNTIME.md`, `08-01-SUMMARY.md`, `08-02-SUMMARY.md`, and `08-03-SUMMARY.md`
+4. Read `.planning/phases/07-failure-baseline-parity-slice/07-BASELINE.md`, `07-FAMILY-SNAPSHOTS.md`, and `07-family-snapshot-manifest.json`
 5. Read `runs\20260327-150339-apdr\summary.json` and `pllm_results\csv\summary-all-runs.csv`
 6. Keep the unrelated local edits in `tools/apdr/src/lib.rs` and `tools/apdr/llm_py/tests/test_llm_integration.py` untouched
 
@@ -136,26 +133,22 @@ None.
 - `.planning/PROJECT.md` - active milestone goals and constraints
 - `.planning/REQUIREMENTS.md` - v2.1 requirement IDs and traceability
 - `.planning/ROADMAP.md` - v2.1 phase structure
-- `.planning/phases/07-failure-baseline-parity-slice/07-CONTEXT.md` - locked Phase 07 decisions for the canonical slice, artifact shape, and snapshot scope
-- `.planning/phases/07-failure-baseline-parity-slice/07-RESEARCH.md` - implementation research for the parity manifest, bucket normalization, and family snapshot boundary
-- `.planning/phases/07-failure-baseline-parity-slice/07-VALIDATION.md` - Phase 07 validation contract for artifact generation and targeted resolver coverage
-- `.planning/phases/07-failure-baseline-parity-slice/07-01-PLAN.md` - canonical tier3 parity manifest plan
-- `.planning/phases/07-failure-baseline-parity-slice/07-02-PLAN.md` - touched-family snapshot corpus plan
-- `.planning/phases/07-failure-baseline-parity-slice/07-03-PLAN.md` - baseline checker and Phase 8 handoff plan
+- `.planning/phases/08-data-driven-family-knowledge-runtime/08-FAMILY-RUNTIME.md` - Phase 8 runtime ownership, diagnostics contract, and Phase 9 handoff note
+- `.planning/phases/08-data-driven-family-knowledge-runtime/08-01-SUMMARY.md` - curated touched-family data model and validation summary
+- `.planning/phases/08-data-driven-family-knowledge-runtime/08-02-SUMMARY.md` - runtime wiring summary
+- `.planning/phases/08-data-driven-family-knowledge-runtime/08-03-SUMMARY.md` - fixture regression and checker summary
+- `.planning/phases/07-failure-baseline-parity-slice/07-BASELINE.md` - canonical parity baseline and touched-family migration boundary
+- `.planning/phases/07-failure-baseline-parity-slice/07-family-snapshot-manifest.json` - locked 17-case family snapshot corpus
 - `runs\20260327-150339-apdr\summary.json` - stopped APDR benchmark baseline
 - `pllm_results\csv\summary-all-runs.csv` - `pllm` parity comparison source
-- `.planning/milestones/v2.0-ROADMAP.md` - archived v2.0 roadmap
-- `.planning/milestones/v2.0-REQUIREMENTS.md` - archived v2.0 requirements
 
 **Key Commands**
 
-- `$gsd-execute-phase 7` - execute the canonical parity baseline, family snapshot, and baseline checker plans
-- `$gsd-progress` - confirm that Phase 7 is planned and ready to execute
-- `python scripts/build_phase7_parity_manifest.py --summary-json runs/20260327-150339-apdr/summary.json --pllm-csv pllm_results/csv/summary-all-runs.csv --output-json .planning/phases/07-failure-baseline-parity-slice/07-tier3-parity-manifest.json --output-md .planning/phases/07-failure-baseline-parity-slice/07-TIER3-PARITY-MANIFEST.md`
-- `python scripts/build_phase7_family_snapshots.py --parity-manifest .planning/phases/07-failure-baseline-parity-slice/07-tier3-parity-manifest.json --cases-root runs/20260327-150339-apdr/cases --fixtures-root tools/apdr/tests/phase7_family_fixtures --output-json .planning/phases/07-failure-baseline-parity-slice/07-family-snapshot-manifest.json --output-md .planning/phases/07-failure-baseline-parity-slice/07-FAMILY-SNAPSHOTS.md`
-- `python scripts/check_phase7_baseline.py --summary-json runs/20260327-150339-apdr/summary.json --pllm-csv pllm_results/csv/summary-all-runs.csv --parity-manifest .planning/phases/07-failure-baseline-parity-slice/07-tier3-parity-manifest.json --family-manifest .planning/phases/07-failure-baseline-parity-slice/07-family-snapshot-manifest.json --baseline-md .planning/phases/07-failure-baseline-parity-slice/07-BASELINE.md`
-- `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver resolver_ -- --nocapture`
+- `$gsd-plan-phase 9` - plan the targeted tier3 recovery phase against the locked Phase 7 and Phase 8 artifacts
+- `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver data_driven_family_ -- --nocapture`
+- `cargo test --manifest-path tools/apdr/Cargo.toml --test test_resolver phase7_family_ -- --nocapture`
+- `python scripts/check_phase8_family_runtime.py --family-manifest .planning/phases/07-failure-baseline-parity-slice/07-family-snapshot-manifest.json --families-json tools/apdr/data/family_knowledge/touched_families.json --recovery-json tools/apdr/data/family_knowledge/touched_recovery_rules.json --baseline-md .planning/phases/08-data-driven-family-knowledge-runtime/08-FAMILY-RUNTIME.md`
 
 ---
 
-*State updated after Phase 07 planning on 2026-03-28*
+*State updated after Phase 08 completion on 2026-03-28*
