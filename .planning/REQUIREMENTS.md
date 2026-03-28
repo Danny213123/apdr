@@ -51,23 +51,23 @@ Deferred to a later milestone after the focused family-knowledge and accuracy wo
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FAM-01 | - | Pending |
-| FAM-02 | - | Pending |
-| FAM-03 | - | Pending |
-| FAM-04 | - | Pending |
-| REC-01 | - | Pending |
-| REC-02 | - | Pending |
-| REC-03 | - | Pending |
-| REC-04 | - | Pending |
-| REC-05 | - | Pending |
-| EVD-01 | - | Pending |
-| EVD-02 | - | Pending |
+| FAM-01 | Phase 8 | Pending |
+| FAM-02 | Phase 8 | Pending |
+| FAM-03 | Phase 8 | Pending |
+| FAM-04 | Phase 7 | Pending |
+| REC-01 | Phase 7 | Pending |
+| REC-02 | Phase 9 | Pending |
+| REC-03 | Phase 9 | Pending |
+| REC-04 | Phase 9 | Pending |
+| REC-05 | Phase 10 | Pending |
+| EVD-01 | Phase 10 | Pending |
+| EVD-02 | Phase 10 | Pending |
 
 **Coverage:**
 - v1 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 warning
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after milestone roadmap creation*
