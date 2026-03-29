@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: ready_to_plan
-last_updated: "2026-03-29T04:29:06Z"
+status: ready_to_execute
+last_updated: "2026-03-29T04:48:28Z"
 last_activity: 2026-03-29
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 13 complete; ready to plan Phase 14
+**Status:** Phase 14 planned; ready to execute
 **Progress:** [███░░░░░░░] 25%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 13-03 and closed Phase 13 with fixture-safe reporting, a deterministic measurement checker, and reviewer-facing sample artifacts
-**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-03-SUMMARY.md
+**Last Activity Description:** Planned Phase 14 into three execution waves covering MAC-03, MAC-04, and WIN-01
+**Resume File:** None
 
 ---
 
@@ -29,9 +29,9 @@ last_activity: 2026-03-29
 ## Current Position
 
 Phase: 14 of 16 (macOS Execution-Path Optimization)
-Plan: 0 of TBD
-Status: Phase 13 complete; Phase 14 ready to plan
-Last activity: 2026-03-29 — Phase 13 completed with all three plans closed
+Plan: 0 of 3
+Status: Planned
+Last activity: 2026-03-29 — Phase 14 plans created and verified for execution
 
 ---
 
@@ -39,7 +39,7 @@ Last activity: 2026-03-29 — Phase 13 completed with all three plans closed
 
 - v2.2 plans completed: 3
 - v2.2 phases completed: 1 of 4
-- Active phase plan count: 0
+- Active phase plan count: 3
 - Phase 13 now provides the first comparable measurement contract and checker for later milestone claims.
 
 ---
@@ -56,12 +56,13 @@ Last activity: 2026-03-29 — Phase 13 completed with all three plans closed
 - Plan 13-01 established `benchmark_ui/run_contract.py` as the canonical Phase 13 metadata contract and persisted it into saved benchmark runs.
 - Plan 13-02 pushed that same contract into APDR through `--run-contract-json` and made `llm_duration_ms` plus `docker_startup_duration_ms` first-class per-case timing fields.
 - Plan 13-03 finished the evidence layer with fixture-safe reporting, a deterministic contract checker, and reviewer-facing env-fast/docker-proof sample artifacts.
+- Phase 14 is split into three sequential plans: lock the macOS and Windows replay slices, build the native macOS replay runner and fast-lane policy, then add the regression/proof checker package for macOS gains plus Windows non-regression.
 
 ### Pending Todos
 
-- Choose the locked replay slice and baseline commands during Phase 14 execution.
-- Decide which model or build-profile comparisons are worth capturing once the measurement contract exists.
-- Plan Phase 14 so the macOS replay lane can improve against the Phase 13 baseline without regressing Windows.
+- Execute Plan 14-01 first so the replay boundary is fixed before tuning macOS performance.
+- Capture cold and warm macOS replay baselines once the replay runner lands.
+- Produce the representative Windows guardrail artifact or import it from the Windows host before closing Phase 14.
 
 ### Blockers/Concerns
 
@@ -73,9 +74,9 @@ Last activity: 2026-03-29 — Phase 13 completed with all three plans closed
 ## Session Continuity
 
 Last session: 2026-03-29
-Stopped at: Phase 13 complete; next step is Phase 14 planning
-Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-03-SUMMARY.md
+Stopped at: Phase 14 planning complete; next step is executing the three Phase 14 plans
+Resume file: None
 
 ---
 
-*State updated after completing Phase 13 on 2026-03-29*
+*State updated after Phase 14 planning on 2026-03-29*

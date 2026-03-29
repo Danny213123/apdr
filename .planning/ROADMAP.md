@@ -46,7 +46,10 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
   1. A locked benchmark replay slice exists for v2.2 and can run in a fast macOS native-env mode intended for repeated local iteration.
   2. On that locked replay slice, the macOS execution path shows substantial before-and-after runtime or throughput improvement versus the v2.2 baseline while preserved pass and skip cases remain unchanged.
   3. The macOS-focused performance changes stay within the milestone's accepted Windows comparison guardrail for runtime or seconds-per-case on the representative Windows slice.
-**Plans**: TBD
+**Plans**:
+  - `14-01` Locked replay-slice manifests and manifest-aware benchmark capture
+  - `14-02` macOS replay runner and native env-fast tuning
+  - `14-03` Regression checker and proof pack for macOS gains plus Windows guardrail
 
 ### Phase 15: LangChain/LangGraph Tier3 Intelligence Improvements
 **Goal**: APDR's tier3 recovery improves through benchmarked LangChain/LangGraph agent behavior, context engineering, small-model inference policy, and benchmark-fed learning instead of new deterministic recovery tables
@@ -76,7 +79,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
-| 14. macOS Execution-Path Optimization | 0/TBD | Not started | - |
+| 14. macOS Execution-Path Optimization | 0/3 | Planned | - |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
 | 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
 
@@ -85,4 +88,4 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
-*Last updated: 2026-03-29 (Phase 13 complete)*
+*Last updated: 2026-03-29 (Phase 14 planned)*
