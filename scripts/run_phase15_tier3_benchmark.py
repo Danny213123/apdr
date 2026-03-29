@@ -24,6 +24,9 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+TOOLS_APDR_ROOT = REPO_ROOT / "tools" / "apdr"
+if str(TOOLS_APDR_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLS_APDR_ROOT))
 
 from benchmark_ui.run_contract import build_run_contract
 
@@ -58,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         help="Retrieval or memory profile label for the benchmark artifact.",
     )
     parser.add_argument(
+        "--memory-profile",
+        default="none",
+        help="Benchmark-fed memory profile label for the benchmark artifact.",
+    )
+    parser.add_argument(
         "--thinking-mode",
         default="inherited",
         help="Thinking-mode label, e.g. inherited, off, on, or routed.",
@@ -81,6 +89,11 @@ def parse_args() -> argparse.Namespace:
         "--cache-state",
         default="",
         help="Cache-state label. Defaults to cold for baseline and warm for candidate.",
+    )
+    parser.add_argument(
+        "--memory-cache-path",
+        default="",
+        help="Optional cache path where benchmark-fed success/failure memory should be updated.",
     )
     parser.add_argument(
         "--probe-only",
@@ -207,8 +220,11 @@ def make_probe_samples(
                 "agent_mode": args.agent_mode,
                 "tool_profile": args.tool_profile,
                 "retrieval_profile": args.retrieval_profile,
+                "memory_profile": args.memory_profile,
                 "thinking_mode": args.thinking_mode,
                 "policy_label": default_policy_label(args.mode, args.agent_mode, args.policy_label),
+                "resolved_mappings": [],
+                "failure_details": [],
             }
         )
     return samples
@@ -222,6 +238,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Slice: `{payload['slice_id']}`",
         f"- Agent mode: `{payload['agent_mode']}`",
         f"- Retrieval profile: `{payload['retrieval_profile']}`",
+        f"- Memory profile: `{payload['memory_profile']}`",
         f"- Tool profile: `{payload['tool_profile']}`",
         f"- Thinking mode: `{payload['thinking_mode']}`",
         f"- Policy label: `{payload['policy_label']}`",
@@ -279,6 +296,7 @@ def build_probe_payload(args: argparse.Namespace, manifest_path: Path, manifest:
         "agent_mode": args.agent_mode,
         "tool_profile": args.tool_profile,
         "retrieval_profile": args.retrieval_profile,
+        "memory_profile": args.memory_profile,
         "thinking_mode": args.thinking_mode,
         "policy_label": default_policy_label(args.mode, args.agent_mode, args.policy_label),
         "sample_count": len(samples),
@@ -314,6 +332,17 @@ def main() -> int:
     output_json = Path(args.output_json).expanduser().resolve()
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    if args.memory_cache_path:
+        from llm_py.active_learning import update_memory_from_artifact
+
+        memory_result = update_memory_from_artifact(args.memory_cache_path, str(output_json))
+        payload["notes"].append(
+            "Benchmark-fed memory updated: "
+            f"successes_added={memory_result['successes_added']}, "
+            f"failures_added={memory_result['failures_added']}"
+        )
+        output_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     if args.output_md:
         output_md = Path(args.output_md).expanduser().resolve()
