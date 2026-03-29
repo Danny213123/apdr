@@ -387,6 +387,12 @@ class TestReplayManifest(unittest.TestCase):
 
 
 class TestMacosReplayPolicy(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
     def test_macos_replay_auto_workers_default_to_one(self):
         workers, warnings = determine_effective_worker_count(
             {"run_intent": "macos-replay", "workers": 0},
