@@ -76,6 +76,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 **Success Criteria** (what must be TRUE):
   1. Milestone closeout includes before-and-after macOS benchmark comparisons on the reproducible replay slice that make the claimed performance gain easy for a reviewer to verify.
   2. Milestone closeout includes an explicit Windows non-regression comparison for the benchmark-performance work completed in v2.2.
+**Closeout State**: The Phase 16 proof pack is complete at the `sample` contract level, but live macOS, Windows, and Phase 15 artifact capture remains pending before milestone signoff.
 **Plans**:
   - `16-01` Closeout evidence bundle contract and readiness checker
   - `16-02` Reviewer-facing macOS, Windows, and LLM-quality comparison pack

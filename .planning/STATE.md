@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: executing
-stopped_at: Phase 16 planning complete; next step is executing the three Phase 16 plans
+status: blocked
+stopped_at: Phase 16 closeout drafted; live benchmark evidence still pending
 last_updated: "2026-03-29T20:37:23.739Z"
 last_activity: 2026-03-29
 progress:
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Ready to execute
+**Status:** Phase 16 closeout drafted; live proof pending
 **Progress:** [█████████░] 92%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Phase 16 execution started
+**Last Activity Description:** Phase 16 closeout reconciled to sample-backed proof; live artifact capture still pending
 **Resume File:** None
 
 ---
@@ -29,15 +29,15 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 16 — proof-comparison-and-closeout
+**Current Focus:** Milestone closeout pending live benchmark evidence
 
 ---
 
 ## Current Position
 
-Phase: 16 (proof-comparison-and-closeout) — EXECUTING
+Phase: 16 (proof-comparison-and-closeout) — COMPLETE, LIVE PROOF PENDING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Blocked on live artifact capture
 Last activity: 2026-03-29
 
 ---
@@ -81,10 +81,10 @@ Last activity: 2026-03-29
 - Phase 16 is split into three sequential plans: build the closeout evidence contract and readiness checker, write the reviewer-facing comparison pack, then reconcile requirement truth and milestone closeout without overstating live proof.
 - [Phase 16]: Milestone closeout must distinguish sample-contract proof from live benchmark evidence and may not mark live-proof requirements complete unless the live artifacts exist and pass the carried-forward checkers.
 - [Phase 16]: The final closeout package should reference the dedicated Phase 14 and Phase 15 proof notes instead of duplicating their tables inline.
+- [Phase 16]: The current terminal evidence mode is `sample-contract-only`, so the phase is complete but the milestone still waits on live artifact capture for final signoff.
 
 ### Pending Todos
 
-- Execute Plan 16-01 first so the repo has one explicit readiness and evidence-mode contract before writing the closeout narrative.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Capture live `15-tier3-baseline.json` and `15-tier3-candidate.json` on a benchmark-capable host if you want fresh Phase 15 evidence beyond the in-repo sample proof contract.
 - Import representative Windows guardrail artifacts before milestone closeout.
@@ -99,9 +99,9 @@ Last activity: 2026-03-29
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Phase 16 planning complete; next step is executing the three Phase 16 plans
+Stopped at: Phase 16 closeout drafted; live benchmark evidence still pending
 Resume file: None
 
 ---
 
-*State updated after Phase 16 planning on 2026-03-29*
+*State updated after Phase 16 closeout reconciliation on 2026-03-29*

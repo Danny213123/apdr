@@ -34,6 +34,8 @@ Requirements for the v2.2 milestone. Each maps to exactly one roadmap phase.
 - [ ] **EVD-05**: Any model, context-window, inference-policy, or build-profile comparison captured during the milestone records enough metadata to attribute gains to agent behavior, model choice, context configuration, decoding policy, runtime tuning, or backend differences
 - [ ] **EVD-06**: Milestone closeout includes an explicit Windows non-regression comparison for the benchmark-performance work performed in v2.2
 
+Current Phase 16 state on 2026-03-29: the repo now has a reviewer-ready sample-contract proof pack for macOS, Windows, and Phase 15 quality, but the live macOS, Windows, and tier3 artifacts are still missing, so `EVD-04` and `EVD-06` remain pending live proof.
+
 ## v2 Requirements
 
 Deferred to a later milestone after the focused agent-quality and macOS performance work lands.
@@ -74,9 +76,9 @@ Deferred to a later milestone after the focused agent-quality and macOS performa
 | MAC-04 | Phase 14 | Pending |
 | WIN-01 | Phase 14 | Complete |
 | EVD-03 | Phase 13 | Pending |
-| EVD-04 | Phase 16 | Pending |
+| EVD-04 | Phase 16 | Pending live proof |
 | EVD-05 | Phase 13 | Pending |
-| EVD-06 | Phase 16 | Pending |
+| EVD-06 | Phase 16 | Pending live proof |
 
 **Coverage:**
 - v1 requirements: 15 total
@@ -85,4 +87,4 @@ Deferred to a later milestone after the focused agent-quality and macOS performa
 
 ---
 *Requirements defined: 2026-03-28*
-*Last updated: 2026-03-28 after v2.2 roadmap creation*
+*Last updated: 2026-03-29 after Phase 16 closeout reconciliation*
