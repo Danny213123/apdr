@@ -76,7 +76,10 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 **Success Criteria** (what must be TRUE):
   1. Milestone closeout includes before-and-after macOS benchmark comparisons on the reproducible replay slice that make the claimed performance gain easy for a reviewer to verify.
   2. Milestone closeout includes an explicit Windows non-regression comparison for the benchmark-performance work completed in v2.2.
-**Plans**: TBD
+**Plans**:
+  - `16-01` Closeout evidence bundle contract and readiness checker
+  - `16-02` Reviewer-facing macOS, Windows, and LLM-quality comparison pack
+  - `16-03` Milestone closeout note and requirement reconciliation
 
 ## Progress
 
@@ -85,11 +88,11 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 | 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
 | 14. macOS Execution-Path Optimization | 3/3 | Complete | 14-01, 14-02, 14-03 complete |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 4/4 | Complete | 15-01, 15-02, 15-03, 15-04 complete |
-| 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
+| 16. Proof, Comparison, and Closeout | 0/3 | Planned | - |
 
 ## Dependencies
 
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
-*Last updated: 2026-03-29 (Phase 15 executed)*
+*Last updated: 2026-03-29 (Phase 16 planned)*

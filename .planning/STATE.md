@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: ready_to_plan
-stopped_at: Phase 15 executed complete; next step is planning Phase 16
-last_updated: "2026-03-29T20:11:54Z"
+status: ready_to_execute
+stopped_at: Phase 16 planning complete
+last_updated: "2026-03-29T20:19:40Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 10
+  total_plans: 13
   completed_plans: 10
-  percent: 75
+  percent: 77
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Ready To Plan Phase 16
-**Progress:** [███████░░░] 75%
+**Status:** Phase 16 planned; ready to execute
+**Progress:** [████████░░] 77%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Phase 15 executed complete with checker-backed agent-quality proof contract
+**Last Activity Description:** Planned Phase 16 into three execution waves covering milestone proof, comparison, and closeout
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 16 — proof-comparison-and-closeout
+**Current Focus:** Phase 16 — Proof, Comparison, and Closeout
 
 ---
 
 ## Current Position
 
-Phase: 15 complete; Phase 16 next
-Plan: 0 of TBD for Phase 16
-Status: Ready to plan Phase 16
-Last activity: 2026-03-29 -- Phase 15 executed complete
+Phase: 16 (proof-comparison-and-closeout) — READY TO EXECUTE
+Plan: 0 of 3
+Status: Planned
+Last activity: 2026-03-29 -- Phase 16 plans created and verified for execution
 
 ---
 
@@ -46,8 +46,8 @@ Last activity: 2026-03-29 -- Phase 15 executed complete
 
 - v2.2 plans completed: 10
 - v2.2 phases completed: 3 of 4
-- Active phase plan count: 0 in the completed Phase 15
-- Phase 15 now provides an explicit agent seam, artifact-fed memory, Qwen policy controls, and a checker-backed proof contract for agent quality.
+- Active phase plan count: 3
+- Phase 14 and Phase 15 now provide bounded proof contracts and sample artifacts that Phase 16 can aggregate into one honest milestone closeout package.
 
 ---
 
@@ -78,10 +78,13 @@ Last activity: 2026-03-29 -- Phase 15 executed complete
 - [Plan 15-03]: Replay artifacts can now update inspectable success and failure memory rather than relying on prompt-side rule growth.
 - [Plan 15-03]: Retrieval profiles now control context selection and benchmark-context summarization for tier3 resolution.
 - [Plan 15-04]: Small-model policy variants are now explicit and attributable for `qwen3.5:9b`, and Phase 15 quality claims can be machine-checked against baseline-versus-candidate artifacts.
+- Phase 16 is split into three sequential plans: build the closeout evidence contract and readiness checker, write the reviewer-facing comparison pack, then reconcile requirement truth and milestone closeout without overstating live proof.
+- [Phase 16]: Milestone closeout must distinguish sample-contract proof from live benchmark evidence and may not mark live-proof requirements complete unless the live artifacts exist and pass the carried-forward checkers.
+- [Phase 16]: The final closeout package should reference the dedicated Phase 14 and Phase 15 proof notes instead of duplicating their tables inline.
 
 ### Pending Todos
 
-- Plan Phase 16 next so milestone closeout can gather macOS, Windows, and Phase 15 live artifact proof into one reviewer-readable package.
+- Execute Plan 16-01 first so the repo has one explicit readiness and evidence-mode contract before writing the closeout narrative.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Capture live `15-tier3-baseline.json` and `15-tier3-candidate.json` on a benchmark-capable host if you want fresh Phase 15 evidence beyond the in-repo sample proof contract.
 - Import representative Windows guardrail artifacts before milestone closeout.
@@ -89,16 +92,16 @@ Last activity: 2026-03-29 -- Phase 15 executed complete
 ### Blockers/Concerns
 
 - Live milestone proof still requires real macOS and Windows artifact capture; the repo now contains the checker contract and sample schema, not the final evidence pair.
-- Phase 15 must improve replay-slice success through agent behavior, memory, context engineering, and model policy rather than prompt-taxonomy or rule-table growth.
+- Phase 16 has to keep sample-backed proof contracts and live benchmark evidence clearly separated so `EVD-04` and `EVD-06` are not overclaimed.
 
 ---
 
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Phase 15 executed complete; next step is planning Phase 16
+Stopped at: Phase 16 planning complete; next step is executing the three Phase 16 plans
 Resume file: None
 
 ---
 
-*State updated after Phase 15 execution on 2026-03-29*
+*State updated after Phase 16 planning on 2026-03-29*
