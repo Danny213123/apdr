@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
 status: executing
-stopped_at: Completed Plan 15-02; next step is executing Plan 15-03
-last_updated: "2026-03-29T19:57:10Z"
+stopped_at: Completed Plan 15-03; next step is executing Plan 15-04
+last_updated: "2026-03-29T20:04:07Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
 **Status:** Executing Phase 15
-**Progress:** [████████░░] 80%
+**Progress:** [█████████░] 90%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 15-02 explicit agent runtime seam and abstain tracing
-**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-03-PLAN.md
+**Last Activity Description:** Completed Plan 15-03 benchmark-fed memory and context folding
+**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-04-PLAN.md
 
 ---
 
@@ -36,18 +36,18 @@ progress:
 ## Current Position
 
 Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Executing Phase 15
-Last activity: 2026-03-29 -- Completed Plan 15-02 explicit agent runtime seam and abstain tracing
+Last activity: 2026-03-29 -- Completed Plan 15-03 benchmark-fed memory and context folding
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 8
+- v2.2 plans completed: 9
 - v2.2 phases completed: 2 of 4
-- Active phase plan count: 2 remaining in Phase 15
-- Plan 15-02 now provides an explicit tier3 runtime seam with attributable agent metadata and clean abstain tracing across the Rust-to-Python boundary.
+- Active phase plan count: 1 remaining in Phase 15
+- Plan 15-03 now provides artifact-fed success and failure memory plus retrieval-profile context folding for the tier3 path.
 
 ---
 
@@ -75,10 +75,12 @@ Last activity: 2026-03-29 -- Completed Plan 15-02 explicit agent runtime seam an
 - [Plan 15-01]: Probe-only mode validates artifact shape without depending on live model execution.
 - [Plan 15-02]: Tier3 request metadata can now select direct, manual, LangGraph, or LangChain benchmarking paths without patching code between runs.
 - [Plan 15-02]: Agent failures now propagate explicit abstain or failure reasons instead of silently converting unknown mappings into fabricated success.
+- [Plan 15-03]: Replay artifacts can now update inspectable success and failure memory rather than relying on prompt-side rule growth.
+- [Plan 15-03]: Retrieval profiles now control context selection and benchmark-context summarization for tier3 resolution.
 
 ### Pending Todos
 
-- Execute Plan 15-03 next so memory, retrieval, and context folding can build on the explicit agent seam and benchmark contract already in place.
+- Execute Plan 15-04 next so small-model policy experiments and the final Phase 15 proof checker can run against the explicit agent, retrieval, and memory contract.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Import representative Windows guardrail artifacts before milestone closeout.
 
@@ -92,9 +94,9 @@ Last activity: 2026-03-29 -- Completed Plan 15-02 explicit agent runtime seam an
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Completed Plan 15-02; next step is executing Plan 15-03
-Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-03-PLAN.md
+Stopped at: Completed Plan 15-03; next step is executing Plan 15-04
+Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-04-PLAN.md
 
 ---
 
-*State updated after Plan 15-02 on 2026-03-29*
+*State updated after Plan 15-03 on 2026-03-29*
