@@ -557,6 +557,12 @@ class BenchmarkService:
             "base_url": str(payload.get("base_url") or payload.get("baseUrl") or run_contract.get("base_url") or "").strip(),
             "temperature": self._optional_float(payload.get("temperature") or payload.get("temp")),
             "workers": int(payload.get("workers", 0) or 0),
+            "replay_manifest": str(
+                payload.get("replay_manifest")
+                or payload.get("replayManifest")
+                or defaults.get("replay_manifest")
+                or ""
+            ).strip(),
             "run_contract": run_contract if run_contract else {},
         }
         if validate:
@@ -929,6 +935,7 @@ class BenchmarkService:
             "llm_context_window": config["llm_context_window"],
             "inference_policy": config["inference_policy"],
             "build_profile": config["build_profile"],
+            "replay_manifest": config.get("replay_manifest", ""),
         }
 
     def _run_config_from_summary(self, summary: dict[str, Any]) -> dict[str, Any]:

@@ -22,6 +22,80 @@ except ImportError:
 from .state import AppState
 from .run_contract import build_run_contract, missing_required_keys
 
+
+def load_replay_manifest(manifest_path: str | Path) -> dict[str, Any]:
+    """Load and validate a replay-slice manifest JSON file.
+
+    Returns the parsed manifest dict which must contain at minimum
+    ``slice_id`` (str) and ``cases`` (list of dicts with ``relative_path``).
+    Raises ``ValueError`` if the manifest is structurally invalid or
+    ``FileNotFoundError`` if the path does not exist.
+    """
+    path = Path(manifest_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Replay manifest not found: {path}")
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError(f"Replay manifest must be a JSON object: {path}")
+    if not data.get("slice_id"):
+        raise ValueError(f"Replay manifest is missing 'slice_id': {path}")
+    cases = data.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(f"Replay manifest must contain a non-empty 'cases' array: {path}")
+    for idx, entry in enumerate(cases):
+        if not isinstance(entry, dict) or not entry.get("relative_path"):
+            raise ValueError(
+                f"Replay manifest case {idx} must have a 'relative_path' field: {path}"
+            )
+    return data
+
+
+def filter_snippets_by_manifest(
+    snippets: list[Path],
+    manifest: dict[str, Any],
+    dataset_dir: Path,
+) -> list[Path]:
+    """Filter and reorder *snippets* to match the manifest case list.
+
+    Returns snippets in manifest order.  Raises ``ValueError`` if any
+    manifest-referenced snippet is missing from the discovered set.
+    """
+    # Build a lookup from normalized relative path -> absolute snippet path.
+    lookup: dict[str, Path] = {}
+    for snippet in snippets:
+        try:
+            rel = str(snippet.relative_to(dataset_dir)).replace("\\", "/")
+        except ValueError:
+            rel = str(snippet).replace("\\", "/")
+        lookup[rel] = snippet
+        # Also index by parent-dir/snippet.py for flat layouts.
+        parts = rel.split("/")
+        if len(parts) >= 2:
+            short_key = "/".join(parts[-2:])
+            lookup.setdefault(short_key, snippet)
+
+    ordered: list[Path] = []
+    missing: list[str] = []
+    for entry in manifest["cases"]:
+        rel_path = entry["relative_path"]
+        # Try exact match first, then suffix match.
+        match = lookup.get(rel_path)
+        if match is None:
+            # Try with snippet.py appended if the manifest lists just the dir.
+            if not rel_path.endswith(".py"):
+                match = lookup.get(rel_path.rstrip("/") + "/snippet.py")
+        if match is None:
+            missing.append(rel_path)
+        else:
+            ordered.append(match)
+    if missing:
+        raise ValueError(
+            f"Replay manifest references {len(missing)} snippets not found in "
+            f"{dataset_dir}: {', '.join(missing[:10])}"
+        )
+    return ordered
+
 # WSL mount prefix pattern: /mnt/<drive>/...
 _WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
 
@@ -132,9 +206,18 @@ class BenchmarkWorker(threading.Thread):
             self._emit("status", text="Discovering snippets...")
             snippets = self.state.snippet_files(dataset_dir)
 
-            snippet_limit = self._parse_limit(self.run_config.get("snippet_limit", ""))
-            if snippet_limit:
-                snippets = snippets[:snippet_limit]
+            # Apply replay manifest if specified — overrides snippet_limit.
+            replay_manifest_path = str(self.run_config.get("replay_manifest") or "").strip()
+            replay_manifest: dict[str, Any] | None = None
+            replay_slice_id = ""
+            if replay_manifest_path:
+                replay_manifest = load_replay_manifest(replay_manifest_path)
+                replay_slice_id = str(replay_manifest.get("slice_id", ""))
+                snippets = filter_snippets_by_manifest(snippets, replay_manifest, dataset_dir)
+            else:
+                snippet_limit = self._parse_limit(self.run_config.get("snippet_limit", ""))
+                if snippet_limit:
+                    snippets = snippets[:snippet_limit]
 
             resume_results = [dict(item) for item in (self.run_config.get("_resume_results") or [])]
             resume_lookup = {
@@ -174,7 +257,7 @@ class BenchmarkWorker(threading.Thread):
                     f"Incomplete benchmark run contract: {', '.join(missing_contract_keys)}"
                 )
 
-            summary = {
+            summary: dict[str, Any] = {
                 "tool": tool,
                 "model": selected_model,
                 "base_url": selected_base_url,
@@ -185,7 +268,7 @@ class BenchmarkWorker(threading.Thread):
                 "search_range": int(self.run_config["search_range"]),
                 "rag": bool(self.run_config["rag"]),
                 "verbose": bool(self.run_config["verbose"]),
-                "snippet_limit": snippet_limit or "",
+                "snippet_limit": (snippet_limit if not replay_manifest_path else "") or "",
                 "python_command": str(self.run_config.get("python_command", "")),
                 "validation_backend": str(self.run_config.get("validation_backend", "")),
                 "started_at": self.state.now_iso(),
@@ -194,6 +277,9 @@ class BenchmarkWorker(threading.Thread):
                 "benchmark_context_log": self.state.relative_path(context_log),
                 "run_contract": run_contract,
             }
+            if replay_manifest_path:
+                summary["replay_manifest"] = replay_manifest_path
+                summary["replay_slice_id"] = replay_slice_id
             if self.run_config.get("_resume_from_run_id"):
                 summary["resume_from_run_id"] = str(self.run_config["_resume_from_run_id"])
                 summary["resumed_results"] = resumed_completed

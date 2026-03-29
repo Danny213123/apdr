@@ -1,6 +1,7 @@
 """Tests for benchmark runner event emission to SSE queue."""
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from queue import Queue
@@ -8,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import tempfile
 import shutil
 
-from .runner import BenchmarkWorker
+from .runner import BenchmarkWorker, filter_snippets_by_manifest, load_replay_manifest
 from .state import AppState
 
 
@@ -267,6 +268,116 @@ class TestRunnerEventEmission(unittest.TestCase):
         emit_event("case_complete", caseId="test-008", status="pass", tier="tier1")
         event = event_queue.get_nowait()
         self.assertNotIn("confidence", event)
+
+
+class TestReplayManifest(unittest.TestCase):
+    """Test replay manifest loading and snippet filtering."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _write_manifest(self, data: dict) -> Path:
+        path = Path(self.temp_dir) / "manifest.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_load_replay_manifest_valid(self):
+        """Test loading a valid replay manifest."""
+        manifest_data = {
+            "slice_id": "test-slice",
+            "purpose": "unit test",
+            "cases": [
+                {"relative_path": "case-a/snippet.py"},
+                {"relative_path": "case-b/snippet.py"},
+            ],
+        }
+        path = self._write_manifest(manifest_data)
+        result = load_replay_manifest(path)
+        self.assertEqual(result["slice_id"], "test-slice")
+        self.assertEqual(len(result["cases"]), 2)
+
+    def test_load_replay_manifest_missing_slice_id(self):
+        """Test that manifest without slice_id raises ValueError."""
+        path = self._write_manifest({"cases": [{"relative_path": "a.py"}]})
+        with self.assertRaises(ValueError):
+            load_replay_manifest(path)
+
+    def test_load_replay_manifest_missing_cases(self):
+        """Test that manifest without cases raises ValueError."""
+        path = self._write_manifest({"slice_id": "test", "cases": []})
+        with self.assertRaises(ValueError):
+            load_replay_manifest(path)
+
+    def test_load_replay_manifest_not_found(self):
+        """Test that missing file raises FileNotFoundError."""
+        with self.assertRaises(FileNotFoundError):
+            load_replay_manifest(Path(self.temp_dir) / "nonexistent.json")
+
+    def test_load_replay_manifest_case_missing_relative_path(self):
+        """Test that case entry without relative_path raises ValueError."""
+        path = self._write_manifest({
+            "slice_id": "test",
+            "cases": [{"name": "foo"}],
+        })
+        with self.assertRaises(ValueError):
+            load_replay_manifest(path)
+
+    def test_filter_snippets_by_manifest_reorders(self):
+        """Test that snippets are reordered according to manifest."""
+        dataset_dir = Path(self.temp_dir) / "dataset"
+        for name in ("case-a", "case-b", "case-c"):
+            d = dataset_dir / name
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "snippet.py").touch()
+
+        snippets = sorted(dataset_dir.rglob("snippet.py"))
+        # All are in alphabetical order: case-a, case-b, case-c
+        manifest = {
+            "slice_id": "test",
+            "cases": [
+                {"relative_path": "case-c/snippet.py"},
+                {"relative_path": "case-a/snippet.py"},
+            ],
+        }
+        result = filter_snippets_by_manifest(snippets, manifest, dataset_dir)
+        self.assertEqual(len(result), 2)
+        self.assertIn("case-c", str(result[0]))
+        self.assertIn("case-a", str(result[1]))
+
+    def test_filter_snippets_by_manifest_missing_snippet_raises(self):
+        """Test that referencing missing snippets raises ValueError."""
+        dataset_dir = Path(self.temp_dir) / "dataset"
+        d = dataset_dir / "case-a"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "snippet.py").touch()
+
+        snippets = list(dataset_dir.rglob("snippet.py"))
+        manifest = {
+            "slice_id": "test",
+            "cases": [
+                {"relative_path": "case-a/snippet.py"},
+                {"relative_path": "case-missing/snippet.py"},
+            ],
+        }
+        with self.assertRaises(ValueError):
+            filter_snippets_by_manifest(snippets, manifest, dataset_dir)
+
+    def test_replay_manifest_persisted_in_summary(self):
+        """Test that replay_manifest and replay_slice_id appear in run config normalization."""
+        state = AppState()
+        config = state.default_run_config()
+        self.assertIn("replay_manifest", config)
+        self.assertEqual(config["replay_manifest"], "")
+
+    def test_replay_manifest_in_service_normalize(self):
+        """Test that service normalizes replay_manifest from payload."""
+        from .service import BenchmarkService
+        svc = BenchmarkService()
+        config = svc._normalize_run_config({"replay_manifest": "/tmp/test.json"})
+        self.assertEqual(config["replay_manifest"], "/tmp/test.json")
 
 
 if __name__ == "__main__":

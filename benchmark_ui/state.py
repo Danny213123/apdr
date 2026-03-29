@@ -205,6 +205,7 @@ class AppState:
             "build_profile": "standard",
             "llm_only_mode": False,
             "workers": 0,
+            "replay_manifest": "",
         }
 
     def load_loadouts(self) -> list[dict[str, Any]]:
