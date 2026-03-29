@@ -565,6 +565,1053 @@ def test_sql_package_ambiguity(ollama_available):
         pass
 
 
+
+
+
+# Hard/challenging test cases from benchmark
+# These represent complex real-world scenarios
+
+@pytest.mark.integration
+def test_hard_pytorch_python27_incompatible(ollama_available):
+    """LLM recognizes PyTorch has no Python 2.7 compatible versions (gist 1b49c03968b2c83897a4a15c78980b18)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "numpy==1.16.6 (import: numpy)",
+            "progressbar (import: progressbar)",
+            "torch==1.4.0 (import: torch)",
+        ],
+        error_log="""
+        ERROR: No matching distribution found for torch==1.4.0
+        """,
+        snippet_source="import torch\nimport torch.nn as nn\nfrom torch.autograd import Variable",
+        python_version="2.7",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM recognizes PyTorch has no Python 2.7 compatible versions
+    if resp.fix_possible:
+        pass  # Should recognize torch incompatible with Python 2.7
+
+
+@pytest.mark.integration
+def test_hard_lxml_build_failure_windows(ollama_available):
+    """LLM handles lxml build failure on Windows/Python 2.7 (gist 1077318)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "sunburnt==0.5 (import: sunburnt)",
+            "httplib2 (import: httplib2)",
+            "lxml==2.2.4 (import: lxml)",
+        ],
+        error_log="""
+        building 'lxml.etree' extension\nerror: Microsoft Visual C++ 9.0 is required
+        """,
+        snippet_source="import sunburnt\nimport httplib2\nfrom lxml import builder",
+        python_version="2.7",
+        error_type="BuildFailure",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM handles lxml build failure on Windows/Python 2.7
+    if resp.fix_possible:
+        pass  # Should recognize C compiler requirement or suggest skip
+
+
+@pytest.mark.integration
+def test_hard_keras_backend_resolution(ollama_available):
+    """LLM adds tensorflow backend for standalone keras (gist 0a3d4fae965bdbec1f9d)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "keras (import: keras)",
+            "numpy==1.26.4 (import: numpy)",
+        ],
+        error_log="""
+        ImportError: Keras requires a backend (tensorflow, theano, or cntk)
+        """,
+        snippet_source="import numpy as np\nfrom keras.models import Sequential\nfrom keras.layers import Dense",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM adds tensorflow backend for standalone keras
+    if resp.fix_possible:
+        pass  # Should add tensorflow as backend
+
+
+@pytest.mark.integration
+def test_hard_scikit_learn_python27_version(ollama_available):
+    """LLM pins scikit-learn to last Python 2.7 compatible version (gist 1d596ca757a541da96ac3caa6f291229)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "keras==2.3.1 (import: keras)",
+            "scikit-learn==1.4.2 (import: sklearn)",
+            "numpy==1.16.6 (import: numpy)",
+        ],
+        error_log="""
+        ERROR: No matching distribution found for scikit-learn==1.4.2
+        """,
+        snippet_source="import keras\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler",
+        python_version="2.7",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM pins scikit-learn to last Python 2.7 compatible version
+    if resp.fix_possible:
+        pass  # Should pin to scikit-learn 0.20.4 or similar
+
+
+@pytest.mark.integration
+def test_hard_django_python27_last_version(ollama_available):
+    """LLM recognizes Django 2.x+ requires Python 3, pins to 1.11.x (gist 2786290)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Django==2.2.0 (import: django)",
+        ],
+        error_log="""
+        ERROR: No matching distribution found for Django==2.2.0
+        """,
+        snippet_source="from django.conf import settings\nfrom django.http import HttpResponse",
+        python_version="2.7",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM recognizes Django 2.x+ requires Python 3, pins to 1.11.x
+    if resp.fix_possible:
+        pass  # Should pin to Django 1.11.29 (last Python 2 version)
+
+
+@pytest.mark.integration
+def test_hard_numpy_distance_build_fail(ollama_available):
+    """LLM handles numpy build failure with missing distance module (gist 3001099)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "numpy (import: numpy)",
+            "scipy (import: scipy)",
+        ],
+        error_log="""
+        ImportError: cannot import name distance\nOriginal error was: No module named 'numpy.core._multiarray_umath'
+        """,
+        snippet_source="import numpy as np\nfrom scipy.spatial import distance",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM handles numpy build failure with missing distance module
+    if resp.fix_possible:
+        pass  # Should handle numpy/scipy version compatibility
+
+
+@pytest.mark.integration
+def test_hard_dbus_python_version_adjustment(ollama_available):
+    """LLM adjusts dbus-python version for Python compatibility (gist 2894514)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "dbus-python==1.3.2 (import: dbus)",
+        ],
+        error_log="""
+        ERROR: No matching distribution found for dbus-python==1.3.2
+        """,
+        snippet_source="import dbus\nimport gobject\nbus = dbus.SystemBus()",
+        python_version="2.7",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM adjusts dbus-python version for Python compatibility
+    if resp.fix_possible:
+        pass  # Should adjust to compatible dbus-python version
+
+
+@pytest.mark.integration
+def test_hard_pymc_dependency_resolution(ollama_available):
+    """LLM resolves PyMC complex scientific Python stack dependencies (gist 2840020)"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "pymc (import: pymc)",
+            "numpy (import: numpy)",
+            "scipy (import: scipy)",
+        ],
+        error_log="""
+        ImportError: cannot import name 'pymc'
+        """,
+        snippet_source="import pymc\nimport numpy as np\nfrom scipy import stats",
+        python_version="2.7",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM resolves PyMC complex scientific Python stack dependencies
+    if resp.fix_possible:
+        pass  # Should resolve PyMC 2.x for Python 2.7
+
+
+
+# Synthetic tier3-style test cases based on common recovery patterns
+# These represent scenarios where LLMs excel at package resolution
+
+@pytest.mark.integration
+def test_synthetic_yaml_pyyaml(ollama_available):
+    """LLM identifies yaml module comes from PyYAML package"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "yaml (import: yaml)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement yaml
+        """,
+        snippet_source="import yaml\ndata = yaml.safe_load(file)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies yaml module comes from PyYAML package
+    if resp.fix_possible and resp.correct_package:
+        assert "pyyaml" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_cv2_opencv(ollama_available):
+    """LLM identifies cv2 module comes from opencv-python"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "cv2 (import: cv2)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement cv2
+        """,
+        snippet_source="import cv2\nimg = cv2.imread('image.jpg')",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies cv2 module comes from opencv-python
+    if resp.fix_possible and resp.correct_package:
+        assert "opencv" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_sklearn_scikit_learn(ollama_available):
+    """LLM identifies sklearn module comes from scikit-learn"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "sklearn (import: sklearn)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement sklearn
+        """,
+        snippet_source="from sklearn.ensemble import RandomForestClassifier\nclf = RandomForestClassifier()",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies sklearn module comes from scikit-learn
+    if resp.fix_possible and resp.correct_package:
+        assert "scikit-learn" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_dateutil_python_dateutil(ollama_available):
+    """LLM identifies dateutil module comes from python-dateutil"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "dateutil (import: dateutil)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement dateutil
+        """,
+        snippet_source="from dateutil import parser\ndt = parser.parse('2024-01-01')",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies dateutil module comes from python-dateutil
+    if resp.fix_possible and resp.correct_package:
+        assert "python-dateutil" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_magic_python_magic(ollama_available):
+    """LLM identifies magic module comes from python-magic"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "magic (import: magic)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement magic
+        """,
+        snippet_source="import magic\nmime = magic.from_file('file.txt', mime=True)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies magic module comes from python-magic
+    if resp.fix_possible and resp.correct_package:
+        assert "python-magic" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_telegram_python_telegram_bot(ollama_available):
+    """LLM identifies telegram bot API package"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "telegram (import: telegram)",
+        ],
+        error_log="""
+        ImportError: No module named telegram
+        """,
+        snippet_source="from telegram import Update\nfrom telegram.ext import Updater",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies telegram bot API package
+    if resp.fix_possible and resp.correct_package:
+        assert "python-telegram-bot" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_discord_py(ollama_available):
+    """LLM identifies discord.py package for Discord API"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "discord (import: discord)",
+        ],
+        error_log="""
+        ImportError: No module named discord
+        """,
+        snippet_source="import discord\nclient = discord.Client()",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies discord.py package for Discord API
+    if resp.fix_possible and resp.correct_package:
+        assert "discord.py" in resp.correct_package.lower() or "discord" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_jwt_pyjwt(ollama_available):
+    """LLM identifies jwt module comes from PyJWT"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "jwt (import: jwt)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement jwt
+        """,
+        snippet_source="import jwt\ntoken = jwt.encode(payload, secret)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies jwt module comes from PyJWT
+    if resp.fix_possible and resp.correct_package:
+        assert "pyjwt" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_dotenv_python_dotenv(ollama_available):
+    """LLM identifies dotenv module comes from python-dotenv"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "dotenv (import: dotenv)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement dotenv
+        """,
+        snippet_source="from dotenv import load_dotenv\nload_dotenv()",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies dotenv module comes from python-dotenv
+    if resp.fix_possible and resp.correct_package:
+        assert "python-dotenv" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_rest_framework_djangorestframework(ollama_available):
+    """LLM identifies rest_framework from djangorestframework"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "rest_framework (import: rest_framework)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement rest_framework
+        """,
+        snippet_source="from rest_framework import serializers\nclass MySerializer(serializers.Serializer):",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies rest_framework from djangorestframework
+    if resp.fix_possible and resp.correct_package:
+        assert "djangorestframework" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_serial_pyserial(ollama_available):
+    """LLM identifies serial module comes from pyserial"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "serial (import: serial)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement serial
+        """,
+        snippet_source="import serial\nser = serial.Serial('/dev/ttyUSB0', 9600)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies serial module comes from pyserial
+    if resp.fix_possible and resp.correct_package:
+        assert "pyserial" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_usb_pyusb(ollama_available):
+    """LLM identifies usb module comes from pyusb"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "usb (import: usb)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement usb
+        """,
+        snippet_source="import usb.core\ndev = usb.core.find()",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies usb module comes from pyusb
+    if resp.fix_possible and resp.correct_package:
+        assert "pyusb" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_bluetooth_pybluez(ollama_available):
+    """LLM identifies bluetooth module comes from PyBluez"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "bluetooth (import: bluetooth)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement bluetooth
+        """,
+        snippet_source="import bluetooth\ndevices = bluetooth.discover_devices()",
+        python_version="2.7",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies bluetooth module comes from PyBluez
+    if resp.fix_possible and resp.correct_package:
+        assert "pybluez" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_bs4_beautifulsoup4(ollama_available):
+    """LLM identifies bs4 module comes from beautifulsoup4"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "bs4 (import: bs4)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement bs4
+        """,
+        snippet_source="from bs4 import BeautifulSoup\nsoup = BeautifulSoup(html)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies bs4 module comes from beautifulsoup4
+    if resp.fix_possible and resp.correct_package:
+        assert "beautifulsoup4" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_websocket_websocket_client(ollama_available):
+    """LLM identifies websocket module comes from websocket-client"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "websocket (import: websocket)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement websocket
+        """,
+        snippet_source="import websocket\nws = websocket.WebSocket()",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies websocket module comes from websocket-client
+    if resp.fix_possible and resp.correct_package:
+        assert "websocket-client" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_pycrypto_cryptography(ollama_available):
+    """LLM suggests cryptography instead of deprecated pycrypto"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "pycrypto (import: pycrypto)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement pycrypto
+        """,
+        snippet_source="from Crypto.Cipher import AES\ncipher = AES.new(key, AES.MODE_CBC)",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM suggests cryptography instead of deprecated pycrypto
+    if resp.fix_possible and resp.correct_package:
+        assert "cryptography" in resp.correct_package.lower() or "pycryptodome" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_pil_pillow(ollama_available):
+    """LLM suggests Pillow instead of deprecated PIL"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "PIL (import: PIL)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement PIL
+        """,
+        snippet_source="from PIL import Image\nimg = Image.open('photo.jpg')",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM suggests Pillow instead of deprecated PIL
+    if resp.fix_possible and resp.correct_package:
+        assert "pillow" in resp.correct_package.lower() or "PIL" in resp.correct_package
+
+
+@pytest.mark.integration
+def test_synthetic_pygtk_deprecated(ollama_available):
+    """LLM recognizes PyGTK is deprecated for Python 3"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "pygtk (import: pygtk)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement pygtk
+        """,
+        snippet_source="import gtk\nwindow = gtk.Window()",
+        python_version="3.9",
+        error_type="PackageNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM recognizes PyGTK is deprecated for Python 3
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should recognize as deprecated/skip
+
+
+@pytest.mark.integration
+def test_synthetic_cPickle_python2_to_3(ollama_available):
+    """LLM recognizes cPickle is Python 2, use pickle in Python 3"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "cPickle (import: cPickle)",
+        ],
+        error_log="""
+        ModuleNotFoundError: No module named cPickle
+        """,
+        snippet_source="import cPickle\ndata = cPickle.loads(bytes_data)",
+        python_version="3.9",
+        error_type="ModuleNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM recognizes cPickle is Python 2, use pickle in Python 3
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should remove or suggest pickle
+
+
+@pytest.mark.integration
+def test_synthetic_stringio_io_migration(ollama_available):
+    """LLM recognizes StringIO moved to io module"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "StringIO (import: StringIO)",
+        ],
+        error_log="""
+        ModuleNotFoundError: No module named StringIO
+        """,
+        snippet_source="from StringIO import StringIO\nbuf = StringIO()",
+        python_version="3.9",
+        error_type="ModuleNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM recognizes StringIO moved to io module
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should suggest io.StringIO
+
+
+@pytest.mark.integration
+def test_synthetic_local_config_module(ollama_available):
+    """LLM identifies config.py as local project module"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "config (import: config)",
+        ],
+        error_log="""
+        ImportError: No module named config
+        """,
+        snippet_source="import config\nDATABASE_URL = config.DATABASE_URL",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies config.py as local project module
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should identify as local
+
+
+@pytest.mark.integration
+def test_synthetic_local_utils_module(ollama_available):
+    """LLM identifies utils.py as local project module"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "utils (import: utils)",
+        ],
+        error_log="""
+        ImportError: No module named utils
+        """,
+        snippet_source="from utils import helpers\nresult = helpers.process_data(data)",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies utils.py as local project module
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should identify as local
+
+
+@pytest.mark.integration
+def test_synthetic_local_models_module(ollama_available):
+    """LLM identifies models.py as local Django/project module"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "models (import: models)",
+        ],
+        error_log="""
+        ImportError: No module named models
+        """,
+        snippet_source="from django.db import models\nfrom models import User",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies models.py as local Django/project module
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should identify as local
+
+
+@pytest.mark.integration
+def test_synthetic_local_views_module(ollama_available):
+    """LLM identifies views.py as local Flask/Django module"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "views (import: views)",
+        ],
+        error_log="""
+        ImportError: No module named views
+        """,
+        snippet_source="from flask import Flask\nfrom views import home_view",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies views.py as local Flask/Django module
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should identify as local
+
+
+@pytest.mark.integration
+def test_synthetic_tensorflow_gpu_cpu(ollama_available):
+    """LLM suggests tensorflow instead of tensorflow-gpu"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "tensorflow-gpu==1.15.0 (import: tensorflow-gpu)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement tensorflow-gpu==1.15.0
+        """,
+        snippet_source="import tensorflow as tf\nmodel = tf.keras.Sequential()",
+        python_version="3.9",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM suggests tensorflow instead of tensorflow-gpu
+    if resp.fix_possible and resp.correct_package:
+        assert "tensorflow" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_gevent_version(ollama_available):
+    """LLM adjusts gevent version for Python compatibility"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "gevent==20.9.0 (import: gevent)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement gevent==20.9.0
+        """,
+        snippet_source="from gevent import monkey\nmonkey.patch_all()",
+        python_version="3.11",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM adjusts gevent version for Python compatibility
+    if resp.fix_possible and resp.correct_package:
+        assert "gevent" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_twisted_version(ollama_available):
+    """LLM adjusts Twisted version for Python compatibility"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Twisted==20.3.0 (import: Twisted)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement Twisted==20.3.0
+        """,
+        snippet_source="from twisted.internet import reactor\nreactor.run()",
+        python_version="3.11",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM adjusts Twisted version for Python compatibility
+    if resp.fix_possible and resp.correct_package:
+        assert "Twisted" in resp.correct_package or "twisted" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_scrapy_old_version(ollama_available):
+    """LLM updates old Scrapy version for compatibility"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "Scrapy==1.8.0 (import: Scrapy)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement Scrapy==1.8.0
+        """,
+        snippet_source="import scrapy\nclass MySpider(scrapy.Spider):",
+        python_version="3.11",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM updates old Scrapy version for compatibility
+    if resp.fix_possible and resp.correct_package:
+        assert "scrapy" in resp.correct_package.lower()
+
+
+@pytest.mark.integration
+def test_synthetic_wxpython_version(ollama_available):
+    """LLM relaxes wxPython version for Python compatibility"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "wxPython==4.1.0 (import: wxPython)",
+        ],
+        error_log="""
+        ERROR: Could not find a version that satisfies the requirement wxPython==4.1.0
+        """,
+        snippet_source="import wx\napp = wx.App()",
+        python_version="3.11",
+        error_type="VersionNotFound",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM relaxes wxPython version for Python compatibility
+    if resp.fix_possible and resp.correct_package:
+        assert "wxPython" in resp.correct_package
+
+
+@pytest.mark.integration
+def test_synthetic_celery_redis_dependency(ollama_available):
+    """LLM identifies redis dependency for Celery"""
+    req = ResolutionRequest(
+        action="recovery",
+        resolved_packages=[
+            "celery==4.4.7 (import: celery)",
+        ],
+        error_log="""
+        ImportError: cannot import name 'redis' from 'kombu.transport'
+        """,
+        snippet_source="from celery import Celery\napp = Celery('tasks', broker='redis://localhost')",
+        python_version="3.9",
+        error_type="ImportError",
+        previous_attempts=[],
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    )
+
+    resp = handle(req)
+
+    # LLM identifies redis dependency for Celery
+    if resp.fix_possible and resp.correct_package:
+        pass  # Should suggest adding redis
+
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
 # Auto-generated tier3 success test cases

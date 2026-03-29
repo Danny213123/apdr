@@ -445,7 +445,6 @@ class BenchmarkService:
             if event_queue is not None:
                 self._current_run["_event_queue"] = event_queue
         snapshot.pop("_recentActivityLimit", None)
-        snapshot.pop("_completedCasesLimit", None)
         snapshot.pop("_solveSecondsTotal", None)
         snapshot.pop("_validationSecondsTotal", None)
         snapshot.pop("_envCreateSecondsTotal", None)
@@ -575,7 +574,6 @@ class BenchmarkService:
             "completedCases": [],
             "llmCases": [],
             "_recentActivityLimit": 350,
-            "_completedCasesLimit": 500,
             "_solveSecondsTotal": 0.0,
             "_validationSecondsTotal": 0.0,
             "_envCreateSecondsTotal": 0.0,
@@ -736,9 +734,6 @@ class BenchmarkService:
                 )
                 case_row = self._build_case_row(result)
                 self._current_run["completedCases"].insert(0, case_row)
-                self._current_run["completedCases"] = self._current_run["completedCases"][
-                    : self._current_run["_completedCasesLimit"]
-                ]
                 self._record_llm_case(self._current_run, case_row)
                 self._refresh_run_fields()
             elif kind == "done":
@@ -978,10 +973,7 @@ class BenchmarkService:
                 "smokeAverage": self._format_phase_average(self._phase_average(*phase_totals["smoke"])),
                 "eta": self._format_eta(eta_seconds),
                 "recentActivity": self._historical_activity(run_id, summary, run_dir, completed, total, remaining),
-                "completedCases": [
-                    self._build_case_row(item, config)
-                    for item in reversed(results[-run["_completedCasesLimit"] :])
-                ],
+                "completedCases": [self._build_case_row(item, config) for item in reversed(results)],
                 "llmCases": llm_cases,
                 "resumeAvailable": resume_available,
                 "remaining": remaining,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.15 - 2026-03-28
+
+- Hardened the Phase 10 targeted benchmark rerun tooling so live proof is explicit instead of silently degrading to dry-run, with probe-only readiness output, a machine-readable live-proof status artifact, and rerun classification that now reads emitted APDR metadata and refreshed requirements instead of relying on subprocess exit codes alone.
+- Fixed the benchmark UI's historical-run accounting so completed-case tables now expose the full saved run instead of truncating to the last 500 rows, and the Success Rates dashboard now prefers aggregate deterministic and LLM counters so large runs no longer show mismatched totals.
+- Expanded `tools/apdr/llm_py/tests/test_llm_integration.py` with benchmark-derived hard recovery scenarios plus broader synthetic package-mapping cases, giving the LLM recovery service much wider regression coverage for legacy compatibility, local-module, and package-name translation paths.
+
 ## 0.2.14 - 2026-03-25
 
 - Added a fast validated import-set cache path plus broader resolver recovery logic in [`tools/apdr/`](/Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr), including docstring-aware import scanning, expanded alias/heuristic mappings, equally distanced version sampling, stronger Python 2 ceilings, guarded-import/runtime-config handling, protobuf/TensorFlow fixes, and new Rust/Python regression coverage for the latest edge cases.

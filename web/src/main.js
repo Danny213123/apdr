@@ -1756,21 +1756,37 @@ function updateSuccessRateDashboard() {
     return;
   }
 
-  const allCases = run.completedCases || [];
+  const allCases = Array.isArray(run.completedCases) ? run.completedCases : [];
 
-  // Deterministic cases (tier1 + tier2)
-  const deterministicCases = allCases.filter(c => c.tier === "tier1" || c.tier === "tier2");
-  const detSucceeded = deterministicCases.filter(c => c.status === "PASS").length;
-  const detFailed = deterministicCases.filter(c => c.status === "FAIL").length;
-  const detPassed = deterministicCases.filter(c => c.status === "PASS" || c.status === "SKIP").length;
-  const detTotal = deterministicCases.length;
+  // Prefer aggregate counters from the run state. `completedCases` is intentionally
+  // capped to the most recent rows for UI responsiveness, so using it directly
+  // undercounts large historical runs.
+  const deterministicCases = allCases.filter((c) => c.tier === "tier1" || c.tier === "tier2");
+  const llmCases = allCases.filter((c) => c.tier === "tier3");
 
-  // LLM cases (tier3)
-  const llmCases = allCases.filter(c => c.tier === "tier3");
-  const llmSucceeded = llmCases.filter(c => c.status === "PASS").length;
-  const llmFailed = llmCases.filter(c => c.status === "FAIL").length;
-  const llmPassed = llmCases.filter(c => c.status === "PASS" || c.status === "SKIP").length;
-  const llmTotal = llmCases.length;
+  const detSucceeded = Number.isFinite(Number(run.regularSuccesses))
+    ? Number(run.regularSuccesses)
+    : deterministicCases.filter((c) => c.status === "PASS").length;
+  const detFailed = Number.isFinite(Number(run.regularFailures))
+    ? Number(run.regularFailures)
+    : deterministicCases.filter((c) => c.status === "FAIL").length;
+  const detSkipped = Number.isFinite(Number(run.regularSkipped))
+    ? Number(run.regularSkipped)
+    : deterministicCases.filter((c) => c.status === "SKIP").length;
+  const detPassed = detSucceeded + detSkipped;
+  const detTotal = detSucceeded + detFailed + detSkipped;
+
+  const llmSucceeded = Number.isFinite(Number(run.llmSuccesses))
+    ? Number(run.llmSuccesses)
+    : llmCases.filter((c) => c.status === "PASS").length;
+  const llmFailed = Number.isFinite(Number(run.llmFailures))
+    ? Number(run.llmFailures)
+    : llmCases.filter((c) => c.status === "FAIL").length;
+  const llmSkipped = Number.isFinite(Number(run.llmSkipped))
+    ? Number(run.llmSkipped)
+    : llmCases.filter((c) => c.status === "SKIP").length;
+  const llmPassed = llmSucceeded + llmSkipped;
+  const llmTotal = llmSucceeded + llmFailed + llmSkipped;
 
   ui.deterministicSuccessValue.innerHTML = formatSuccessRate(detSucceeded, detFailed, detPassed, detTotal);
   ui.llmSuccessValue.innerHTML = formatSuccessRate(llmSucceeded, llmFailed, llmPassed, llmTotal);
