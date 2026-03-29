@@ -15,7 +15,7 @@ Implements:
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -205,10 +205,11 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     if req.tier2_candidates:
         constrained_model = _build_constrained_model(req.tier2_candidates)
 
-    # Choose resolution strategy based on remaining LLM imports
-    llm_confidence = 0.73  # default
+    # Choose an agentic strategy based on ambiguity.
+    llm_confidence = 0.73
+    result = None
     if constrained_model is not None and len(llm_imports) == 1:
-        # Single import with tier2 candidates → try constrained decoding first
+        # Easy single-import cases still benefit from grammar-constrained decoding.
         result = client.complete_ollama_native(
             system_prompt=prompts.RESOLUTION_SYSTEM,
             user_prompt=user_prompt,
@@ -219,23 +220,39 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         if result is not None:
             notes.append("Used constrained decoding with tier2 candidates")
         else:
-            # Fallback to tolerant JSON
-            result = client.complete_json(
+            result = client.complete_two_pass(
                 system_prompt=prompts.RESOLUTION_SYSTEM,
                 user_prompt=user_prompt,
                 response_model=MappingsResult,
                 max_tokens=512,
             )
-            prompts_issued += 1
-    else:
-        # All other cases: single tolerant JSON call
-        result = client.complete_json(
+            prompts_issued += 2
+            if result is not None:
+                notes.append("Used two-pass reasoning for single-import recovery")
+    elif len(llm_imports) == 1:
+        result = client.complete_two_pass(
             system_prompt=prompts.RESOLUTION_SYSTEM,
             user_prompt=user_prompt,
             response_model=MappingsResult,
+            max_tokens=768,
+        )
+        prompts_issued += 2
+        if result is not None:
+            notes.append("Used two-pass reasoning for single-import recovery")
+    else:
+        result, llm_confidence = client.complete_with_entropy(
+            system_prompt=prompts.RESOLUTION_SYSTEM,
+            user_prompt=user_prompt,
+            response_model=MappingsResult,
+            n=3,
+            temperature=0.2,
             max_tokens=1024,
         )
-        prompts_issued += 1
+        prompts_issued += 3
+        if result is not None:
+            notes.append(f"Used self-consistency voting (confidence {llm_confidence:.2f})")
+        else:
+            notes.append("Self-consistency voting returned no usable mapping draft")
 
     if result is None:
         return ResolutionResponse(
@@ -249,62 +266,78 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     for m in result.mappings:
         if m.import_name in llm_imports:
             mappings[m.import_name] = m.package_name
+    missing_mappings = [imp for imp in llm_imports if imp not in mappings]
+    if missing_mappings:
+        notes.append(
+            "Initial reasoning left imports unresolved: "
+            + ", ".join(missing_mappings[:5])
+        )
 
-    for imp in llm_imports:
-        if imp not in mappings:
-            mappings[imp] = imp
-
-    # --- #1: ReAct verify-and-retry with PyPI existence check ---
-    nonexistent = _check_pypi_existence(
-        [(i, p) for i, p in mappings.items() if i != p]
+    # Critique the draft before shipping it.
+    self_refine_result = _self_refine_mappings(
+        client=client,
+        req=req,
+        llm_imports=llm_imports,
+        mappings=mappings,
     )
-    if nonexistent:
-        feedback_imports = [i for i, _ in nonexistent]
-        feedback_lines = [
-            f"  {imp} -> {pkg} (NOT FOUND on PyPI)" for imp, pkg in nonexistent
-        ]
-        retry_context = [
-            "IMPORTANT: The following packages do NOT exist on PyPI. "
-            "Please suggest correct alternatives:\n" + "\n".join(feedback_lines)
-        ] + context_parts
-
-        retry_user = prompts.package_resolution_user(
-            unresolved_imports=feedback_imports,
-            python_version=req.python_version,
-            context=retry_context,
-            benchmark_context=req.benchmark_context,
-            attribute_usage=req.attribute_usage,
-            tier2_candidates={
-                k: v
-                for k, v in (req.tier2_candidates or {}).items()
-                if k in feedback_imports
-            },
-        )
-
-        retry_result = client.complete_json(
-            system_prompt=prompts.RESOLUTION_SYSTEM,
-            user_prompt=retry_user,
-            response_model=MappingsResult,
-            max_tokens=1024,
-        )
+    if self_refine_result is not None:
         prompts_issued += 1
+        if not self_refine_result.all_correct:
+            for correction in self_refine_result.corrections:
+                import_name = str(correction.get("import_name") or "").strip()
+                corrected_package = str(correction.get("corrected_package") or "").strip()
+                if import_name in mappings and corrected_package:
+                    mappings[import_name] = corrected_package
+                    notes.append(f"Self-refine corrected {import_name} -> {corrected_package}")
+        else:
+            notes.append("Self-refine accepted the draft mappings")
 
-        if retry_result:
-            for m in retry_result.mappings:
-                if m.import_name in mappings:
-                    mappings[m.import_name] = m.package_name
-                    notes.append(
-                        f"ReAct retry: {m.import_name} -> {m.package_name}"
-                    )
+    # --- Agentic fallback: if confidence is low or PyPI existence rejects the draft,
+    # run the tool-using resolver rather than hardcoding more package rules.
+    nonexistent = _check_pypi_existence([(i, p) for i, p in mappings.items() if i != p])
+    suspicious = _suspicious_identity_mappings(mappings, llm_imports)
+    needs_agent_fallback = (
+        len(llm_imports) > 1 and llm_confidence < 0.72
+    ) or bool(nonexistent) or bool(suspicious) or bool(missing_mappings)
+
+    if needs_agent_fallback:
+        from . import react_agent
+
+        agent_req = req.model_copy(deep=True)
+        agent_req.imports = list(llm_imports)
+        agent_req.context = context_parts
+        agent_response = react_agent.handle(agent_req)
+        prompts_issued += agent_response.prompts_issued
+        notes.extend(agent_response.notes)
+
+        for mapping in agent_response.mappings:
+            if mapping.import_name in mappings and mapping.package_name:
+                mappings[mapping.import_name] = mapping.package_name
+                notes.append(f"Agent fallback resolved {mapping.import_name} -> {mapping.package_name}")
+
+        unresolved_from_agent = {
+            name for name in agent_response.unresolved if name in llm_imports
+        }
+        for import_name in unresolved_from_agent:
+            mappings.pop(import_name, None)
+        if nonexistent:
+            rejected = ", ".join(f"{imp}->{pkg}" for imp, pkg in nonexistent[:5])
+            notes.append(f"Agent fallback triggered by PyPI rejection: {rejected}")
+        if suspicious:
+            notes.append(
+                "Agent fallback triggered by low-confidence or identity-heavy mappings"
+            )
 
     # Build response
     result_mappings = [
         PackageMapping(import_name=imp, package_name=pkg)
         for imp, pkg in mappings.items()
     ]
+    unresolved = [imp for imp in req.imports if imp not in mappings]
 
     return ResolutionResponse(
         mappings=result_mappings,
+        unresolved=unresolved,
         confidence=llm_confidence,
         notes=notes,
         prompts_issued=prompts_issued,
@@ -320,3 +353,47 @@ def _check_pypi_existence(
         if not package_exists_on_pypi(pkg):
             nonexistent.append((imp, pkg))
     return nonexistent
+
+
+def _self_refine_mappings(
+    client: LlmClient,
+    req: ResolutionRequest,
+    llm_imports: list[str],
+    mappings: dict[str, str],
+) -> SelfRefineResult | None:
+    review_pairs = [
+        (imp, pkg)
+        for imp, pkg in mappings.items()
+        if imp in llm_imports and pkg and pkg != imp
+    ]
+    if not review_pairs:
+        return None
+
+    snippet_excerpt = req.snippet_source.strip()
+    if not snippet_excerpt:
+        snippet_excerpt = "\n".join(f"import {imp}" for imp in llm_imports)
+
+    return client.complete_json(
+        system_prompt=prompts.SELF_REFINE_SYSTEM,
+        user_prompt=prompts.self_refine_user(
+            mappings=review_pairs,
+            python_version=req.python_version,
+            snippet_excerpt=snippet_excerpt,
+        ),
+        response_model=SelfRefineResult,
+        max_tokens=768,
+    )
+
+
+def _suspicious_identity_mappings(
+    mappings: dict[str, str],
+    llm_imports: list[str],
+) -> list[str]:
+    suspicious: list[str] = []
+    for import_name in llm_imports:
+        package_name = mappings.get(import_name)
+        if not package_name:
+            continue
+        if package_name == import_name and not package_exists_on_pypi(package_name):
+            suspicious.append(import_name)
+    return suspicious

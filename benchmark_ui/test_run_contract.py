@@ -14,6 +14,19 @@ from .state import AppState
 
 
 class TestRunContract(unittest.TestCase):
+    def test_service_defaults_macos_replay_to_release_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            config = service._normalize_run_config(
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(Path(temp_dir) / "hard-gists.tar.gz"),
+                    "run_intent": "macos-replay",
+                }
+            )
+            self.assertEqual(config["run_intent"], "macos-replay")
+            self.assertEqual(config["build_profile"], "release")
+
     def test_build_run_contract_includes_required_keys(self) -> None:
         contract = build_run_contract(
             repo_root=Path.cwd(),
@@ -146,6 +159,66 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(info_fields["Cache state"], "warm")
             self.assertEqual(info_fields["Ctx window"], "32768")
             self.assertEqual(info_fields["Build profile"], "pgo")
+
+    def test_historical_run_shows_macos_replay_workers_and_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = AppState(repo_root)
+            run_dir = repo_root / "runs" / "20260329-010000-apdr"
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            state.write_json(
+                run_dir / "summary.json",
+                {
+                    "tool": "apdr",
+                    "model": "",
+                    "base_url": "",
+                    "dataset_tar": str(repo_root / "hard-gists.tar.gz"),
+                    "dataset_dir": str(repo_root / "hard-gists"),
+                    "loop_count": 1,
+                    "search_range": 1,
+                    "rag": False,
+                    "verbose": False,
+                    "snippet_limit": "",
+                    "python_command": "",
+                    "validation_backend": "env",
+                    "workers": 0,
+                    "effective_workers": 1,
+                    "preflight_warnings": [
+                        "Running under Rosetta 2 translation. Timings will not reflect native macOS ARM64 replay performance."
+                    ],
+                    "started_at": "2026-03-28T10:00:00",
+                    "finished_at": "2026-03-28T10:00:01",
+                    "status": "completed",
+                    "results": [],
+                    "run_contract": {
+                        "run_contract_version": "1",
+                        "tool": "apdr",
+                        "model_name": "qwen3.5:9b",
+                        "base_url": "http://localhost:11434",
+                        "validation_backend": "env",
+                        "run_intent": "macos-replay",
+                        "execution_mode": "env-fast",
+                        "cache_state": "cold",
+                        "host_architecture": "arm64",
+                        "apdr_binary_architecture": "arm64",
+                        "python_architecture": "arm64-64",
+                        "llm_context_window": "16384",
+                        "inference_policy": "temperature=0.7",
+                        "build_profile": "release",
+                    },
+                },
+            )
+
+            service = BenchmarkService(state)
+            payload = service.load_run("20260329-010000-apdr")
+            run = payload["run"]
+            info_fields = {item["label"]: item["value"] for item in run["infoFields"]}
+
+            self.assertEqual(info_fields["Run intent"], "macos-replay")
+            self.assertEqual(info_fields["Build profile"], "release")
+            self.assertEqual(info_fields["Workers"], "1")
+            self.assertIn("Rosetta 2", info_fields["Replay warnings"])
 
 
 if __name__ == "__main__":

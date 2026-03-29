@@ -248,13 +248,11 @@ def _manual_react_loop(req: ResolutionRequest) -> ResolutionResponse:
                 )
             break
 
-    # Fallback: identity mappings
+    # Fallback: unresolved imports. Returning identity mappings here teaches the
+    # caller nothing and makes bad guesses look validated.
     return ResolutionResponse(
-        mappings=[
-            PackageMapping(import_name=imp, package_name=imp)
-            for imp in req.imports
-        ],
-        notes=["ReAct agent exhausted steps, returning identity mappings"],
+        unresolved=list(req.imports),
+        notes=["ReAct agent exhausted steps without a verified mapping"],
         prompts_issued=prompts_issued,
     )
 

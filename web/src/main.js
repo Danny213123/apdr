@@ -1764,32 +1764,47 @@ function updateSuccessRateDashboard() {
   const deterministicCases = allCases.filter((c) => c.tier === "tier1" || c.tier === "tier2");
   const llmCases = allCases.filter((c) => c.tier === "tier3");
 
-  const detSucceeded = Number.isFinite(Number(run.regularSuccesses))
-    ? Number(run.regularSuccesses)
-    : deterministicCases.filter((c) => c.status === "PASS").length;
-  const detFailed = Number.isFinite(Number(run.regularFailures))
-    ? Number(run.regularFailures)
-    : deterministicCases.filter((c) => c.status === "FAIL").length;
-  const detSkipped = Number.isFinite(Number(run.regularSkipped))
-    ? Number(run.regularSkipped)
-    : deterministicCases.filter((c) => c.status === "SKIP").length;
-  const detPassed = detSucceeded + detSkipped;
-  const detTotal = detSucceeded + detFailed + detSkipped;
+  const detStats = bucketSuccessRateStats(
+    run,
+    deterministicCases,
+    "regularSuccesses",
+    "regularFailures",
+    "regularSkipped",
+  );
+  const llmStats = bucketSuccessRateStats(run, llmCases, "llmSuccesses", "llmFailures", "llmSkipped");
 
-  const llmSucceeded = Number.isFinite(Number(run.llmSuccesses))
-    ? Number(run.llmSuccesses)
-    : llmCases.filter((c) => c.status === "PASS").length;
-  const llmFailed = Number.isFinite(Number(run.llmFailures))
-    ? Number(run.llmFailures)
-    : llmCases.filter((c) => c.status === "FAIL").length;
-  const llmSkipped = Number.isFinite(Number(run.llmSkipped))
-    ? Number(run.llmSkipped)
-    : llmCases.filter((c) => c.status === "SKIP").length;
-  const llmPassed = llmSucceeded + llmSkipped;
-  const llmTotal = llmSucceeded + llmFailed + llmSkipped;
+  ui.deterministicSuccessValue.innerHTML = formatSuccessRate(
+    detStats.succeeded,
+    detStats.failed,
+    detStats.passed,
+    detStats.total,
+  );
+  ui.llmSuccessValue.innerHTML = formatSuccessRate(
+    llmStats.succeeded,
+    llmStats.failed,
+    llmStats.passed,
+    llmStats.total,
+  );
+}
 
-  ui.deterministicSuccessValue.innerHTML = formatSuccessRate(detSucceeded, detFailed, detPassed, detTotal);
-  ui.llmSuccessValue.innerHTML = formatSuccessRate(llmSucceeded, llmFailed, llmPassed, llmTotal);
+function bucketSuccessRateStats(run, cases, successKey, failureKey, skippedKey) {
+  const succeeded = Number.isFinite(Number(run[successKey]))
+    ? Number(run[successKey])
+    : cases.filter((c) => c.status === "PASS").length;
+  const failed = Number.isFinite(Number(run[failureKey]))
+    ? Number(run[failureKey])
+    : cases.filter((c) => c.status === "FAIL").length;
+  const skipped = Number.isFinite(Number(run[skippedKey]))
+    ? Number(run[skippedKey])
+    : cases.filter((c) => c.status === "SKIP").length;
+  const total = succeeded + failed + skipped;
+  return {
+    succeeded,
+    failed,
+    // "Passed" in the dashboard is the count of cases that reached a terminal bucket outcome.
+    passed: total,
+    total,
+  };
 }
 
 function formatSuccessRate(succeeded, failed, passed, total) {

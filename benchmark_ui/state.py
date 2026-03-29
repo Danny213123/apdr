@@ -25,6 +25,7 @@ from . import APP_NAME, APP_VERSION
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_TEMPERATURE = 0.7
+MACOS_REPLAY_RUN_INTENT = "macos-replay"
 APDR_PYTHON_VERSIONS = ["2.7", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
 APDR_PYTHON_INSTALL_CANDIDATES: dict[str, list[str]] = {
     "2.7": ["2.7.18"],

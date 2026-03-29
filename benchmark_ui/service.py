@@ -14,7 +14,11 @@ import threading
 import time
 
 from . import APP_NAME, APP_VERSION
-from .runner import BenchmarkWorker
+from .runner import (
+    BenchmarkWorker,
+    collect_replay_preflight_warnings,
+    determine_effective_worker_count,
+)
 from .run_contract import (
     contract_from_sources,
     determine_execution_mode,
@@ -509,6 +513,11 @@ class BenchmarkService:
         loop_count = int(payload.get("loop_count") or payload.get("loopCount") or defaults["loop_count"])
         search_range = int(payload.get("search_range") or payload.get("searchRange") or defaults["search_range"])
         snippet_limit = str(payload.get("snippet_limit") or payload.get("snippetLimit") or defaults["snippet_limit"]).strip()
+        build_profile_value = (
+            payload.get("build_profile")
+            or payload.get("buildProfile")
+            or run_contract.get("build_profile")
+        )
         config = {
             "tool": tool,
             "dataset_tar": dataset_tar,
@@ -548,9 +557,7 @@ class BenchmarkService:
                 or defaults["inference_policy"]
             ),
             "build_profile": normalize_build_profile(
-                payload.get("build_profile")
-                or payload.get("buildProfile")
-                or run_contract.get("build_profile")
+                build_profile_value
                 or defaults["build_profile"]
             ),
             "model": str(payload.get("model") or run_contract.get("model_name") or "").strip(),
@@ -565,6 +572,8 @@ class BenchmarkService:
             ).strip(),
             "run_contract": run_contract if run_contract else {},
         }
+        if config["run_intent"] == "macos-replay" and not str(build_profile_value or "").strip():
+            config["build_profile"] = "release"
         if validate:
             if not config["tool"]:
                 raise ValueError("Choose a tool from tools/ before starting a benchmark.")
@@ -580,6 +589,7 @@ class BenchmarkService:
         return config
 
     def _make_idle_run(self, config: dict[str, Any]) -> dict[str, Any]:
+        effective_workers, _ = determine_effective_worker_count(config)
         return {
             "status": "idle",
             "title": "APDR benchmark ready",
@@ -596,6 +606,8 @@ class BenchmarkService:
             "config": deepcopy(config),
             "infoFields": self._info_fields(config, {}),
             "resolvedModel": self._resolved_model_label(config),
+            "preflightWarnings": [],
+            "effectiveWorkers": effective_workers,
             "completed": 0,
             "total": 0,
             "successes": 0,
@@ -661,6 +673,12 @@ class BenchmarkService:
                 self._current_run["status"] = "running"
                 self._current_run["runDir"] = str(message["run_dir"])
                 self._current_run["runId"] = os.path.basename(str(message["run_dir"]))
+                self._current_run["preflightWarnings"] = [
+                    str(item)
+                    for item in (message.get("preflight_warnings") or [])
+                    if str(item).strip()
+                ]
+                self._current_run["effectiveWorkers"] = int(message.get("effective_workers") or 0)
                 resumed_completed = int(message.get("resumed_completed") or 0)
                 resumed_successes = int(message.get("resumed_successes") or 0)
                 resumed_failures = int(message.get("resumed_failures") or 0)
@@ -701,6 +719,8 @@ class BenchmarkService:
                     self._current_run["subtitle"] = (
                         "warning: benchmark telemetry is live; monitor active cases, logs, and completed rows below."
                     )
+                for warning in self._current_run["preflightWarnings"]:
+                    self._append_activity(f"warning: replay preflight - {warning}")
                 self._refresh_live_run_metrics_locked(force=True)
                 self._refresh_run_fields()
                 self._append_activity(self._current_run["statusText"])
@@ -935,6 +955,7 @@ class BenchmarkService:
             "llm_context_window": config["llm_context_window"],
             "inference_policy": config["inference_policy"],
             "build_profile": config["build_profile"],
+            "workers": config["workers"],
             "replay_manifest": config.get("replay_manifest", ""),
         }
 
@@ -1006,6 +1027,15 @@ class BenchmarkService:
                 "runId": run_id,
                 "runDir": str(run_dir),
                 "runContract": run_contract,
+                "preflightWarnings": [
+                    str(item)
+                    for item in (summary.get("preflight_warnings") or [])
+                    if str(item).strip()
+                ],
+                "effectiveWorkers": int(
+                    summary.get("effective_workers")
+                    or determine_effective_worker_count(config)[0]
+                ),
                 "completed": completed,
                 "total": total,
                 "successes": successes,
@@ -1200,6 +1230,23 @@ class BenchmarkService:
             if tool
             else "--"
         )
+        effective_workers = int(
+            run.get("effectiveWorkers")
+            or determine_effective_worker_count(config)[0]
+        )
+        preflight_warnings = [
+            str(item)
+            for item in (
+                run.get("preflightWarnings")
+                or run.get("preflight_warnings")
+                or (
+                    collect_replay_preflight_warnings(config, self.state.tool_dir(tool))
+                    if tool == "apdr"
+                    else []
+                )
+            )
+            if str(item).strip()
+        ]
         jobs = run.get("total") or str(config.get("snippet_limit") or "all")
         artifacts = self.state.relative_path(run["runDir"]) if run.get("runDir") else "runs/pending"
         fields = [
@@ -1230,9 +1277,18 @@ class BenchmarkService:
             {"label": "Ctx window", "value": contract_view["llm_context_window"]},
             {"label": "Inference", "value": contract_view["inference_policy"]},
             {"label": "Build profile", "value": contract_view["build_profile"]},
+            {"label": "Workers", "value": str(effective_workers)},
             {"label": "Jobs", "value": str(jobs)},
             {"label": "Artifacts", "value": artifacts},
         ]
+        if contract_view["run_intent"] == "macos-replay" and preflight_warnings:
+            fields.insert(
+                21,
+                {
+                    "label": "Replay warnings",
+                    "value": " | ".join(preflight_warnings),
+                },
+            )
         if tool == "apdr":
             fields.insert(
                 14,

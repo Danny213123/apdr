@@ -48,26 +48,84 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers)")
     parser.add_argument("--force-validate", action="store_true", help="Force venv validation even for cached/pre-solved results")
     parser.add_argument("--validation-timeout", type=int, default=0, help="Per-attempt validation timeout in seconds")
+    parser.add_argument(
+        "--build-profile", default="",
+        help="Requested build profile (release, debug, pgo, standard). "
+             "When set, choose_command prefers the matching binary and warns "
+             "instead of silently falling back to cargo run.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print the raw CLI output")
     return parser.parse_args()
 
 
-def choose_command(tool_dir: Path) -> list[str]:
+def choose_command(tool_dir: Path, build_profile: str = "") -> tuple[list[str], list[str]]:
     release_binary = tool_dir / "target" / "release" / "apdr"
     debug_binary = tool_dir / "target" / "debug" / "apdr"
     release_binary_windows = tool_dir / "target" / "release" / "apdr.exe"
     debug_binary_windows = tool_dir / "target" / "debug" / "apdr.exe"
     source_mtime = newest_source_mtime(tool_dir)
-    candidates = [
-        path
-        for path in (debug_binary_windows, release_binary_windows, debug_binary, release_binary)
-        if path.exists()
+    profile = str(build_profile or "").strip().lower().replace("_", "-")
+
+    if profile in {"release", "pgo"}:
+        preferred = [release_binary_windows, release_binary]
+        fallback = [debug_binary_windows, debug_binary]
+    elif profile == "debug":
+        preferred = [debug_binary_windows, debug_binary]
+        fallback = [release_binary_windows, release_binary]
+    else:
+        candidates = [
+            candidate
+            for candidate in (debug_binary_windows, release_binary_windows, debug_binary, release_binary)
+            if candidate.exists() and candidate.stat().st_mtime >= source_mtime
+        ]
+        if candidates:
+            freshest = max(candidates, key=lambda path: path.stat().st_mtime)
+            return [str(freshest)], []
+        preferred = [debug_binary_windows, release_binary_windows, debug_binary, release_binary]
+        fallback = []
+
+    warnings: list[str] = []
+    stale_preferred: list[Path] = []
+    for candidate in preferred:
+        if not candidate.exists():
+            continue
+        if candidate.stat().st_mtime >= source_mtime:
+            return [str(candidate)], warnings
+        stale_preferred.append(candidate)
+
+    if stale_preferred:
+        warnings.append(
+            "Requested build_profile="
+            f"{profile or 'standard'} but the matching binary is older than the Rust sources: "
+            + ", ".join(str(path.relative_to(tool_dir)) for path in stale_preferred)
+        )
+
+    fresh_fallbacks = [
+        candidate
+        for candidate in fallback
+        if candidate.exists() and candidate.stat().st_mtime >= source_mtime
     ]
-    if candidates:
-        freshest = max(candidates, key=lambda path: path.stat().st_mtime)
-        if freshest.stat().st_mtime >= source_mtime:
-            return [str(freshest)]
-    return ["cargo", "run", "--quiet", "--"]
+    if fresh_fallbacks:
+        selected = fresh_fallbacks[0]
+        warnings.append(
+            f"Requested build_profile={profile or 'standard'} but using "
+            f"{selected.relative_to(tool_dir)} instead."
+        )
+        return [str(selected)], warnings
+
+    if fallback:
+        existing_fallbacks = [candidate for candidate in fallback if candidate.exists()]
+        if existing_fallbacks:
+            warnings.append(
+                f"Requested build_profile={profile or 'standard'} but only found stale "
+                f"fallback binaries: {', '.join(str(path.relative_to(tool_dir)) for path in existing_fallbacks)}."
+            )
+
+    warnings.append(
+        f"No fresh prebuilt APDR binary found for build_profile={profile or 'standard'}; "
+        "falling back to cargo run, which includes build overhead."
+    )
+    return ["cargo", "run", "--quiet", "--"], warnings
 
 
 def newest_source_mtime(tool_dir: Path) -> float:
@@ -197,7 +255,9 @@ def main() -> int:
     artifact_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir.strip() else snippet_dir
     tool_dir = Path(__file__).resolve().parent
 
-    command = choose_command(tool_dir)
+    command, selection_warnings = choose_command(tool_dir, args.build_profile)
+    for warning in selection_warnings:
+        print(f"APDR binary selection warning: {warning}", file=sys.stderr)
     command.extend(
         [
             "resolve",
@@ -246,6 +306,8 @@ def main() -> int:
                 [
                     f"snippet={snippet_path}",
                     f"artifact_dir={artifact_dir}",
+                    f"build_profile={args.build_profile or 'standard'}",
+                    f"binary_selection_warnings={json.dumps(selection_warnings)}",
                     f"command={' '.join(command)}",
                 ]
             ),

@@ -9,7 +9,13 @@ from unittest.mock import MagicMock, patch
 import tempfile
 import shutil
 
-from .runner import BenchmarkWorker, filter_snippets_by_manifest, load_replay_manifest
+from .runner import (
+    BenchmarkWorker,
+    collect_replay_preflight_warnings,
+    determine_effective_worker_count,
+    filter_snippets_by_manifest,
+    load_replay_manifest,
+)
 from .state import AppState
 
 
@@ -378,6 +384,53 @@ class TestReplayManifest(unittest.TestCase):
         svc = BenchmarkService()
         config = svc._normalize_run_config({"replay_manifest": "/tmp/test.json"})
         self.assertEqual(config["replay_manifest"], "/tmp/test.json")
+
+
+class TestMacosReplayPolicy(unittest.TestCase):
+    def test_macos_replay_auto_workers_default_to_one(self):
+        workers, warnings = determine_effective_worker_count(
+            {"run_intent": "macos-replay", "workers": 0},
+            cpu_count=12,
+        )
+        self.assertEqual(workers, 1)
+        self.assertEqual(warnings, [])
+
+    def test_macos_replay_caps_excessive_workers(self):
+        workers, warnings = determine_effective_worker_count(
+            {"run_intent": "macos-replay", "workers": 9},
+            cpu_count=12,
+        )
+        self.assertEqual(workers, 4)
+        self.assertTrue(any("macos-replay capped requested workers=9" in warning for warning in warnings))
+
+    @patch("benchmark_ui.runner.detect_requested_apdr_binary")
+    @patch("benchmark_ui.runner.detect_rosetta_translation")
+    @patch("benchmark_ui.runner.sys.platform", "darwin")
+    def test_replay_preflight_warnings_cover_invalidating_conditions(
+        self,
+        mock_rosetta: MagicMock,
+        mock_binary: MagicMock,
+    ) -> None:
+        mock_rosetta.return_value = True
+        mock_binary.return_value = (
+            None,
+            ["No prebuilt APDR binary found for build_profile=standard."],
+        )
+        warnings = collect_replay_preflight_warnings(
+            {
+                "run_intent": "macos-replay",
+                "validation_backend": "docker",
+                "cache_state": "mixed",
+                "build_profile": "standard",
+            },
+            Path(self.temp_dir),
+        )
+        joined = " | ".join(warnings)
+        self.assertIn("Rosetta 2", joined)
+        self.assertIn("validation_backend=docker", joined)
+        self.assertIn("cache_state=mixed", joined)
+        self.assertIn("build_profile", joined)
+        self.assertIn("No prebuilt APDR binary found", joined)
 
 
 if __name__ == "__main__":

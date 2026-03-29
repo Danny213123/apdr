@@ -10,6 +10,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -20,7 +21,13 @@ except ImportError:
     fcntl = None  # type: ignore[assignment]
 
 from .state import AppState
-from .run_contract import build_run_contract, missing_required_keys
+from .run_contract import (
+    build_run_contract,
+    missing_required_keys,
+    normalize_build_profile,
+    normalize_cache_state,
+    normalize_run_intent,
+)
 
 
 def load_replay_manifest(manifest_path: str | Path) -> dict[str, Any]:
@@ -98,6 +105,7 @@ def filter_snippets_by_manifest(
 
 # WSL mount prefix pattern: /mnt/<drive>/...
 _WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
+MACOS_REPLAY_MAX_WORKERS = 4
 
 
 def _normalize_path_for_native(p: Path) -> Path:
@@ -117,6 +125,132 @@ def _normalize_path_for_native(p: Path) -> Path:
         rest = (m.group(2) or "").replace("/", "\\")
         return Path(f"{drive}:{rest}")
     return p
+
+
+def detect_rosetta_translation() -> bool:
+    """Return True when the current macOS process is translated by Rosetta 2."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        completed = subprocess.run(
+            ["sysctl", "-n", "sysctl.proc_translated"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0 and completed.stdout.strip() == "1"
+
+
+def detect_requested_apdr_binary(tool_dir: Path, build_profile: str) -> tuple[Path | None, list[str]]:
+    """Find the APDR binary matching the requested build profile."""
+    profile = normalize_build_profile(build_profile)
+    release_binary = tool_dir / "target" / "release" / "apdr"
+    debug_binary = tool_dir / "target" / "debug" / "apdr"
+    release_binary_windows = tool_dir / "target" / "release" / "apdr.exe"
+    debug_binary_windows = tool_dir / "target" / "debug" / "apdr.exe"
+
+    if profile in {"release", "pgo"}:
+        preferred = [release_binary, release_binary_windows]
+        fallback = [debug_binary, debug_binary_windows]
+    elif profile == "debug":
+        preferred = [debug_binary, debug_binary_windows]
+        fallback = [release_binary, release_binary_windows]
+    else:
+        preferred = [release_binary, release_binary_windows, debug_binary, debug_binary_windows]
+        fallback = []
+
+    for candidate in preferred:
+        if candidate.exists():
+            return candidate, []
+
+    for candidate in fallback:
+        if candidate.exists():
+            return (
+                candidate,
+                [
+                    f"Requested build_profile={profile} but only found "
+                    f"{candidate.relative_to(tool_dir)}. Replay evidence may mix "
+                    "optimization levels."
+                ],
+            )
+
+    return (
+        None,
+        [
+            f"No prebuilt APDR binary found for build_profile={profile}. "
+            "Replay evidence would fall back to cargo run and include build overhead."
+        ],
+    )
+
+
+def determine_effective_worker_count(
+    run_config: dict[str, Any],
+    cpu_count: int | None = None,
+) -> tuple[int, list[str]]:
+    requested = int(run_config.get("workers", 0) or 0)
+    resolved_cpu_count = max(1, int(cpu_count or os.cpu_count() or 4))
+    run_intent = normalize_run_intent(run_config.get("run_intent"))
+    if run_intent == "macos-replay":
+        if requested <= 0:
+            return 1, []
+        if requested > MACOS_REPLAY_MAX_WORKERS:
+            return (
+                MACOS_REPLAY_MAX_WORKERS,
+                [
+                    f"macos-replay capped requested workers={requested} to "
+                    f"{MACOS_REPLAY_MAX_WORKERS} to avoid native env-cache and disk thrash."
+                ],
+            )
+        return requested, []
+    if requested <= 0:
+        return max(1, resolved_cpu_count - 2), []
+    return requested, []
+
+
+def collect_replay_preflight_warnings(run_config: dict[str, Any], tool_dir: Path) -> list[str]:
+    run_intent = normalize_run_intent(run_config.get("run_intent"))
+    if run_intent != "macos-replay":
+        return []
+
+    warnings: list[str] = []
+    if sys.platform != "darwin":
+        warnings.append(
+            f"run_intent=macos-replay is executing on {sys.platform}, not macOS. "
+            "Treat this capture as non-comparable replay evidence."
+        )
+    elif detect_rosetta_translation():
+        warnings.append(
+            "Running under Rosetta 2 translation. Timings will not reflect native macOS ARM64 replay performance."
+        )
+
+    validation_backend = str(run_config.get("validation_backend") or "").strip().lower()
+    if validation_backend != "env":
+        warnings.append(
+            f"macos-replay is using validation_backend={validation_backend}. "
+            "Comparable replay evidence should use the native env backend."
+        )
+
+    cache_state = normalize_cache_state(run_config.get("cache_state"))
+    if cache_state not in {"warm", "cold"}:
+        warnings.append(
+            f"macos-replay reported cache_state={cache_state}. "
+            "Use explicit warm or cold cache state before treating the capture as comparable."
+        )
+
+    build_profile = normalize_build_profile(run_config.get("build_profile"))
+    if build_profile == "standard":
+        warnings.append(
+            "macos-replay did not pin an explicit build_profile. Use release or pgo for comparable replay evidence."
+        )
+    _, binary_warnings = detect_requested_apdr_binary(tool_dir, build_profile)
+    warnings.extend(binary_warnings)
+
+    _, worker_warnings = determine_effective_worker_count(run_config)
+    warnings.extend(worker_warnings)
+    return warnings
 
 
 class BenchmarkWorker(threading.Thread):
@@ -256,6 +390,8 @@ class BenchmarkWorker(threading.Thread):
                 raise RuntimeError(
                     f"Incomplete benchmark run contract: {', '.join(missing_contract_keys)}"
                 )
+            effective_workers, _ = determine_effective_worker_count(self.run_config)
+            preflight_warnings = collect_replay_preflight_warnings(self.run_config, tool_dir)
 
             summary: dict[str, Any] = {
                 "tool": tool,
@@ -271,6 +407,12 @@ class BenchmarkWorker(threading.Thread):
                 "snippet_limit": (snippet_limit if not replay_manifest_path else "") or "",
                 "python_command": str(self.run_config.get("python_command", "")),
                 "validation_backend": str(self.run_config.get("validation_backend", "")),
+                "run_intent": run_contract["run_intent"],
+                "cache_state": run_contract["cache_state"],
+                "build_profile": run_contract["build_profile"],
+                "workers": int(self.run_config.get("workers", 0) or 0),
+                "effective_workers": effective_workers,
+                "preflight_warnings": list(preflight_warnings),
                 "started_at": self.state.now_iso(),
                 "status": "running",
                 "results": resume_results,
@@ -296,6 +438,8 @@ class BenchmarkWorker(threading.Thread):
                 resumed_skips=resumed_skips,
                 resumed_run_id=str(self.run_config.get("_resume_from_run_id") or ""),
                 run_contract=run_contract,
+                effective_workers=effective_workers,
+                preflight_warnings=preflight_warnings,
             )
             self._append_context_log(
                 context_log,
@@ -308,6 +452,8 @@ class BenchmarkWorker(threading.Thread):
                         f"dataset={self.state.relative_path(dataset_tar)}",
                         f"total_snippets={total_snippets}",
                         f"resumed_completed={resumed_completed}",
+                        f"effective_workers={effective_workers}",
+                        f"preflight_warnings={json.dumps(preflight_warnings)}",
                     ]
                 ),
             )
@@ -316,13 +462,7 @@ class BenchmarkWorker(threading.Thread):
             if case_artifacts_root is not None:
                 case_artifacts_root.mkdir(parents=True, exist_ok=True)
 
-            # Determine worker count: 0 = auto, 1 = sequential.
-            # Most cases resolve via Tier1/2 without LLM, so CPU-bound env
-            # validation benefits from high parallelism.  The few LLM cases
-            # serialize on the Ollama GPU anyway.
-            workers = int(self.run_config.get("workers", 0))
-            if workers <= 0:
-                workers = max(1, (os.cpu_count() or 4) - 2)
+            workers = effective_workers
 
             # Pre-build per-case command + metadata
             case_tasks: list[dict[str, Any]] = []
@@ -330,6 +470,7 @@ class BenchmarkWorker(threading.Thread):
                 overall_index = resumed_completed + index
                 snippet_label = self.state.relative_path(snippet)
                 artifact_dir = None
+                build_profile = str(run_contract.get("build_profile") or "standard")
                 command = list(runner) + [
                     "test_executor.py",
                     "-f",
@@ -356,6 +497,7 @@ class BenchmarkWorker(threading.Thread):
                             "env" if is_llm_only else vb,
                         ]
                     )
+                    command.extend(["--build-profile", build_profile])
                     if is_llm_only:
                         command.append("--llm-only")
                     vt = self.run_config.get("validation_timeout")

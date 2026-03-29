@@ -570,6 +570,8 @@ def build_case_command(
         str(case_output_dir),
         "--validation-backend",
         str(args.validation_backend),
+        "--build-profile",
+        str(args.build_profile),
     ]
     if args.context_log:
         command.extend(["--benchmark-context-log", args.context_log])
