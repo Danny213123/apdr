@@ -314,6 +314,7 @@ def package_resolution_user(
     benchmark_context: str,
     attribute_usage: dict[str, list[str]],
     tier2_candidates: dict[str, list[str]] | None = None,
+    retrieval_profile: str = "none",
 ) -> str:
     ctx_str = "\n".join(context) if context else "- none"
     bm_str = compress_benchmark_context(benchmark_context, 12288)
@@ -321,6 +322,7 @@ def package_resolution_user(
     cand_sec = _candidates_section(tier2_candidates or {})
     return (
         f"Target Python version: {python_version}\n\n"
+        f"Retrieval profile: {retrieval_profile or 'none'}\n\n"
         f"Context:\n{ctx_str}\n"
         f"Benchmark context:\n{bm_str}"
         f"{attr_sec}"

@@ -19,11 +19,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..active_learning import load_success_memory_context
 from ..client import LlmClient
 from ..failure_memory import FailureMemory
 from ..local_detector import filter_imports
 from ..models import PackageMapping, ResolutionRequest, ResolutionResponse
 from ..pypi_checker import package_exists_on_pypi, preload_known_packages
+from ..rag import assemble_retrieval_context
 from ..reverse_index import enrich_context as reverse_index_enrich, load as load_reverse_index
 from .. import prompts
 
@@ -190,21 +192,39 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
 
     # --- #6: Enrich context with reverse index ---
     context_parts = list(req.context)
-    if failure_ctx:
-        context_parts.append(failure_ctx)
+    success_memory_context: list[str] = []
+    if req.cache_path:
+        success_memory_context = load_success_memory_context(req.cache_path, llm_imports)
+        if success_memory_context:
+            context_parts.extend(success_memory_context)
+            notes.append(
+                f"Active-learning success memory added {len(success_memory_context)} context lines"
+            )
     reverse_ctx = reverse_index_enrich(llm_imports)
     if reverse_ctx:
         context_parts.extend(reverse_ctx)
         notes.append(f"Reverse index enriched {len(reverse_ctx)} imports")
+
+    retrieval_bundle = assemble_retrieval_context(
+        import_names=llm_imports,
+        context=context_parts,
+        failure_context=failure_ctx,
+        benchmark_context=req.benchmark_context,
+        retrieval_profile=req.retrieval_profile,
+    )
+    context_parts = retrieval_bundle["context"]
+    summarized_benchmark_context = retrieval_bundle["benchmark_context"]
+    notes.extend(retrieval_bundle["notes"])
 
     # Build user prompt (only for imports that need LLM)
     user_prompt = prompts.package_resolution_user(
         unresolved_imports=llm_imports,
         python_version=req.python_version,
         context=context_parts,
-        benchmark_context=req.benchmark_context,
+        benchmark_context=summarized_benchmark_context,
         attribute_usage=req.attribute_usage,
         tier2_candidates=req.tier2_candidates,
+        retrieval_profile=req.retrieval_profile,
     )
 
     # --- #2: Try constrained decoding if tier2 candidates available ---
