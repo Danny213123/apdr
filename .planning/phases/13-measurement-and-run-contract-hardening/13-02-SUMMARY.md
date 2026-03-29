@@ -71,9 +71,8 @@ completed: 2026-03-29
 
 ## Task Commits
 
-Implementation and docs will be split into one code checkpoint and one planning checkpoint for Plan 13-02:
-
-1. **Plan 13-02 implementation** - pending commit during phase execution
+1. **Plan 13-02 implementation** - `a4ae24d` (feat)
+2. **Plan 13-02 docs/progress** - `7bef87a` (docs)
 
 ## Files Created/Modified
 - `benchmark_ui/runner.py` - Passes `--run-contract-json` into each APDR case invocation
@@ -116,6 +115,7 @@ None.
 - FOUND: `tools/apdr/src/lib.rs` emits `LLM_DURATION_MS=`, `DOCKER_STARTUP_DURATION_MS=`, and the flattened run-contract keys
 - PASSED: `cargo test --manifest-path tools/apdr/Cargo.toml --test test_cli -- --nocapture`
 - PASSED: `python3 -m unittest benchmark_ui.test_run_contract benchmark_ui.test_service_tier_stats benchmark_ui.test_runner_events`
+- FOUND: `a4ae24d`
 
 ---
 *Phase: 13-measurement-and-run-contract-hardening*
