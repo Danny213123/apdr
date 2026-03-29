@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: ready_to_execute
-stopped_at: Phase 15 planning complete
-last_updated: "2026-03-29T19:04:00Z"
+status: executing
+stopped_at: Completed Plan 15-01; next step is executing Plan 15-02
+last_updated: "2026-03-29T19:48:03Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 10
-  completed_plans: 6
-  percent: 60
+  completed_plans: 7
+  percent: 70
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 15 planned; ready to execute
-**Progress:** [██████░░░░] 60%
+**Status:** Executing Phase 15
+**Progress:** [███████░░░] 70%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Planned Phase 15 into four execution waves covering AGT-01 through AGT-06
-**Resume File:** None
+**Last Activity Description:** Completed Plan 15-01 benchmark harness and artifact contract
+**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-02-PLAN.md
 
 ---
 
@@ -29,25 +29,25 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 15 — LangChain/LangGraph Tier3 Intelligence Improvements
+**Current Focus:** Phase 15 — langchain-langgraph-tier3-intelligence-improvements
 
 ---
 
 ## Current Position
 
-Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — READY TO EXECUTE
-Plan: 0 of 4
-Status: Planned
-Last activity: 2026-03-29 -- Phase 15 plans created and verified for execution
+Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — EXECUTING
+Plan: 2 of 4
+Status: Executing Phase 15
+Last activity: 2026-03-29 -- Completed Plan 15-01 benchmark harness and artifact contract
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 6
+- v2.2 plans completed: 7
 - v2.2 phases completed: 2 of 4
-- Active phase plan count: 4
-- Phase 14 now provides deterministic macOS and Windows replay proof checkers plus bounded proof-note templates for later live evidence capture.
+- Active phase plan count: 3 remaining in Phase 15
+- Plan 15-01 now provides a deterministic tier3 replay harness plus bounded baseline/candidate artifact samples for later agent and policy comparisons.
 
 ---
 
@@ -71,10 +71,12 @@ Last activity: 2026-03-29 -- Phase 15 plans created and verified for execution
 - [Phase 14]: Proof validation now compares like-for-like slice metadata and preserved pass/skip outcomes instead of total duration alone
 - [Phase 14]: Reviewer-facing proof notes and machine validation now share the same bounded artifact contract
 - Phase 15 is split into four sequential plans: benchmark harness and artifact contract, explicit agent-runtime seam, benchmark-fed memory plus context engineering, then small-model policy proof and quality checking.
+- [Plan 15-01]: Tier3 benchmark artifacts now record agent mode, retrieval profile, tool profile, thinking mode, context window, and inference policy directly in the replay output.
+- [Plan 15-01]: Probe-only mode validates artifact shape without depending on live model execution.
 
 ### Pending Todos
 
-- Execute Plan 15-01 first so the replay-slice benchmark contract exists before agent behavior changes land.
+- Execute Plan 15-02 next so the runtime seam and abstain tracing can reuse the locked Phase 15 benchmark contract.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Import representative Windows guardrail artifacts before milestone closeout.
 
@@ -88,9 +90,9 @@ Last activity: 2026-03-29 -- Phase 15 plans created and verified for execution
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Phase 15 planning complete; next step is executing the four Phase 15 plans
-Resume file: None
+Stopped at: Completed Plan 15-01; next step is executing Plan 15-02
+Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-02-PLAN.md
 
 ---
 
-*State updated after Phase 15 planning on 2026-03-29*
+*State updated after Plan 15-01 on 2026-03-29*
