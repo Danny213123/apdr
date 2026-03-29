@@ -63,7 +63,8 @@ completed: 2026-03-29
 
 ## Task Commits
 
-1. **Plan 13-03 implementation** - pending commit during phase execution
+1. **Plan 13-03 implementation** - `3965421` (feat)
+2. **Plan 13-03 docs/progress** - `aac4ce5` (docs)
 
 ## Files Created/Modified
 - `scripts/measure_apdr_baseline.py` - Generates normalized Phase 13 report JSON and Markdown from fixture-backed or live captures
@@ -101,6 +102,7 @@ None.
 - FOUND: `13-MEASUREMENT-CONTRACT.md` contains `## Required Run Contract`, `## Stage Timings`, `## Evidence Labels`, and `## Comparison Metadata`
 - PASSED: `python3 scripts/measure_apdr_baseline.py --fixtures-root tools/apdr/tests/fixtures --limit 2 --validation-backend env --output-json /tmp/phase13-generated-report.json --output-md /tmp/phase13-generated-report.md && python3 scripts/check_phase13_measurement_contract.py --sample-json /tmp/phase13-generated-report.json`
 - PASSED: `python3 scripts/check_phase13_measurement_contract.py --sample-json .planning/phases/13-measurement-and-run-contract-hardening/13-env-fast-sample.json --sample-json .planning/phases/13-measurement-and-run-contract-hardening/13-docker-proof-sample.json`
+- FOUND: `3965421`
 
 ---
 *Phase: 13-measurement-and-run-contract-hardening*
