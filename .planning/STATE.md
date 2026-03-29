@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
 status: executing
-stopped_at: Completed Plan 15-01; next step is executing Plan 15-02
-last_updated: "2026-03-29T19:48:03Z"
+stopped_at: Completed Plan 15-02; next step is executing Plan 15-03
+last_updated: "2026-03-29T19:57:10Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
-  percent: 70
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
 **Status:** Executing Phase 15
-**Progress:** [███████░░░] 70%
+**Progress:** [████████░░] 80%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 15-01 benchmark harness and artifact contract
-**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-02-PLAN.md
+**Last Activity Description:** Completed Plan 15-02 explicit agent runtime seam and abstain tracing
+**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-03-PLAN.md
 
 ---
 
@@ -36,18 +36,18 @@ progress:
 ## Current Position
 
 Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Executing Phase 15
-Last activity: 2026-03-29 -- Completed Plan 15-01 benchmark harness and artifact contract
+Last activity: 2026-03-29 -- Completed Plan 15-02 explicit agent runtime seam and abstain tracing
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 7
+- v2.2 plans completed: 8
 - v2.2 phases completed: 2 of 4
-- Active phase plan count: 3 remaining in Phase 15
-- Plan 15-01 now provides a deterministic tier3 replay harness plus bounded baseline/candidate artifact samples for later agent and policy comparisons.
+- Active phase plan count: 2 remaining in Phase 15
+- Plan 15-02 now provides an explicit tier3 runtime seam with attributable agent metadata and clean abstain tracing across the Rust-to-Python boundary.
 
 ---
 
@@ -73,10 +73,12 @@ Last activity: 2026-03-29 -- Completed Plan 15-01 benchmark harness and artifact
 - Phase 15 is split into four sequential plans: benchmark harness and artifact contract, explicit agent-runtime seam, benchmark-fed memory plus context engineering, then small-model policy proof and quality checking.
 - [Plan 15-01]: Tier3 benchmark artifacts now record agent mode, retrieval profile, tool profile, thinking mode, context window, and inference policy directly in the replay output.
 - [Plan 15-01]: Probe-only mode validates artifact shape without depending on live model execution.
+- [Plan 15-02]: Tier3 request metadata can now select direct, manual, LangGraph, or LangChain benchmarking paths without patching code between runs.
+- [Plan 15-02]: Agent failures now propagate explicit abstain or failure reasons instead of silently converting unknown mappings into fabricated success.
 
 ### Pending Todos
 
-- Execute Plan 15-02 next so the runtime seam and abstain tracing can reuse the locked Phase 15 benchmark contract.
+- Execute Plan 15-03 next so memory, retrieval, and context folding can build on the explicit agent seam and benchmark contract already in place.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Import representative Windows guardrail artifacts before milestone closeout.
 
@@ -90,9 +92,9 @@ Last activity: 2026-03-29 -- Completed Plan 15-01 benchmark harness and artifact
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Completed Plan 15-01; next step is executing Plan 15-02
-Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-02-PLAN.md
+Stopped at: Completed Plan 15-02; next step is executing Plan 15-03
+Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-03-PLAN.md
 
 ---
 
-*State updated after Plan 15-01 on 2026-03-29*
+*State updated after Plan 15-02 on 2026-03-29*
