@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: ready_to_execute
-last_updated: "2026-03-29T03:43:18Z"
-last_activity: 2026-03-28
+status: in_progress
+last_updated: "2026-03-29T04:04:27Z"
+last_activity: 2026-03-29
 ---
 
 # Project State: APDR
 
-**Last Updated:** 2026-03-28
-**Status:** Phase 13 planned; ready to execute
+**Last Updated:** 2026-03-29
+**Status:** Phase 13 in progress; Plan 13-01 complete
 **Progress:** [░░░░░░░░░░] 0%
-**Last Activity:** 2026-03-28
-**Last Activity Description:** Planned Phase 13 into three execution waves covering MAC-01, MAC-02, EVD-03, and EVD-05
-**Resume File:** None
+**Last Activity:** 2026-03-29
+**Last Activity Description:** Completed Plan 13-01 by adding the canonical benchmark run contract in benchmark_ui
+**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-01-SUMMARY.md
 
 ---
 
@@ -29,15 +29,15 @@ last_activity: 2026-03-28
 ## Current Position
 
 Phase: 13 of 16 (Measurement and Run-Contract Hardening)
-Plan: 0 of 3
-Status: Planned
-Last activity: 2026-03-28 — Phase 13 plans created and verified for execution
+Plan: 1 of 3
+Status: Executing Plan 13-02 next
+Last activity: 2026-03-29 — Plan 13-01 completed; Plan 13-02 is next
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 0
+- v2.2 plans completed: 1
 - v2.2 phases completed: 0 of 4
 - Active phase plan count: 3
 - Progress baseline remains pending until Phase 13 execution captures the first comparable artifacts.
@@ -53,12 +53,13 @@ Last activity: 2026-03-28 — Phase 13 plans created and verified for execution
 - v2.2 follows a fixed order: Phase 13 measurement, Phase 14 macOS execution-path optimization, Phase 15 LangChain/LangGraph tier3 intelligence improvements, then Phase 16 closeout proof.
 - v2.2 accuracy gains should come from tool use, reflection, context engineering, and model-specific inference policy rather than new deterministic recovery tables.
 - Phase 13 is split into three sequential plans: canonical run-contract capture, APDR per-case metadata/timing propagation, then evidence normalization plus a deterministic measurement checker.
+- Plan 13-01 established `benchmark_ui/run_contract.py` as the canonical Phase 13 metadata contract and persisted it into saved benchmark runs.
 
 ### Pending Todos
 
-- Execute Phase 13 plan 13-01 first so later run comparisons use one canonical contract.
 - Choose the locked replay slice and baseline commands during Phase 13 and Phase 14 execution.
 - Decide which model or build-profile comparisons are worth capturing once the measurement contract exists.
+- Execute Plan 13-02 next so APDR case artifacts inherit the canonical run contract and the missing timing fields.
 
 ### Blockers/Concerns
 
@@ -69,10 +70,10 @@ Last activity: 2026-03-28 — Phase 13 plans created and verified for execution
 
 ## Session Continuity
 
-Last session: 2026-03-28
-Stopped at: Phase 13 planning complete; next step is executing the three Phase 13 plans
-Resume file: None
+Last session: 2026-03-29
+Stopped at: Plan 13-01 complete; next step is Plan 13-02
+Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-01-SUMMARY.md
 
 ---
 
-*State updated after Phase 13 planning on 2026-03-28*
+*State updated after completing Plan 13-01 on 2026-03-29*
