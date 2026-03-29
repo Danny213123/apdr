@@ -81,9 +81,39 @@ def parse_args() -> argparse.Namespace:
         help="Context-window setting recorded in the run contract.",
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Optional explicit decoding temperature for the benchmark artifact.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help="Optional explicit top-p value for the benchmark artifact.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=None,
+        help="Optional explicit top-k value for the benchmark artifact.",
+    )
+    parser.add_argument(
         "--inference-policy",
         default="",
         help="Inference-policy label recorded in the run contract.",
+    )
+    parser.add_argument(
+        "--self-consistency-passes",
+        type=int,
+        default=0,
+        help="Optional self-consistency sample count for the benchmark artifact.",
+    )
+    parser.add_argument(
+        "--verifier-passes",
+        type=int,
+        default=0,
+        help="Optional verifier pass count for the benchmark artifact.",
     )
     parser.add_argument(
         "--cache-state",
@@ -199,6 +229,25 @@ def default_policy_label(mode: str, agent_mode: str, policy_label: str) -> str:
     return f"{mode}-{normalized_agent}"
 
 
+def build_inference_policy(args: argparse.Namespace) -> str:
+    text = str(args.inference_policy or "").strip()
+    if text:
+        return text
+    parts: list[str] = []
+    if args.temperature is not None:
+        parts.append(f"temperature={args.temperature}")
+    if args.top_p is not None:
+        parts.append(f"top_p={args.top_p}")
+    if args.top_k is not None:
+        parts.append(f"top_k={args.top_k}")
+    parts.append(f"think={args.thinking_mode}")
+    if args.self_consistency_passes:
+        parts.append(f"self_consistency={args.self_consistency_passes}")
+    if args.verifier_passes:
+        parts.append(f"verifier={args.verifier_passes}")
+    return ";".join(parts) if parts else "temperature=inherited"
+
+
 def make_probe_samples(
     manifest: dict[str, Any],
     roots: list[Path],
@@ -244,6 +293,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Policy label: `{payload['policy_label']}`",
         f"- Context window: `{payload['llm_context_window']}`",
         f"- Inference policy: `{payload['inference_policy']}`",
+        f"- Policy controls: `{json.dumps(payload['policy_controls'], sort_keys=True)}`",
         f"- Probe only: `{payload['probe_only']}`",
         "",
         "## Status Counts",
@@ -268,7 +318,7 @@ def build_probe_payload(args: argparse.Namespace, manifest_path: Path, manifest:
         "run_intent": "tier3-benchmark",
         "cache_state": default_cache_state(args.mode, args.cache_state),
         "llm_context_window": args.llm_context_window,
-        "inference_policy": args.inference_policy,
+        "inference_policy": build_inference_policy(args),
         "build_profile": args.build_profile,
     }
     run_contract = build_run_contract(
@@ -299,6 +349,14 @@ def build_probe_payload(args: argparse.Namespace, manifest_path: Path, manifest:
         "memory_profile": args.memory_profile,
         "thinking_mode": args.thinking_mode,
         "policy_label": default_policy_label(args.mode, args.agent_mode, args.policy_label),
+        "policy_controls": {
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "top_k": args.top_k,
+            "self_consistency_passes": args.self_consistency_passes,
+            "verifier_passes": args.verifier_passes,
+            "thinking_mode": args.thinking_mode,
+        },
         "sample_count": len(samples),
         "resolved": counts.get("resolved", 0),
         "abstained": counts.get("abstained", 0),

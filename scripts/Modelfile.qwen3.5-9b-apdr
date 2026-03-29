@@ -12,12 +12,12 @@ PARAMETER num_thread 8
 # === Context window ===
 PARAMETER num_ctx 32768
 
-# === Deterministic output for dependency resolution ===
-PARAMETER temperature 0
+# === Small-model benchmark candidate defaults: non-greedy decoding ===
+PARAMETER temperature 0.2
 
-# === Disable sampling randomness for structured output ===
-PARAMETER top_k 1
-PARAMETER top_p 0.0
+# === Keep exploration bounded but non-deterministic for hard cases ===
+PARAMETER top_k 40
+PARAMETER top_p 0.95
 
 # === Keep model loaded for 30 minutes between requests ===
 PARAMETER keep_alive 30m

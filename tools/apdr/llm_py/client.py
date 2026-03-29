@@ -51,6 +51,20 @@ _json_completion_cache: dict[str, str] = {}
 _json_completion_cache_lock = threading.Lock()
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip())
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip())
+    except ValueError:
+        return default
+
+
 def _init_cache(cache_dir: str = "") -> None:
     global _cache_initialized
     if _cache_initialized:
@@ -312,6 +326,23 @@ class LlmClient:
             "max_tokens": max_tokens,
             "num_ctx": num_ctx,
         }
+        if self.provider == "ollama":
+            policy = self._ollama_policy(
+                model_name=self.model,
+                temperature=temperature,
+                num_ctx=num_ctx,
+                max_tokens=max_tokens,
+            )
+            payload.update(
+                {
+                    "temperature": policy["temperature"],
+                    "num_ctx": policy["num_ctx"],
+                    "top_p": policy["top_p"],
+                    "top_k": policy["top_k"],
+                    "thinking_mode": policy["thinking_mode"],
+                    "policy_label": policy["policy_label"],
+                }
+            )
         canonical = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -376,6 +407,66 @@ class LlmClient:
             return f"ollama_chat/{model}"
         return model
 
+    def _default_top_p(self, model_name: str) -> float:
+        if "qwen3.5" in model_name.lower():
+            return 0.95
+        return 1.0
+
+    def _default_top_k(self, model_name: str) -> int:
+        if "qwen3.5" in model_name.lower():
+            return 40
+        return 0
+
+    def _thinking_mode(self, model_name: str) -> str:
+        requested = str(os.environ.get("APDR_THINKING_MODE", "inherited")).strip().lower()
+        if requested in {"off", "on", "routed", "inherited"}:
+            return requested
+        if "qwen3" in model_name.lower():
+            return "routed"
+        return "inherited"
+
+    def _thinking_enabled(
+        self,
+        model_name: str,
+        *,
+        max_tokens: int,
+        temperature: float,
+    ) -> bool | None:
+        if "qwen3" not in model_name.lower():
+            return None
+        mode = self._thinking_mode(model_name)
+        if mode == "off":
+            return False
+        if mode == "on":
+            return True
+        if mode == "routed":
+            return max_tokens >= 768 or temperature > 0.0
+        return True
+
+    def _ollama_policy(
+        self,
+        *,
+        model_name: str,
+        temperature: float,
+        num_ctx: int,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        effective_temperature = _env_float("APDR_TEMPERATURE", temperature)
+        effective_ctx = num_ctx if num_ctx > 0 else _env_int("APDR_NUM_CTX", 16384)
+        return {
+            "temperature": effective_temperature,
+            "top_p": _env_float("APDR_TOP_P", self._default_top_p(model_name)),
+            "top_k": _env_int("APDR_TOP_K", self._default_top_k(model_name)),
+            "num_ctx": effective_ctx,
+            "thinking": self._thinking_enabled(
+                model_name,
+                max_tokens=max_tokens,
+                temperature=effective_temperature,
+            ),
+            "thinking_mode": self._thinking_mode(model_name),
+            "policy_label": str(os.environ.get("APDR_POLICY_LABEL", "")).strip(),
+        }
+
     def _base_kwargs(
         self,
         temperature: float = 0.0,
@@ -392,8 +483,16 @@ class LlmClient:
         }
         if self.provider == "ollama":
             kwargs["api_base"] = self.base_url
-            ctx = num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384"))
-            kwargs["num_ctx"] = ctx
+            policy = self._ollama_policy(
+                model_name=model_override or self.model,
+                temperature=temperature,
+                num_ctx=num_ctx,
+                max_tokens=max_tokens,
+            )
+            kwargs["temperature"] = policy["temperature"]
+            kwargs["num_ctx"] = policy["num_ctx"]
+            kwargs["top_p"] = policy["top_p"]
+            kwargs["top_k"] = policy["top_k"]
         elif self.base_url and self.base_url != "http://localhost:11434":
             kwargs["api_base"] = self.base_url
         return kwargs
@@ -426,6 +525,12 @@ class LlmClient:
         effective_model = model_override or self.model
         try:
             import requests as req_lib
+            policy = self._ollama_policy(
+                model_name=effective_model,
+                temperature=temperature,
+                num_ctx=num_ctx,
+                max_tokens=max_tokens,
+            )
             schema = response_model.model_json_schema()
             payload = {
                 "model": effective_model,
@@ -437,16 +542,17 @@ class LlmClient:
                 "stream": False,
                 "keep_alive": "-1",
                 "options": {
-                    "temperature": temperature,
-                    "num_ctx": num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384")),
+                    "temperature": policy["temperature"],
+                    "num_ctx": policy["num_ctx"],
                     "num_predict": max_tokens,
+                    "top_p": policy["top_p"],
+                    "top_k": policy["top_k"],
                     "num_gpu": 99,
                     "num_batch": 1024,
                 },
             }
-            # Enable thinking mode for Qwen3.5 models
-            if "qwen3" in effective_model.lower():
-                payload["think"] = True
+            if policy["thinking"] is not None:
+                payload["think"] = policy["thinking"]
             resp = req_lib.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
@@ -593,7 +699,12 @@ class LlmClient:
                 return cached
             try:
                 import requests as req_lib
-                effective_ctx = num_ctx if num_ctx > 0 else int(os.environ.get("APDR_NUM_CTX", "16384"))
+                policy = self._ollama_policy(
+                    model_name=self.model,
+                    temperature=temperature,
+                    num_ctx=num_ctx,
+                    max_tokens=max_tokens,
+                )
                 payload = {
                     "model": self.model,
                     "messages": [
@@ -604,17 +715,17 @@ class LlmClient:
                     "stream": False,
                     "keep_alive": "-1",
                     "options": {
-                        "temperature": temperature,
-                        "num_ctx": effective_ctx,
+                        "temperature": policy["temperature"],
+                        "num_ctx": policy["num_ctx"],
                         "num_predict": max_tokens,
+                        "top_p": policy["top_p"],
+                        "top_k": policy["top_k"],
                         "num_gpu": 99,
                         "num_batch": 1024,
                     },
                 }
-                # Enable thinking mode for Qwen3.5 models — gives free
-                # internal chain-of-thought before producing the JSON answer.
-                if "qwen3" in self.model.lower():
-                    payload["think"] = True
+                if policy["thinking"] is not None:
+                    payload["think"] = policy["thinking"]
                 resp = req_lib.post(
                     f"{self.base_url}/api/chat",
                     json=payload,
