@@ -33,7 +33,10 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
   2. Benchmark artifacts expose stage-level timings for resolution, LLM work, env creation, package install, validation, and Docker startup when Docker is used.
   3. Saved benchmark evidence clearly distinguishes `env-fast` versus `docker-proof` runs and warm versus cold cache state so reviewers can compare like-for-like runs.
   4. Any model, context-window, inference-policy, or build-profile comparison captured during v2.2 includes enough metadata to attribute deltas to agent behavior, model choice, context configuration, decoding policy, runtime tuning, or backend differences.
-**Plans**: TBD
+**Plans**:
+  - `13-01` Canonical benchmark run contract in `benchmark_ui`
+  - `13-02` APDR per-case timing and run-contract propagation
+  - `13-03` Reporting normalization, measurement checker, and reviewer-facing contract note
 
 ### Phase 14: macOS Execution-Path Optimization
 **Goal**: macOS benchmark iteration becomes fast and repeatable on a locked replay slice without sacrificing correctness or Windows guardrails
@@ -72,7 +75,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 13. Measurement and Run-Contract Hardening | 0/TBD | Not started | - |
+| 13. Measurement and Run-Contract Hardening | 0/3 | Planned | - |
 | 14. macOS Execution-Path Optimization | 0/TBD | Not started | - |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
 | 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
@@ -82,3 +85,4 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
+*Last updated: 2026-03-28 (Phase 13 planned)*
