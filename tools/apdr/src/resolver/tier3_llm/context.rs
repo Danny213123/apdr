@@ -5,6 +5,10 @@ pub(super) fn build_base_request(config: &ResolveConfig) -> serde_json::Value {
         "provider": config.llm_provider,
         "model": config.llm_model,
         "base_url": config.llm_base_url,
+        "agent_mode": config.agent_mode,
+        "tool_profile": config.tool_profile,
+        "retrieval_profile": config.retrieval_profile,
+        "policy_label": config.policy_label,
         "cache_path": config.cache_path.to_string_lossy(),
         "output_dir": config.output_dir.to_string_lossy(),
     })

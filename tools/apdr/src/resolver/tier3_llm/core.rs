@@ -194,6 +194,36 @@ pub fn resolve(
                 .collect()
         })
         .unwrap_or_default();
+    if let Some(agent_mode) = response.get("agent_mode").and_then(|v| v.as_str()) {
+        if !agent_mode.trim().is_empty() {
+            let tool_profile = response
+                .get("tool_profile")
+                .and_then(|v| v.as_str())
+                .unwrap_or("full");
+            let retrieval_profile = response
+                .get("retrieval_profile")
+                .and_then(|v| v.as_str())
+                .unwrap_or("none");
+            let policy_label = response
+                .get("policy_label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            notes.push(format!(
+                "tier3 agent config: agent_mode={}, tool_profile={}, retrieval_profile={}, policy_label={}",
+                agent_mode, tool_profile, retrieval_profile, policy_label
+            ));
+        }
+    }
+    if let Some(reason) = response.get("abstain_reason").and_then(|v| v.as_str()) {
+        if !reason.trim().is_empty() {
+            notes.push(format!("tier3 agent abstained: {}", reason.trim()));
+        }
+    }
+    if let Some(reason) = response.get("failure_reason").and_then(|v| v.as_str()) {
+        if !reason.trim().is_empty() {
+            notes.push(format!("tier3 agent failure: {}", reason.trim()));
+        }
+    }
 
     // Parse mappings from Python response
     let mappings: Vec<(String, String)> = response

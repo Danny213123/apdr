@@ -57,6 +57,10 @@ pub struct ResolveConfig {
     pub llm_provider: String,
     pub llm_model: String,
     pub llm_base_url: String,
+    pub agent_mode: String,
+    pub tool_profile: String,
+    pub retrieval_profile: String,
+    pub policy_label: String,
     pub benchmark_context_log: Option<PathBuf>,
     pub validate: bool,
     pub validation_backend: String,
@@ -260,6 +264,10 @@ impl ResolveConfig {
             llm_provider: "ollama".to_string(),
             llm_model: "qwen3.5:9b".to_string(),
             llm_base_url: "http://localhost:11434".to_string(),
+            agent_mode: env_string("APDR_TIER3_AGENT_MODE", "direct"),
+            tool_profile: env_string("APDR_TIER3_TOOL_PROFILE", "full"),
+            retrieval_profile: env_string("APDR_TIER3_RETRIEVAL_PROFILE", "none"),
+            policy_label: env_string("APDR_TIER3_POLICY_LABEL", ""),
             benchmark_context_log: None,
             validate: true,
             validation_backend: VALIDATION_BACKEND_ENV.to_string(),
@@ -461,6 +469,14 @@ fn env_flag(name: &str, default: bool) -> bool {
         },
         Err(_) => default,
     }
+}
+
+fn env_string(name: &str, default: &str) -> String {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }
 
 fn env_usize(name: &str, default: usize) -> usize {

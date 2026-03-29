@@ -45,6 +45,10 @@ class ResolutionRequest(BaseModel):
     base_url: str = "http://localhost:11434"
     model_override: str = ""   # per-action model override (e.g. smaller model for version)
     num_ctx_override: int = 0  # per-action context window override (0 = use default)
+    agent_mode: str = "direct"
+    tool_profile: str = "full"
+    retrieval_profile: str = "none"
+    policy_label: str = ""
 
     # Paths for persistence
     cache_path: str = ""
@@ -81,4 +85,10 @@ class ResolutionResponse(BaseModel):
     # Metadata
     notes: list[str] = Field(default_factory=list)
     prompts_issued: int = 0
+    agent_mode: str = ""
+    tool_profile: str = ""
+    retrieval_profile: str = ""
+    policy_label: str = ""
+    abstain_reason: str = ""
+    failure_reason: str = ""
     error: str = ""
