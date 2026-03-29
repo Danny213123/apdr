@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
 status: executing
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-29T05:21:50.597Z"
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-03-29T18:18:36Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
-  percent: 67
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
 **Status:** Executing Phase 14
-**Progress:** [███████░░░] 67%
+**Progress:** [████████░░] 83%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Phase 14 execution started
-**Resume File:** None
+**Last Activity Description:** Completed Plan 14-02 with the replay runner, macOS replay preflight policy, and profile-aware binary selection
+**Resume File:** .planning/phases/14-macos-execution-path-optimization/14-02-SUMMARY.md
 
 ---
 
@@ -36,15 +36,15 @@ progress:
 ## Current Position
 
 Phase: 14 (macos-execution-path-optimization) — EXECUTING
-Plan: 1 of 3
+Plan: 2 of 3
 Status: Executing Phase 14
-Last activity: 2026-03-29 -- Phase 14 execution started
+Last activity: 2026-03-29 -- Completed 14-02 and ready for 14-03
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 3
+- v2.2 plans completed: 5
 - v2.2 phases completed: 1 of 4
 - Active phase plan count: 3
 - Phase 13 now provides the first comparable measurement contract and checker for later milestone claims.
@@ -66,11 +66,13 @@ Last activity: 2026-03-29 -- Phase 14 execution started
 - Phase 14 is split into three sequential plans: lock the macOS and Windows replay slices, build the native macOS replay runner and fast-lane policy, then add the regression/proof checker package for macOS gains plus Windows non-regression.
 - [Phase 14]: Manifest cases use fixture-relative paths for cross-platform portability
 - [Phase 14]: When replay_manifest is set, snippet_limit is ignored to prevent conflicting boundary controls
+- [Phase 14]: `macos-replay` defaults to `release` when a build profile is not pinned explicitly
+- [Phase 14]: Replay evidence now carries effective worker count and preflight warnings for Rosetta, backend drift, cache-state drift, and missing fresh binaries
 
 ### Pending Todos
 
-- Execute Plan 14-01 first so the replay boundary is fixed before tuning macOS performance.
-- Capture cold and warm macOS replay baselines once the replay runner lands.
+- Execute Plan 14-03 to add the regression checker, proof samples, and reviewer-facing comparison notes.
+- Capture cold and warm macOS replay baselines with the new replay runner.
 - Produce the representative Windows guardrail artifact or import it from the Windows host before closing Phase 14.
 
 ### Blockers/Concerns
@@ -83,8 +85,8 @@ Last activity: 2026-03-29 -- Phase 14 execution started
 ## Session Continuity
 
 Last session: 2026-03-29T05:16:57.849Z
-Stopped at: Completed 14-01-PLAN.md
-Resume file: None
+Stopped at: Completed 14-02-PLAN.md
+Resume file: .planning/phases/14-macos-execution-path-optimization/14-02-SUMMARY.md
 
 ---
 

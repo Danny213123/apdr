@@ -79,7 +79,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
-| 14. macOS Execution-Path Optimization | 1/3 | In Progress|  |
+| 14. macOS Execution-Path Optimization | 2/3 | In Progress | 14-01, 14-02 complete |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
 | 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
 
@@ -88,4 +88,4 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
-*Last updated: 2026-03-29 (Phase 14 planned)*
+*Last updated: 2026-03-29 (Phase 14 in progress through 14-02)*
