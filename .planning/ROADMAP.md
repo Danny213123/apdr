@@ -1,163 +1,84 @@
 # Roadmap: APDR
 
-**Project:** APDR v2.1 - Data-Driven Family Knowledge & LLM Recovery Accuracy
-**Created:** 2026-03-27
-**Granularity:** Standard (6 phases)
+**Project:** APDR v2.2 - Improve LLM Performance and Benchmark Performance on macOS
+**Created:** 2026-03-28
+**Granularity:** Standard (4 phases)
 
 ## Milestones
 
-- [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - Phases 7-12
+- [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16
+- [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
 - [x] `v2.0` Rust Codebase Modernization - shipped 2026-03-28, archived in `.planning/milestones/v2.0-ROADMAP.md`
 - [x] `v1.0` Accuracy & Performance - shipped 2026-03-27, archived in `.planning/milestones/v1.0-ROADMAP.md`
 
-## Roadmap v2.1: Data-Driven Family Knowledge & LLM Recovery Accuracy
+## Roadmap v2.2: Improve LLM Performance and Benchmark Performance on macOS
+
+This milestone stays measurement-first so later macOS and agent-quality claims are attributable. It then optimizes the macOS replay path, improves tier3 behavior through LangChain/LangGraph-backed agent methods and context engineering instead of new fix tables, and closes with reviewer-readable proof that preserves the unfinished v2.1 history rather than overstating it. The research direction here is specific: use a higher-level LangChain agent loop where it beats the current manual path, use LangGraph persistence and stores for benchmark-grounded memory, and treat larger context as a benchmarked combination of retrieval, summarization, context folding, and selectively larger Ollama context windows rather than just stuffing more tokens into every call. For small local models, Phase 15 also now explicitly targets model-specific inference policy on a representative sub-10GB-VRAM path such as `qwen3.5:9b`, rather than assuming that the same settings that work for bigger models or other families are optimal.
 
 ## Phases
 
-- [x] **Phase 7: Failure Baseline & Parity Slice** - Turn the stopped APDR run and `pllm` summary into a reproducible target slice with baseline fixtures (completed 2026-03-28)
-- [x] **Phase 8: Data-Driven Family Knowledge Runtime** - Move touched family-knowledge behavior into validated data files with regression protection (completed 2026-03-28)
-- [x] **Phase 9: Targeted Tier3 Recovery Accuracy** - Improve APDR recovery on the dominant parity-slice failure buckets (completed 2026-03-28)
-- [x] **Phase 10: Benchmark Verification & Accuracy Closeout** - Rerun the targeted slice, prove deltas, and package the remaining gaps (completed 2026-03-28)
-- [x] **Phase 11: Verification Backfill & State Repair** - Backfill missing verification artifacts and repair stale milestone-state docs so the completed work matches the audited repo state (completed 2026-03-28)
-- [ ] **Phase 12: Live Benchmark Proof & Requirement Reconciliation** - Close the recovery-proof gap with a live targeted rerun or reconcile the milestone requirements and closeout docs to the measured result
+- [ ] **Phase 13: Measurement and Run-Contract Hardening** - Make benchmark runs comparable by recording architecture, backend, cache, intent, and stage timings up front
+- [ ] **Phase 14: macOS Execution-Path Optimization** - Create a fast native macOS replay lane and land runtime improvements without breaking Windows guardrails
+- [ ] **Phase 15: LangChain/LangGraph Tier3 Intelligence Improvements** - Improve tier3 recovery through benchmarked LangChain/LangGraph agent behavior, context engineering, and clean failure handling on the locked replay slice
+- [ ] **Phase 16: Proof, Comparison, and Closeout** - Package reviewer-readable macOS gains and Windows non-regression evidence for milestone closeout
 
 ## Phase Details
 
-### Phase 7: Failure Baseline & Parity Slice
-**Goal**: Turn the stopped APDR run and `pllm` comparison into a reproducible, bounded milestone target before changing behavior
-
-**Depends on**: Nothing (foundation phase for v2.1)
-
-**Requirements**: FAM-04, REC-01
-
+### Phase 13: Measurement and Run-Contract Hardening
+**Goal**: Benchmark runs and comparisons become trustworthy enough to attribute later quality and performance deltas on macOS
+**Depends on**: Nothing (first phase of v2.2)
+**Requirements**: MAC-01, MAC-02, EVD-03, EVD-05
 **Success Criteria** (what must be TRUE):
-1. A reproducible case list exists for the APDR-failed and `pllm`-passing slice shared by `runs\20260327-150339-apdr` and `pllm_results`
-2. Target cases are labeled by tier and dominant failure bucket so later fixes can be measured instead of guessed
-3. Touched family-knowledge cases have regression fixtures or snapshots that lock current intended behavior before migration
-4. The milestone has a bounded improvement target rather than an open-ended accuracy wish list
+  1. Every saved macOS benchmark run records host architecture, APDR binary architecture, Python architecture, validation backend, run intent, cache state, and the configured LLM context-window and inference-policy settings used for that run.
+  2. Benchmark artifacts expose stage-level timings for resolution, LLM work, env creation, package install, validation, and Docker startup when Docker is used.
+  3. Saved benchmark evidence clearly distinguishes `env-fast` versus `docker-proof` runs and warm versus cold cache state so reviewers can compare like-for-like runs.
+  4. Any model, context-window, inference-policy, or build-profile comparison captured during v2.2 includes enough metadata to attribute deltas to agent behavior, model choice, context configuration, decoding policy, runtime tuning, or backend differences.
+**Plans**: TBD
 
-**Plans:** 3/3 plans complete
-
----
-
-### Phase 8: Data-Driven Family Knowledge Runtime
-**Goal**: Replace hardcoded touched family-knowledge behavior with validated data-driven configuration
-
-**Depends on**: Phase 7 (bounded target slice and baseline fixtures)
-
-**Requirements**: FAM-01, FAM-02, FAM-03
-
+### Phase 14: macOS Execution-Path Optimization
+**Goal**: macOS benchmark iteration becomes fast and repeatable on a locked replay slice without sacrificing correctness or Windows guardrails
+**Depends on**: Phase 13
+**Requirements**: MAC-03, MAC-04, WIN-01
 **Success Criteria** (what must be TRUE):
-1. Touched family-knowledge bundles move from hardcoded Rust tables into data files with a validated load path
-2. Maintainers can update aliases, mappings, and rejection hints for touched families without changing Rust code
-3. Invalid or conflicting family-knowledge data fails with actionable diagnostics
-4. Existing intended family-knowledge behavior for the touched slice stays covered by tests or fixtures
+  1. A locked benchmark replay slice exists for v2.2 and can run in a fast macOS native-env mode intended for repeated local iteration.
+  2. On that locked replay slice, the macOS execution path shows substantial before-and-after runtime or throughput improvement versus the v2.2 baseline while preserved pass and skip cases remain unchanged.
+  3. The macOS-focused performance changes stay within the milestone's accepted Windows comparison guardrail for runtime or seconds-per-case on the representative Windows slice.
+**Plans**: TBD
 
-**Plans:** 3/3 plans complete
-
----
-
-### Phase 9: Targeted Tier3 Recovery Accuracy
-**Goal**: Improve APDR recovery on the dominant failure buckets from the parity slice using the new family-knowledge path and targeted recovery fixes
-
-**Depends on**: Phase 7 (target slice), Phase 8 (data-driven family knowledge)
-
-**Requirements**: REC-02, REC-03, REC-04
-
+### Phase 15: LangChain/LangGraph Tier3 Intelligence Improvements
+**Goal**: APDR's tier3 recovery improves through benchmarked LangChain/LangGraph agent behavior, context engineering, small-model inference policy, and benchmark-fed learning instead of new deterministic recovery tables
+**Depends on**: Phase 13, Phase 14
+**Requirements**: AGT-01, AGT-02, AGT-03, AGT-04, AGT-05, AGT-06
 **Success Criteria** (what must be TRUE):
-1. Targeted `module-not-found` outcomes fall on the milestone parity slice
-2. Targeted `version-not-found` and dependency-mapping failures fall on the parity slice
-3. APDR recovers more of the 87 APDR-failed but `pllm`-passing cases than the March 27, 2026 baseline
-4. Recovery changes keep failure reasons inspectable instead of hiding them behind generic retries
+  1. Hard replay-slice tier3 cases can run through an explicit tool-calling plus critique-and-refinement loop, with LangChain's `create_agent` or an equivalent LangGraph-backed path benchmarked against the current manual loop.
+  2. Ambiguous tier3 cases can compare or verify multiple candidate mappings before selecting an answer instead of locking onto the first completion.
+  3. Later tier3 attempts can inspect reflection, memory, or retrieval grounded in benchmark outcomes from earlier attempts rather than depending on new hardcoded recovery tables as the main mechanism.
+  4. The tier3 path can increase effective context on hard cases through retrieval, state/store memory, summarization, context folding, and selectively larger Ollama context windows when benchmarking shows the tradeoff is favorable.
+  5. A representative sub-10GB-VRAM local-model path, such as `qwen3.5:9b`, is benchmarked with model-specific inference policy including thinking versus non-thinking routing where supported, non-greedy decoding settings, tool-surface reduction, and verifier or self-consistency passes for hard cases.
+  6. Compared with the v2.2 baseline for the locked replay slice, the LLM path resolves more tier3 cases successfully, including on the representative small-model benchmark path chosen for the milestone.
+  7. When the agent still cannot solve a case, APDR records inspectable failure reasons and abstains cleanly instead of fabricating success.
+**Plans**: TBD
 
-**Plans:** 3/3 plans complete
-
----
-
-### Phase 10: Benchmark Verification & Accuracy Closeout
-**Goal**: Rerun the targeted benchmark slice, prove the accuracy delta, and record the remaining unrecovered cases clearly
-
-**Depends on**: Phase 9 (targeted recovery changes)
-
-**Requirements**: REC-05, EVD-01, EVD-02
-
+### Phase 16: Proof, Comparison, and Closeout
+**Goal**: v2.2 closes with reviewer-readable proof for macOS performance gains and Windows non-regression without overstating what shipped
+**Depends on**: Phase 14, Phase 15
+**Requirements**: EVD-04, EVD-06
 **Success Criteria** (what must be TRUE):
-1. Benchmark artifacts report case-level APDR versus baseline versus `pllm` deltas for the targeted slice
-2. Existing passed cases and expected skip behavior remain intact on the rerun
-3. Remaining unrecovered parity cases are grouped by dominant failure bucket with follow-on notes
-4. Milestone closeout leaves the next benchmark comparison path repeatable and reviewer-readable
-
-**Plans:** 3/3 plans complete
-
----
-
-### Phase 11: Verification Backfill & State Repair
-**Goal**: Backfill missing verification artifacts and stale planning-state documents so the v2.1 repo history matches the completed work and milestone audit
-
-**Depends on**: Phases 7-10 (existing artifacts, summaries, and checkers)
-
-**Requirements**: FAM-01, FAM-02, FAM-03
-
-**Gap Closure:** Closes the audit's orphaned family-knowledge requirements and the stale planning-state debt called out in `v2.1-MILESTONE-AUDIT.md`
-
-**Success Criteria** (what must be TRUE):
-1. Phase 8 has a repo-backed verification report anchored to its existing tests and checker so `FAM-01`, `FAM-02`, and `FAM-03` are no longer orphaned
-2. Phase 7's accepted manual-review outcome is reflected in repo artifacts instead of lingering as unresolved `human_needed` debt
-3. `ROADMAP.md`, `STATE.md`, and related milestone closeout references align with the actual completion status of Phases 7-10
-4. A re-audit no longer fails on missing verification artifacts or stale phase-state prose
-
-**Plans:** 3/3 plans complete
-
----
-
-### Phase 12: Live Benchmark Proof & Requirement Reconciliation
-**Goal**: Close the audited recovery-proof gap by running a live targeted rerun or explicitly reconciling the milestone requirements and closeout docs to the measured benchmark outcome
-
-**Depends on**: Phase 11 (verification backfill and state repair), Phase 10 (targeted rerun tooling and evidence package)
-
-**Requirements**: REC-02, REC-03, REC-04
-
-**Gap Closure:** Closes the audit's broken Phase 9 -> Phase 10 proof flow and the failed live-rerun milestone flow in `v2.1-MILESTONE-AUDIT.md`
-
-**Success Criteria** (what must be TRUE):
-1. Phase 10 rerun artifacts are regenerated from a live APDR benchmark run rather than dry-run-only data, or the repo records a hard blocker for why live proof cannot run
-2. The repo either demonstrates measured recovery improvement on the canonical slice or explicitly re-scopes the recovery requirements and milestone closeout to the observed benchmark result
-3. Benchmark verification and milestone closeout docs no longer overclaim recovery improvement relative to the measured evidence
-4. A re-audit no longer reports the recovery-proof flow as broken
-
----
+  1. Milestone closeout includes before-and-after macOS benchmark comparisons on the reproducible replay slice that make the claimed performance gain easy for a reviewer to verify.
+  2. Milestone closeout includes an explicit Windows non-regression comparison for the benchmark-performance work completed in v2.2.
+**Plans**: TBD
 
 ## Progress
 
-| Phase | Requirements | Status | Completed |
-|-------|--------------|--------|-----------|
-| 7. Failure Baseline & Parity Slice | FAM-04, REC-01 | Complete | 2026-03-28 |
-| 8. Data-Driven Family Knowledge Runtime | FAM-01, FAM-02, FAM-03 | Complete | 2026-03-28 |
-| 9. Targeted Tier3 Recovery Accuracy | REC-02, REC-03, REC-04 | Complete | 2026-03-28 |
-| 10. Benchmark Verification & Accuracy Closeout | REC-05, EVD-01, EVD-02 | Complete | 2026-03-28 |
-| 11. Verification Backfill & State Repair | FAM-01, FAM-02, FAM-03 | Complete    | 2026-03-28 |
-| 12. Live Benchmark Proof & Requirement Reconciliation | 1/3 | In Progress|  |
-
----
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 13. Measurement and Run-Contract Hardening | 0/TBD | Not started | - |
+| 14. macOS Execution-Path Optimization | 0/TBD | Not started | - |
+| 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
+| 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
 
 ## Dependencies
 
-```
-Phase 7: Failure Baseline & Parity Slice (FOUNDATION)
-   -> Phase 8: Data-Driven Family Knowledge Runtime
-      -> Phase 9: Targeted Tier3 Recovery Accuracy
-         -> Phase 10: Benchmark Verification & Accuracy Closeout
-            -> Phase 11: Verification Backfill & State Repair
-               -> Phase 12: Live Benchmark Proof & Requirement Reconciliation
-```
+`Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
-**Critical Path**: Phase 7 -> Phase 8 -> Phase 9 -> Phase 10 -> Phase 11 -> Phase 12
-
-**Parallel Opportunities**:
-- Verification-report scaffolding and stale-doc reconciliation can begin before the live benchmark rerun infrastructure is available
-- Benchmark command validation and environment readiness checks can begin while the verification backfill phase is landing, but the final proof artifact waits on the live rerun
-
----
-
-*Roadmap created: 2026-03-27*
-*Last updated: 2026-03-28 after Phase 12 plan 01 completion*
+*Roadmap created: 2026-03-28*
