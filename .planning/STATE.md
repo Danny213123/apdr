@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: executing
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-29T18:18:36Z"
+status: ready_to_plan
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-03-29T18:28:12Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Executing Phase 14
-**Progress:** [████████░░] 83%
+**Status:** Ready to Plan Phase 15
+**Progress:** [██████████] 100%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 14-02 with the replay runner, macOS replay preflight policy, and profile-aware binary selection
-**Resume File:** .planning/phases/14-macos-execution-path-optimization/14-02-SUMMARY.md
+**Last Activity Description:** Completed Phase 14 with replay proof checkers, bounded proof artifacts, and reviewer-facing macOS and Windows comparison notes
+**Resume File:** .planning/phases/14-macos-execution-path-optimization/14-03-SUMMARY.md
 
 ---
 
@@ -29,25 +29,25 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 14 — macos-execution-path-optimization
+**Current Focus:** Phase 15 — LangChain/LangGraph Tier3 Intelligence Improvements
 
 ---
 
 ## Current Position
 
-Phase: 14 (macos-execution-path-optimization) — EXECUTING
-Plan: 2 of 3
-Status: Executing Phase 14
-Last activity: 2026-03-29 -- Completed 14-02 and ready for 14-03
+Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — READY TO PLAN
+Plan: 0 of TBD
+Status: Ready to plan Phase 15
+Last activity: 2026-03-29 -- Completed Phase 14 and ready to plan Phase 15
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 5
-- v2.2 phases completed: 1 of 4
-- Active phase plan count: 3
-- Phase 13 now provides the first comparable measurement contract and checker for later milestone claims.
+- v2.2 plans completed: 6
+- v2.2 phases completed: 2 of 4
+- Active phase plan count: 0
+- Phase 14 now provides deterministic macOS and Windows replay proof checkers plus bounded proof-note templates for later live evidence capture.
 
 ---
 
@@ -68,26 +68,28 @@ Last activity: 2026-03-29 -- Completed 14-02 and ready for 14-03
 - [Phase 14]: When replay_manifest is set, snippet_limit is ignored to prevent conflicting boundary controls
 - [Phase 14]: `macos-replay` defaults to `release` when a build profile is not pinned explicitly
 - [Phase 14]: Replay evidence now carries effective worker count and preflight warnings for Rosetta, backend drift, cache-state drift, and missing fresh binaries
+- [Phase 14]: Proof validation now compares like-for-like slice metadata and preserved pass/skip outcomes instead of total duration alone
+- [Phase 14]: Reviewer-facing proof notes and machine validation now share the same bounded artifact contract
 
 ### Pending Todos
 
-- Execute Plan 14-03 to add the regression checker, proof samples, and reviewer-facing comparison notes.
-- Capture cold and warm macOS replay baselines with the new replay runner.
-- Produce the representative Windows guardrail artifact or import it from the Windows host before closing Phase 14.
+- Plan Phase 15 for LangChain/LangGraph tier3 intelligence improvements.
+- Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
+- Import representative Windows guardrail artifacts before milestone closeout.
 
 ### Blockers/Concerns
 
-- Mixed architecture, backend, or cache-state runs will invalidate milestone comparisons unless Phase 13 lands first.
-- macOS speedups must not quietly regress Windows runtime or distort correctness on preserved pass and skip cases.
+- Live milestone proof still requires real macOS and Windows artifact capture; the repo now contains the checker contract and sample schema, not the final evidence pair.
+- Phase 15 should improve agent behavior without falling back to more deterministic recovery tables.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-03-29T05:16:57.849Z
-Stopped at: Completed 14-02-PLAN.md
-Resume file: .planning/phases/14-macos-execution-path-optimization/14-02-SUMMARY.md
+Last session: 2026-03-29T18:28:12Z
+Stopped at: Completed 14-03-PLAN.md
+Resume file: .planning/phases/14-macos-execution-path-optimization/14-03-SUMMARY.md
 
 ---
 
-*State updated after Phase 14 planning on 2026-03-29*
+*State updated after Phase 14 execution on 2026-03-29*
