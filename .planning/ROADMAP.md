@@ -88,7 +88,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 | 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
 | 14. macOS Execution-Path Optimization | 3/3 | Complete | 14-01, 14-02, 14-03 complete |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 4/4 | Complete | 15-01, 15-02, 15-03, 15-04 complete |
-| 16. Proof, Comparison, and Closeout | 0/3 | Planned | - |
+| 16. Proof, Comparison, and Closeout | 1/3 | In Progress|  |
 
 ## Dependencies
 
