@@ -15,6 +15,15 @@ import time
 
 from . import APP_NAME, APP_VERSION
 from .runner import BenchmarkWorker
+from .run_contract import (
+    contract_from_sources,
+    determine_execution_mode,
+    normalize_build_profile,
+    normalize_cache_state,
+    normalize_context_window,
+    normalize_inference_policy,
+    normalize_run_intent,
+)
 from .state import APDR_PYTHON_VERSIONS, AppState, ModelConfig
 
 
@@ -492,6 +501,7 @@ class BenchmarkService:
 
     def _normalize_run_config(self, payload: dict[str, Any] | None, validate: bool = False) -> dict[str, Any]:
         payload = payload or {}
+        run_contract = contract_from_sources(payload)
         preferred_tool = str(payload.get("tool") or "").strip() or None
         defaults = self.state.default_run_config(preferred_tool=preferred_tool)
         tool = str(payload.get("tool") or defaults["tool"] or "").strip()
@@ -513,10 +523,41 @@ class BenchmarkService:
                 str(payload.get("validation_backend") or payload.get("validationBackend") or defaults["validation_backend"]).strip(),
             ),
             "loadout_name": str(payload.get("loadout_name") or payload.get("loadoutName") or "").strip(),
-            "model": str(payload.get("model") or "").strip(),
-            "base_url": str(payload.get("base_url") or payload.get("baseUrl") or "").strip(),
+            "run_intent": normalize_run_intent(
+                payload.get("run_intent")
+                or payload.get("runIntent")
+                or run_contract.get("run_intent")
+                or defaults["run_intent"]
+            ),
+            "cache_state": normalize_cache_state(
+                payload.get("cache_state")
+                or payload.get("cacheState")
+                or run_contract.get("cache_state")
+                or defaults["cache_state"]
+            ),
+            "llm_context_window": normalize_context_window(
+                payload.get("llm_context_window")
+                or payload.get("llmContextWindow")
+                or run_contract.get("llm_context_window")
+                or defaults["llm_context_window"]
+            ),
+            "inference_policy": normalize_inference_policy(
+                payload.get("inference_policy")
+                or payload.get("inferencePolicy")
+                or run_contract.get("inference_policy")
+                or defaults["inference_policy"]
+            ),
+            "build_profile": normalize_build_profile(
+                payload.get("build_profile")
+                or payload.get("buildProfile")
+                or run_contract.get("build_profile")
+                or defaults["build_profile"]
+            ),
+            "model": str(payload.get("model") or run_contract.get("model_name") or "").strip(),
+            "base_url": str(payload.get("base_url") or payload.get("baseUrl") or run_contract.get("base_url") or "").strip(),
             "temperature": self._optional_float(payload.get("temperature") or payload.get("temp")),
             "workers": int(payload.get("workers", 0) or 0),
+            "run_contract": run_contract if run_contract else {},
         }
         if validate:
             if not config["tool"]:
@@ -883,6 +924,11 @@ class BenchmarkService:
             "python_command": config["python_command"],
             "validation_backend": config["validation_backend"],
             "loadout_name": config["loadout_name"],
+            "run_intent": config["run_intent"],
+            "cache_state": config["cache_state"],
+            "llm_context_window": config["llm_context_window"],
+            "inference_policy": config["inference_policy"],
+            "build_profile": config["build_profile"],
         }
 
     def _run_config_from_summary(self, summary: dict[str, Any]) -> dict[str, Any]:
@@ -902,6 +948,7 @@ class BenchmarkService:
 
     def _historical_run_snapshot(self, run_id: str, summary: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         config = self._run_config_from_summary(summary)
+        run_contract = contract_from_sources(summary, config)
         results = self._summary_results(summary)
         completed = len(results)
         total = self._estimate_total_from_summary(summary, config, completed)
@@ -951,6 +998,7 @@ class BenchmarkService:
                 "progressPercent": round(completed / total * 100, 1) if total else 0.0,
                 "runId": run_id,
                 "runDir": str(run_dir),
+                "runContract": run_contract,
                 "completed": completed,
                 "total": total,
                 "successes": successes,
@@ -1109,8 +1157,34 @@ class BenchmarkService:
             tool, str(config.get("validation_backend") or "")
         )
         selected = self.state.load_model_config(tool) if tool else None
-        model_name = str(config.get("model") or (selected.model if selected else "not selected"))
-        base_url = str(config.get("base_url") or (selected.base_url if selected else "--"))
+        run_contract = contract_from_sources(run, config)
+        model_name = str(
+            run_contract.get("model_name")
+            or config.get("model")
+            or (selected.model if selected else "not selected")
+        )
+        base_url = str(
+            run_contract.get("base_url")
+            or config.get("base_url")
+            or (selected.base_url if selected else "--")
+        )
+        temperature = config.get("temperature")
+        if temperature is None and selected is not None:
+            temperature = selected.temperature
+        contract_view = {
+            "run_intent": str(run_contract.get("run_intent") or config.get("run_intent") or "baseline"),
+            "execution_mode": str(run_contract.get("execution_mode") or determine_execution_mode(tool, validation_backend)),
+            "cache_state": str(run_contract.get("cache_state") or config.get("cache_state") or "unknown"),
+            "llm_context_window": str(
+                run_contract.get("llm_context_window") or config.get("llm_context_window") or "--"
+            ),
+            "inference_policy": str(
+                run_contract.get("inference_policy")
+                or config.get("inference_policy")
+                or normalize_inference_policy("", temperature)
+            ),
+            "build_profile": str(run_contract.get("build_profile") or config.get("build_profile") or "standard"),
+        }
         dataset_tar = str(config.get("dataset_tar") or self.state.default_dataset_tar)
         source_path = self._display_path(dataset_tar)
         target_label = self._strip_archive_suffix(dataset_tar)
@@ -1140,9 +1214,15 @@ class BenchmarkService:
                 ),
             },
             {"label": "Source", "value": source_path},
-            {"label": "Models", "value": model_name},
+            {"label": "Model", "value": model_name},
             {"label": "Effective", "value": effective},
             {"label": "LLM", "value": f"{base_url} [{model_name}]" if tool else "--"},
+            {"label": "Run intent", "value": contract_view["run_intent"]},
+            {"label": "Execution mode", "value": contract_view["execution_mode"]},
+            {"label": "Cache state", "value": contract_view["cache_state"]},
+            {"label": "Ctx window", "value": contract_view["llm_context_window"]},
+            {"label": "Inference", "value": contract_view["inference_policy"]},
+            {"label": "Build profile", "value": contract_view["build_profile"]},
             {"label": "Jobs", "value": str(jobs)},
             {"label": "Artifacts", "value": artifacts},
         ]

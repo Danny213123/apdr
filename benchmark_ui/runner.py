@@ -20,6 +20,7 @@ except ImportError:
     fcntl = None  # type: ignore[assignment]
 
 from .state import AppState
+from .run_contract import build_run_contract, missing_required_keys
 
 # WSL mount prefix pattern: /mnt/<drive>/...
 _WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
@@ -157,6 +158,22 @@ class BenchmarkWorker(threading.Thread):
             self.run_dir = self._create_run_dir(tool)
             context_log = self.run_dir / "benchmark-context.log"
             context_log.touch(exist_ok=True)
+            run_contract = build_run_contract(
+                repo_root=self.state.repo_root,
+                tool=tool,
+                model_name=selected_model,
+                base_url=selected_base_url,
+                temperature=selected_temperature,
+                validation_backend=str(self.run_config.get("validation_backend", "")),
+                run_config=self.run_config,
+                runner_command=runner,
+            )
+            missing_contract_keys = missing_required_keys(run_contract)
+            if missing_contract_keys:
+                raise RuntimeError(
+                    f"Incomplete benchmark run contract: {', '.join(missing_contract_keys)}"
+                )
+
             summary = {
                 "tool": tool,
                 "model": selected_model,
@@ -175,10 +192,12 @@ class BenchmarkWorker(threading.Thread):
                 "status": "running",
                 "results": resume_results,
                 "benchmark_context_log": self.state.relative_path(context_log),
+                "run_contract": run_contract,
             }
             if self.run_config.get("_resume_from_run_id"):
                 summary["resume_from_run_id"] = str(self.run_config["_resume_from_run_id"])
                 summary["resumed_results"] = resumed_completed
+            self._persist_run_contract(summary, run_contract)
             self._write_summary(summary)
             self._emit(
                 "plan",
@@ -189,6 +208,7 @@ class BenchmarkWorker(threading.Thread):
                 resumed_failures=resumed_failures,
                 resumed_skips=resumed_skips,
                 resumed_run_id=str(self.run_config.get("_resume_from_run_id") or ""),
+                run_contract=run_contract,
             )
             self._append_context_log(
                 context_log,
@@ -764,6 +784,12 @@ class BenchmarkWorker(threading.Thread):
         with path.open("w", encoding="utf-8") as handle:
             json.dump(summary, handle, indent=2, sort_keys=True)
             handle.write("\n")
+
+    def _persist_run_contract(self, summary: dict[str, Any], run_contract: dict[str, Any]) -> None:
+        summary["run_contract"] = dict(run_contract)
+        if not self.run_dir:
+            return
+        self.state.write_json(self.run_dir / "run_contract.json", run_contract)
 
     def _parse_limit(self, value: Any) -> int:
         if value in ("", None):

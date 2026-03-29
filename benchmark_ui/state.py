@@ -194,6 +194,15 @@ class AppState:
             "snippet_limit": "",
             "python_command": "",
             "validation_backend": "docker" if tool == "pllm" else "env",
+            "run_intent": "baseline",
+            "cache_state": "unknown",
+            "llm_context_window": str(
+                os.environ.get("APDR_NUM_CTX")
+                or os.environ.get("OLLAMA_CONTEXT_LENGTH")
+                or "16384"
+            ),
+            "inference_policy": "",
+            "build_profile": "standard",
             "llm_only_mode": False,
             "workers": 0,
         }
