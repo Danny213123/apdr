@@ -71,6 +71,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-root", default="", help="Root of dataset snippets, such as hard-gists.")
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of snippets to include.")
     parser.add_argument(
+        "--manifest-json",
+        default="",
+        help="Path to a replay-slice manifest JSON that defines exact case membership and order.",
+    )
+    parser.add_argument(
         "--validation-backend",
         choices=("env", "docker", "llm"),
         default="env",
@@ -110,8 +115,8 @@ def parse_args() -> argparse.Namespace:
         help="Inference policy recorded in the run contract. Defaults to benchmark_ui normalization.",
     )
     args = parser.parse_args()
-    if not args.fixtures_root and not args.dataset_root:
-        parser.error("Provide at least one of --fixtures-root or --dataset-root.")
+    if not args.fixtures_root and not args.dataset_root and not args.manifest_json:
+        parser.error("Provide at least one of --fixtures-root, --dataset-root, or --manifest-json.")
     if args.limit == 0:
         parser.error("--limit must be non-zero.")
     return args
@@ -157,7 +162,92 @@ def discover_dataset_snippets(root: Path) -> list[Path]:
     )
 
 
+def load_manifest_json(manifest_path: str) -> dict[str, Any]:
+    """Load and validate a replay-slice manifest JSON file."""
+    path = Path(manifest_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Manifest JSON not found: {path}")
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError(f"Manifest must be a JSON object: {path}")
+    if not data.get("slice_id"):
+        raise ValueError(f"Manifest is missing 'slice_id': {path}")
+    cases = data.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(f"Manifest must contain a non-empty 'cases' array: {path}")
+    return data
+
+
+def collect_snippets_from_manifest(
+    manifest: dict[str, Any],
+    fixtures_root: Path | None,
+    dataset_root: Path | None,
+) -> list[dict[str, Any]]:
+    """Resolve manifest case entries to snippet records in manifest order.
+
+    Searches fixtures_root first, then dataset_root. Raises ValueError if
+    any manifest case is not found in either root.
+    """
+    ordered: list[dict[str, Any]] = []
+    missing: list[str] = []
+
+    for entry in manifest["cases"]:
+        rel_path = str(entry["relative_path"])
+        found = False
+
+        # Try fixtures root first
+        if fixtures_root is not None:
+            candidate = fixtures_root / rel_path
+            if candidate.exists() and candidate.is_file():
+                ordered.append({
+                    "source": "fixtures",
+                    "root": str(fixtures_root),
+                    "snippet": candidate.resolve(),
+                    "relative_path": rel_path,
+                })
+                found = True
+
+        # Try dataset root
+        if not found and dataset_root is not None:
+            candidate = dataset_root / rel_path
+            if candidate.exists() and candidate.is_file():
+                ordered.append({
+                    "source": "dataset",
+                    "root": str(dataset_root),
+                    "snippet": candidate.resolve(),
+                    "relative_path": rel_path,
+                })
+                found = True
+
+        if not found:
+            missing.append(rel_path)
+
+    if missing:
+        roots = []
+        if fixtures_root:
+            roots.append(str(fixtures_root))
+        if dataset_root:
+            roots.append(str(dataset_root))
+        raise ValueError(
+            f"Manifest references {len(missing)} snippets not found in "
+            f"{', '.join(roots)}: {', '.join(missing[:10])}"
+        )
+    return ordered
+
+
 def collect_snippets(args: argparse.Namespace) -> list[dict[str, Any]]:
+    # If a manifest is provided, use it to select and order snippets.
+    if args.manifest_json:
+        manifest = load_manifest_json(args.manifest_json)
+        fixtures_root = Path(args.fixtures_root).expanduser().resolve() if args.fixtures_root else None
+        dataset_root = Path(args.dataset_root).expanduser().resolve() if args.dataset_root else None
+        if fixtures_root is not None and not fixtures_root.exists():
+            raise FileNotFoundError(f"fixtures root does not exist: {fixtures_root}")
+        if dataset_root is not None and not dataset_root.exists():
+            raise FileNotFoundError(f"dataset root does not exist: {dataset_root}")
+        return collect_snippets_from_manifest(manifest, fixtures_root, dataset_root)
+
     ordered: list[dict[str, Any]] = []
     seen: set[Path] = set()
 
@@ -705,6 +795,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"# {report_title(report)}",
         "",
         f"Created: {report['created_at']}",
+    ]
+    if report.get("slice_id"):
+        lines.append(f"Slice ID: `{report['slice_id']}`")
+    if report.get("manifest_json"):
+        lines.append(f"Manifest: `{report['manifest_json']}`")
+    lines += [
         f"Validation backend: `{report['validation_backend']}`",
         f"Execution mode: `{report['execution_mode']}`",
         f"Cache state: `{report['cache_state']}`",
@@ -818,12 +914,21 @@ def main() -> int:
         cases,
         run_contract.get("execution_mode", determine_execution_mode("apdr", args.validation_backend)),
     )
+    # Extract manifest metadata if a manifest was used.
+    manifest_json = str(args.manifest_json).strip() if args.manifest_json else ""
+    slice_id = ""
+    if manifest_json:
+        manifest_data = load_manifest_json(manifest_json)
+        slice_id = str(manifest_data.get("slice_id", ""))
+
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repo_root": str(REPO_ROOT),
         "command": shell_join(sys.argv),
         "fixtures_root": str(Path(args.fixtures_root).expanduser().resolve()) if args.fixtures_root else "",
         "dataset_root": str(Path(args.dataset_root).expanduser().resolve()) if args.dataset_root else "",
+        "manifest_json": manifest_json,
+        "slice_id": slice_id,
         "validation_backend": args.validation_backend,
         "force_validate": bool(args.force_validate),
         "execute_live": bool(args.execute_live),

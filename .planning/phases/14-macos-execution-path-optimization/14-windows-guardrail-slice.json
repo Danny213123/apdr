@@ -1,0 +1,49 @@
+{
+  "slice_id": "phase14-windows-guardrail",
+  "purpose": "Representative Windows guardrail manifest used to detect regressions from macOS-focused changes.",
+  "rationale": "Phase 14 macOS optimizations must not regress Windows benchmark behavior. This guardrail slice covers the same tier spectrum as the macOS replay slice but focuses on cases that exercise Windows-sensitive paths: Docker validation fallback, path normalization, and platform-specific skip behavior. The slice is intentionally smaller than the macOS replay slice to keep guardrail checks fast.",
+  "created_at": "2026-03-29",
+  "phase": "14-macos-execution-path-optimization",
+  "cases": [
+    {
+      "relative_path": "sample_snippet.py",
+      "reason": "Baseline tier1 case that must pass on both platforms"
+    },
+    {
+      "relative_path": "flask_extensions_snippet.py",
+      "reason": "Tier1/tier2 Flask stack shared with macOS slice for cross-platform comparison"
+    },
+    {
+      "relative_path": "cv2_serial_snippet.py",
+      "reason": "Tier2 heuristic case shared with macOS slice"
+    },
+    {
+      "relative_path": "scrapy_peewee_snippet.py",
+      "reason": "Tier1/tier2 case shared with macOS slice"
+    },
+    {
+      "relative_path": "llm_sklearn_pandas_snippet.py",
+      "reason": "Tier3 LLM case shared with macOS slice for LLM parity check"
+    },
+    {
+      "relative_path": "skip_binaryninja_snippet.py",
+      "reason": "Platform-specific skip that must remain consistent on Windows"
+    },
+    {
+      "relative_path": "skip_microbit_snippet.py",
+      "reason": "Hardware-specific skip that must remain consistent on Windows"
+    },
+    {
+      "relative_path": "python2_snippet.py",
+      "reason": "Python 2 case exercising Windows py launcher path"
+    },
+    {
+      "relative_path": "legacy_flask_stack_snippet.py",
+      "reason": "Legacy stack case shared with macOS slice for backward-compat check"
+    },
+    {
+      "relative_path": "generated_config_case/snippet.py",
+      "reason": "Generated config fixture for deterministic cross-platform replay"
+    }
+  ]
+}
