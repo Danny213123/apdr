@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
 status: in_progress
-last_updated: "2026-03-29T04:04:27Z"
+last_updated: "2026-03-29T04:20:27Z"
 last_activity: 2026-03-29
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 13 in progress; Plan 13-01 complete
-**Progress:** [░░░░░░░░░░] 0%
+**Status:** Phase 13 in progress; Plans 13-01 and 13-02 complete
+**Progress:** [█░░░░░░░░░] 13%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 13-01 by adding the canonical benchmark run contract in benchmark_ui
-**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-01-SUMMARY.md
+**Last Activity Description:** Completed Plan 13-02 by propagating the canonical run contract into APDR case artifacts and adding explicit LLM/Docker-startup timings
+**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-02-SUMMARY.md
 
 ---
 
@@ -29,15 +29,15 @@ last_activity: 2026-03-29
 ## Current Position
 
 Phase: 13 of 16 (Measurement and Run-Contract Hardening)
-Plan: 1 of 3
-Status: Executing Plan 13-02 next
-Last activity: 2026-03-29 — Plan 13-01 completed; Plan 13-02 is next
+Plan: 2 of 3
+Status: Executing Plan 13-03 next
+Last activity: 2026-03-29 — Plans 13-01 and 13-02 completed; Plan 13-03 is next
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 1
+- v2.2 plans completed: 2
 - v2.2 phases completed: 0 of 4
 - Active phase plan count: 3
 - Progress baseline remains pending until Phase 13 execution captures the first comparable artifacts.
@@ -54,12 +54,13 @@ Last activity: 2026-03-29 — Plan 13-01 completed; Plan 13-02 is next
 - v2.2 accuracy gains should come from tool use, reflection, context engineering, and model-specific inference policy rather than new deterministic recovery tables.
 - Phase 13 is split into three sequential plans: canonical run-contract capture, APDR per-case metadata/timing propagation, then evidence normalization plus a deterministic measurement checker.
 - Plan 13-01 established `benchmark_ui/run_contract.py` as the canonical Phase 13 metadata contract and persisted it into saved benchmark runs.
+- Plan 13-02 pushed that same contract into APDR through `--run-contract-json` and made `llm_duration_ms` plus `docker_startup_duration_ms` first-class per-case timing fields.
 
 ### Pending Todos
 
 - Choose the locked replay slice and baseline commands during Phase 13 and Phase 14 execution.
 - Decide which model or build-profile comparisons are worth capturing once the measurement contract exists.
-- Execute Plan 13-02 next so APDR case artifacts inherit the canonical run contract and the missing timing fields.
+- Execute Plan 13-03 next so reporting and fixture-backed artifacts enforce the Phase 13 measurement contract.
 
 ### Blockers/Concerns
 
@@ -71,9 +72,9 @@ Last activity: 2026-03-29 — Plan 13-01 completed; Plan 13-02 is next
 ## Session Continuity
 
 Last session: 2026-03-29
-Stopped at: Plan 13-01 complete; next step is Plan 13-02
-Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-01-SUMMARY.md
+Stopped at: Plan 13-02 complete; next step is Plan 13-03
+Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-02-SUMMARY.md
 
 ---
 
-*State updated after completing Plan 13-01 on 2026-03-29*
+*State updated after completing Plan 13-02 on 2026-03-29*
