@@ -58,10 +58,16 @@ pub fn resolve_path(
 ) -> io::Result<ResolveResult> {
     let started = Instant::now();
     context::ensure_debug_layout(&config.output_dir)?;
-    family_knowledge::init_curated_family_knowledge(tool_root)
-        .map_err(|err| io::Error::other(format!("failed to initialize curated family knowledge: {err}")))?;
-    targeted_recovery::init_targeted_recovery_policy(tool_root)
-        .map_err(|err| io::Error::other(format!("failed to initialize targeted recovery policy: {err}")))?;
+    family_knowledge::init_curated_family_knowledge(tool_root).map_err(|err| {
+        io::Error::other(format!(
+            "failed to initialize curated family knowledge: {err}"
+        ))
+    })?;
+    targeted_recovery::init_targeted_recovery_policy(tool_root).map_err(|err| {
+        io::Error::other(format!(
+            "failed to initialize targeted recovery policy: {err}"
+        ))
+    })?;
     let snippet_source = fs::read_to_string(snippet_path)?;
     let data_root = tool_root.join("data");
     let parse_result = parser::parse_snippet(snippet_path, &data_root, config.scan_config_files)?;
@@ -69,6 +75,7 @@ pub fn resolve_path(
 
     let mut selected_python = selected_python_version(&parse_result, config);
     let mut report = ResolutionReport::default();
+    let mut pre_validation_llm_duration_ms = 0u128;
     write_parse_artifacts(
         &config.output_dir,
         snippet_path,
@@ -104,6 +111,7 @@ pub fn resolve_path(
                 snippet_path: snippet_path.to_path_buf(),
                 python_version: selected_python.clone(),
                 parse_result,
+                run_contract: config.run_contract.clone(),
                 solvability: None,
                 resolved: Vec::new(),
                 unresolved: report.unresolved.clone(),
@@ -152,6 +160,7 @@ pub fn resolve_path(
                 snippet_path: snippet_path.to_path_buf(),
                 python_version: selected_python.clone(),
                 parse_result,
+                run_contract: config.run_contract.clone(),
                 solvability: Some(SolvabilityAssessment {
                     decision: "skip".to_string(),
                     confidence: record.confidence,
@@ -210,6 +219,7 @@ pub fn resolve_path(
                 snippet_path: snippet_path.to_path_buf(),
                 python_version: cached.python_version.clone(),
                 parse_result,
+                run_contract: config.run_contract.clone(),
                 solvability: None,
                 resolved: cached.resolved,
                 unresolved: Vec::new(),
@@ -257,7 +267,9 @@ pub fn resolve_path(
     let solvability =
         if !unresolved.is_empty() && config.allow_llm && !config.llm_only_mode && !skip_solvability
         {
+            let llm_started = Instant::now();
             let assessment = tier3_llm::assess_solvability(&snippet_source, &parse_result, config);
+            pre_validation_llm_duration_ms += llm_started.elapsed().as_millis();
             if let Some(ref a) = assessment {
                 report.notes.push(format!(
                     "LLM solvability assessment: decision={} confidence={:.2} reason={}",
@@ -310,6 +322,7 @@ pub fn resolve_path(
                     snippet_path: snippet_path.to_path_buf(),
                     python_version: selected_python.clone(),
                     parse_result,
+                    run_contract: config.run_contract.clone(),
                     solvability: assessment,
                     resolved: Vec::new(),
                     unresolved: report.unresolved.clone(),
@@ -330,6 +343,7 @@ pub fn resolve_path(
                 &selected_python,
             );
             report.llm_calls += stage3.prompts_issued;
+            pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
             resolved.append(&mut stage3.resolved);
             unresolved = stage3.unresolved;
@@ -350,6 +364,7 @@ pub fn resolve_path(
                 &selected_python,
             );
             report.llm_calls += stage3.prompts_issued;
+            pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
             resolved.append(&mut stage3.resolved);
             unresolved = stage3.unresolved;
@@ -364,6 +379,7 @@ pub fn resolve_path(
                 &selected_python,
             );
             report.llm_calls += stage3.prompts_issued;
+            pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
             resolved.append(&mut stage3.resolved);
             unresolved = stage3.unresolved;
@@ -431,6 +447,7 @@ pub fn resolve_path(
                     &mut store,
                     config,
                     &mut report,
+                    &mut pre_validation_llm_duration_ms,
                 );
 
                 // Re-run pre-solve with updated dependencies if all imports were resolved
@@ -524,6 +541,7 @@ pub fn resolve_path(
                     &mut store,
                     config,
                     &mut report,
+                    &mut pre_validation_llm_duration_ms,
                 );
                 resolved = new_resolved;
                 unresolved.extend(new_unresolved);
@@ -719,6 +737,7 @@ pub fn resolve_path(
     }
     let repeat_failure_signature = validation.repeat_failure_signature.clone();
     update_failure_metadata(&mut validation, config, &resolved, repeat_failure_signature);
+    validation.llm_duration_ms += pre_validation_llm_duration_ms;
     // Count LangGraph agent invocations as LLM calls so the UI reflects them.
     report.llm_calls += validation.agent_invocations;
 
@@ -779,6 +798,7 @@ pub fn resolve_path(
             .clone()
             .unwrap_or_else(|| selected_python.clone()),
         parse_result,
+        run_contract: config.run_contract.clone(),
         solvability,
         resolved,
         unresolved,
@@ -1346,6 +1366,7 @@ fn retry_with_llm_for_missing_packages(
     store: &mut CacheStore,
     config: &ResolveConfig,
     report: &mut crate::ResolutionReport,
+    llm_duration_ms: &mut u128,
 ) -> (Vec<ResolvedDependency>, Vec<String>) {
     let packages_set: BTreeSet<String> = packages_without_metadata
         .iter()
@@ -1390,6 +1411,7 @@ fn retry_with_llm_for_missing_packages(
     );
 
     report.llm_calls += llm_result.prompts_issued;
+    *llm_duration_ms += llm_result.llm_duration_ms;
     report.notes.append(&mut llm_result.notes.clone());
 
     // Build a map from import_name â†’ original package_name for the retried deps.
@@ -1445,6 +1467,7 @@ fn retry_nonexistent_packages(
     store: &mut CacheStore,
     config: &ResolveConfig,
     report: &mut crate::ResolutionReport,
+    llm_duration_ms: &mut u128,
 ) -> (Vec<ResolvedDependency>, Vec<String>) {
     // Find ALL resolved packages that don't exist on PyPI (seed or otherwise)
     let mut kept_resolved = Vec::new();
@@ -1482,6 +1505,7 @@ fn retry_nonexistent_packages(
     );
 
     report.llm_calls += llm_result.prompts_issued;
+    *llm_duration_ms += llm_result.llm_duration_ms;
     report.notes.append(&mut llm_result.notes.clone());
 
     let mut final_resolved = kept_resolved;

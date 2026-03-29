@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -43,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
     parser.add_argument("--benchmark-context-log", default="", help="Append benchmark build/run/LLM trace to this file")
+    parser.add_argument("--run-contract-json", default="", help="Path to the benchmark run contract JSON")
     parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers)")
     parser.add_argument("--force-validate", action="store_true", help="Force venv validation even for cached/pre-solved results")
     parser.add_argument("--validation-timeout", type=int, default=0, help="Per-attempt validation timeout in seconds")
@@ -86,14 +88,57 @@ def parse_summary(stdout: str) -> dict[str, str]:
     return summary
 
 
-def write_output_file(snippet_dir: Path, python_version: str, summary: dict[str, str], args: argparse.Namespace) -> Path:
+def _load_required_run_contract_keys() -> tuple[str, ...]:
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from benchmark_ui.run_contract import REQUIRED_RUN_CONTRACT_KEYS
+
+    return tuple(str(key) for key in REQUIRED_RUN_CONTRACT_KEYS)
+
+
+def load_run_contract(path_text: str) -> dict[str, str]:
+    if not path_text.strip():
+        return {}
+    path = Path(path_text).expanduser().resolve()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"Run contract {path} must be a JSON object")
+    required = _load_required_run_contract_keys()
+    contract = {key: str(raw.get(key, "")).strip() for key in required}
+    missing = [key for key, value in contract.items() if not value]
+    if missing:
+        raise ValueError(f"Run contract {path} is missing required keys: {', '.join(missing)}")
+    return contract
+
+
+def _summary_or_contract(
+    summary: dict[str, str],
+    upper_key: str,
+    contract: dict[str, str],
+    contract_key: str,
+    fallback: str = "",
+) -> str:
+    return str(summary.get(upper_key) or contract.get(contract_key) or fallback).strip()
+
+
+def write_output_file(
+    snippet_dir: Path,
+    python_version: str,
+    summary: dict[str, str],
+    args: argparse.Namespace,
+    run_contract: dict[str, str],
+) -> Path:
     output_path = snippet_dir / f"output_data_{python_version}.yml"
+    model_name = _summary_or_contract(summary, "MODEL_NAME", run_contract, "model_name", args.model)
+    base_url = _summary_or_contract(summary, "BASE_URL", run_contract, "base_url", args.base)
     content = [
         "---",
         f"python_version: {python_version}",
         "tool: apdr",
         f"model: {args.model}",
-        f"base_url: {args.base}",
+        f"model_name: {model_name}",
+        f"base_url: {base_url}",
         f"temperature: {args.temp}",
         f"loop_count: {args.loop}",
         f"search_range: {args.range}",
@@ -111,10 +156,22 @@ def write_output_file(snippet_dir: Path, python_version: str, summary: dict[str,
         f"retries: {summary.get('RETRIES', '0')}",
         f"solve_duration_ms: {summary.get('SOLVE_DURATION_MS', '0')}",
         f"validation_duration_ms: {summary.get('VALIDATION_DURATION_MS', '0')}",
+        f"llm_duration_ms: {summary.get('LLM_DURATION_MS', '0')}",
         f"env_create_duration_ms: {summary.get('ENV_CREATE_DURATION_MS', '0')}",
         f"install_duration_ms: {summary.get('INSTALL_DURATION_MS', '0')}",
+        f"docker_startup_duration_ms: {summary.get('DOCKER_STARTUP_DURATION_MS', '0')}",
         f"smoke_duration_ms: {summary.get('SMOKE_DURATION_MS', '0')}",
         f"validation_backend: {summary.get('VALIDATION_BACKEND', '')}",
+        f"run_contract_version: {_summary_or_contract(summary, 'RUN_CONTRACT_VERSION', run_contract, 'run_contract_version')}",
+        f"run_intent: {_summary_or_contract(summary, 'RUN_INTENT', run_contract, 'run_intent')}",
+        f"execution_mode: {_summary_or_contract(summary, 'EXECUTION_MODE', run_contract, 'execution_mode')}",
+        f"cache_state: {_summary_or_contract(summary, 'CACHE_STATE', run_contract, 'cache_state')}",
+        f"host_architecture: {_summary_or_contract(summary, 'HOST_ARCHITECTURE', run_contract, 'host_architecture')}",
+        f"apdr_binary_architecture: {_summary_or_contract(summary, 'APDR_BINARY_ARCHITECTURE', run_contract, 'apdr_binary_architecture')}",
+        f"python_architecture: {_summary_or_contract(summary, 'PYTHON_ARCHITECTURE', run_contract, 'python_architecture')}",
+        f"llm_context_window: {_summary_or_contract(summary, 'LLM_CONTEXT_WINDOW', run_contract, 'llm_context_window')}",
+        f"inference_policy: {_summary_or_contract(summary, 'INFERENCE_POLICY', run_contract, 'inference_policy')}",
+        f"build_profile: {_summary_or_contract(summary, 'BUILD_PROFILE', run_contract, 'build_profile')}",
         f"validation_succeeded: {summary.get('VALIDATION_SUCCEEDED', 'false')}",
         f"validation_status: {summary.get('VALIDATION_STATUS', '')}",
         f"validation_reason: {summary.get('VALIDATION_REASON', '')}",
@@ -134,6 +191,7 @@ def write_output_file(snippet_dir: Path, python_version: str, summary: dict[str,
 
 def main() -> int:
     args = parse_args()
+    run_contract = load_run_contract(args.run_contract_json)
     snippet_path = Path(args.file).expanduser().resolve()
     snippet_dir = snippet_path.parent
     artifact_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir.strip() else snippet_dir
@@ -178,6 +236,9 @@ def main() -> int:
         command.extend(["--validation-timeout", str(args.validation_timeout)])
     if args.benchmark_context_log.strip():
         command.extend(["--benchmark-context-log", args.benchmark_context_log.strip()])
+    if args.run_contract_json.strip():
+        command.extend(["--run-contract-json", args.run_contract_json.strip()])
+    if args.benchmark_context_log.strip():
         append_context_log(
             args.benchmark_context_log,
             "apdr-command",
@@ -221,7 +282,7 @@ def main() -> int:
 
     python_version = summary.get("PYTHON_VERSION", "3.11")
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    output_path = write_output_file(artifact_dir, python_version, summary, args)
+    output_path = write_output_file(artifact_dir, python_version, summary, args, run_contract)
     print(f"Wrote APDR output to {output_path}")
     validation_succeeded = str(summary.get("VALIDATION_SUCCEEDED", "false")).strip().lower() == "true"
     validation_status = str(summary.get("VALIDATION_STATUS", "")).strip()

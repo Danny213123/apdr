@@ -101,6 +101,7 @@ pub(super) fn validate_with_retries(
                 let synthetic_log = "Validation is oscillating: the same requirements keep \
                     failing repeatedly. One or more packages may need to be replaced with \
                     an alternative. Consider pure-Python alternatives or different packages.";
+                let llm_started = std::time::Instant::now();
                 if let Some(hint) = tier3_llm::recovery_package_hint(
                     resolved,
                     synthetic_log,
@@ -142,6 +143,7 @@ pub(super) fn validate_with_retries(
                         continue;
                     }
                 }
+                validation.llm_duration_ms += llm_started.elapsed().as_millis();
             }
             report
                 .notes
@@ -242,6 +244,7 @@ pub(super) fn validate_with_retries(
             if config.allow_llm && consecutive_llm_failures < 3 {
                 let synthetic_log = "Validation failed with no error output. The environment may have failed to install or the smoke test produced no stderr/stdout.";
                 report.llm_calls += 1;
+                let llm_started = std::time::Instant::now();
                 if let Some(hint) = tier3_llm::recovery_package_hint(
                     resolved,
                     synthetic_log,
@@ -335,6 +338,7 @@ pub(super) fn validate_with_retries(
                         }
                     }
                     if applied {
+                        validation.llm_duration_ms += llm_started.elapsed().as_millis();
                         report.retries += 1;
                         retry_state.requirements_dirty = true;
                         render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
@@ -352,6 +356,7 @@ pub(super) fn validate_with_retries(
                         continue;
                     }
                 }
+                validation.llm_duration_ms += llm_started.elapsed().as_millis();
             }
             break;
         }
@@ -545,9 +550,7 @@ pub(super) fn validate_with_retries(
                 // or project-local, stop immediately with an inspectable note
                 // instead of burning LLM retries.
                 if let Some(stop_reason) = targeted_stop_reason_for_module(&module) {
-                    let note = format!(
-                        "Phase 9 targeted stop: module `{module}` — {stop_reason}"
-                    );
+                    let note = format!("Phase 9 targeted stop: module `{module}` — {stop_reason}");
                     repeat_failure_signature = Some(current_signature.clone());
                     report.notes.push(note.clone());
                     validation.iteration_history.push(note.clone());
@@ -685,6 +688,7 @@ pub(super) fn validate_with_retries(
         // PyPI name should be. Stop after 3 consecutive LLM failures.
         if config.allow_llm && consecutive_llm_failures < 3 {
             report.llm_calls += 1;
+            let llm_started = std::time::Instant::now();
             if let Some(hint) = tier3_llm::recovery_package_hint(
                 resolved,
                 &last_log,
@@ -767,6 +771,7 @@ pub(super) fn validate_with_retries(
                     }
                 }
                 if applied {
+                    validation.llm_duration_ms += llm_started.elapsed().as_millis();
                     report.retries += 1;
                     retry_state.requirements_dirty = true;
                     render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
@@ -784,6 +789,7 @@ pub(super) fn validate_with_retries(
                     continue;
                 }
             }
+            validation.llm_duration_ms += llm_started.elapsed().as_millis();
             consecutive_llm_failures += 1;
         }
 
@@ -832,6 +838,7 @@ pub(super) fn validate_with_retries(
                     )),
                 );
                 report.llm_calls += llm_result.prompts_issued;
+                validation.llm_duration_ms += llm_result.llm_duration_ms;
                 // Replace seed-sourced deps with LLM results
                 let mut changed = false;
                 for llm_dep in &llm_result.resolved {

@@ -11,11 +11,13 @@ use crate::context;
 use crate::resolver::{kgraph_db, pypi_client, version_sampler};
 use crate::{ParseResult, ResolveConfig, ResolvedDependency, SolvabilityAssessment};
 use std::collections::HashMap;
+use std::time::Instant;
 pub struct StageResult {
     pub resolved: Vec<ResolvedDependency>,
     pub unresolved: Vec<String>,
     pub notes: Vec<String>,
     pub prompts_issued: usize,
+    pub llm_duration_ms: u128,
 }
 // ---------------------------------------------------------------------------
 // Solvability Assessment
@@ -100,6 +102,7 @@ pub fn resolve(
     config: &ResolveConfig,
     python_version: &str,
 ) -> StageResult {
+    let llm_started = Instant::now();
     let mut llm_candidates = Vec::new();
     let mut preserved_unresolved = Vec::new();
     for import_name in unresolved_imports {
@@ -115,6 +118,7 @@ pub fn resolve(
             unresolved: preserved_unresolved,
             notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
             prompts_issued: 0,
+            llm_duration_ms: llm_started.elapsed().as_millis(),
         };
     }
 
@@ -169,6 +173,7 @@ pub fn resolve(
                 unresolved: unresolved_imports.to_vec(),
                 notes: vec!["LLM package-resolution call returned no output.".to_string()],
                 prompts_issued: 1,
+                llm_duration_ms: llm_started.elapsed().as_millis(),
             };
         }
     };
@@ -299,6 +304,7 @@ pub fn resolve(
         unresolved: still_unresolved,
         notes,
         prompts_issued: prompts_issued + mappings.len(),
+        llm_duration_ms: llm_started.elapsed().as_millis(),
     }
 }
 
@@ -315,6 +321,7 @@ pub fn resolve_with_context(
     python_version: &str,
     additional_context: Option<String>,
 ) -> StageResult {
+    let llm_started = Instant::now();
     let mut llm_candidates = Vec::new();
     let mut preserved_unresolved = Vec::new();
     for import_name in unresolved_imports {
@@ -330,6 +337,7 @@ pub fn resolve_with_context(
             unresolved: preserved_unresolved,
             notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
             prompts_issued: 0,
+            llm_duration_ms: llm_started.elapsed().as_millis(),
         };
     }
 
@@ -381,6 +389,7 @@ pub fn resolve_with_context(
                 unresolved: unresolved_imports.to_vec(),
                 notes: vec!["LLM package-resolution call returned no output.".to_string()],
                 prompts_issued: 1,
+                llm_duration_ms: llm_started.elapsed().as_millis(),
             };
         }
     };
@@ -472,6 +481,7 @@ pub fn resolve_with_context(
         unresolved: still_unresolved,
         notes,
         prompts_issued: 1 + llm_candidates.len(),
+        llm_duration_ms: llm_started.elapsed().as_millis(),
     }
 }
 

@@ -1,4 +1,4 @@
-﻿use super::agent_backend::attempt_langgraph_agent;
+use super::agent_backend::attempt_langgraph_agent;
 use super::env_backend::attempt_metadata;
 use super::process::{
     command_on_path, docker_container_name, docker_image_tag, run_command_with_timeout,
@@ -113,7 +113,9 @@ pub(super) fn validate_requirements_docker(
                 work_dir.display()
             );
             let container_name = docker_container_name(&build_key, python_version, attempt_index);
-            let run_command = format!("docker run --rm --name {container_name} {image_tag}");
+            let run_command = format!(
+                "docker create --name {container_name} {image_tag} && docker start -a {container_name}"
+            );
 
             fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
             fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
@@ -235,25 +237,74 @@ pub(super) fn validate_requirements_docker(
                 break; // break inner retry loop, try next Python version
             }
 
-            // Build succeeded â€” run smoke test
+            // Build succeeded — create the container first so startup is measured
+            // separately from the smoke-test runtime.
             let build_logs = build_output.combined_output;
             let build_exit_code = build_output.exit_code;
             let build_duration_ms = build_output.duration_ms;
 
-            let run_timeout = total_budget.saturating_sub(validation_started.elapsed());
-            let mut run = Command::new("docker");
-            run.arg("run")
-                .arg("--rm")
+            let create_timeout = total_budget.saturating_sub(validation_started.elapsed());
+            let mut create = Command::new("docker");
+            create
+                .arg("create")
                 .arg("--name")
                 .arg(&container_name)
                 .arg(&image_tag);
+            let create_output = run_command_with_timeout(&mut create, create_timeout)?;
+            summary.docker_startup_duration_ms += create_output.duration_ms;
+            let _ = context::append_context_log(
+                config.benchmark_context_log.as_deref(),
+                "apdr-docker-create",
+                &create_output.combined_output,
+            );
+
+            if create_output.timed_out || !create_output.success {
+                let combined = if build_logs.is_empty() {
+                    create_output.combined_output.clone()
+                } else {
+                    format!("{build_logs}\n{}", create_output.combined_output)
+                };
+                attempt.status = if create_output.timed_out {
+                    "runtime-timeout".to_string()
+                } else {
+                    "runtime-failed".to_string()
+                };
+                attempt.log_excerpt = truncate_log(&combined);
+                fs::write(&run_log_path, &create_output.combined_output)?;
+                fs::write(&combined_log_path, &combined)?;
+                fs::write(
+                    &metadata_path,
+                    attempt_metadata(
+                        &attempt,
+                        &build_key,
+                        &build_command,
+                        &run_command,
+                        build_exit_code,
+                        build_duration_ms,
+                        create_output.exit_code,
+                        Some(create_output.duration_ms),
+                    ),
+                )?;
+                summary.attempts.push(attempt);
+                cleanup_docker_container(&container_name);
+                break; // try next Python version
+            }
+
+            let run_timeout = total_budget.saturating_sub(validation_started.elapsed());
+            let mut run = Command::new("docker");
+            run.arg("start").arg("-a").arg(&container_name);
             let run_output = run_command_with_timeout(&mut run, run_timeout)?;
             summary.smoke_duration_ms += run_output.duration_ms;
-            let combined = if build_logs.is_empty() {
-                run_output.combined_output.clone()
-            } else {
-                format!("{build_logs}\n{}", run_output.combined_output)
-            };
+            let combined = [
+                build_logs.as_str(),
+                &create_output.combined_output,
+                &run_output.combined_output,
+            ]
+            .iter()
+            .filter(|chunk| !chunk.trim().is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n");
             fs::write(&run_log_path, &run_output.combined_output)?;
             fs::write(&combined_log_path, &combined)?;
             let _ = context::append_context_log(
@@ -279,6 +330,7 @@ pub(super) fn validate_requirements_docker(
                     ),
                 )?;
                 summary.attempts.push(attempt);
+                cleanup_docker_container(&container_name);
                 break; // try next Python version
             }
 
@@ -303,6 +355,7 @@ pub(super) fn validate_requirements_docker(
                 summary.build_image_id = Some(image_tag.clone());
                 summary.succeeded = true;
                 summary.attempts.push(attempt);
+                cleanup_docker_container(&container_name);
                 return Ok(summary);
             }
 
@@ -323,6 +376,7 @@ pub(super) fn validate_requirements_docker(
                 ),
             )?;
             summary.attempts.push(attempt);
+            cleanup_docker_container(&container_name);
             break; // try next Python version
         }
 
@@ -350,6 +404,14 @@ pub(super) fn cleanup_docker_image(image_tag: &str) {
             eprintln!("[docker] cleaned up image {image_tag}");
         }
     }
+}
+
+pub(super) fn cleanup_docker_container(container_name: &str) {
+    let _ = Command::new("docker")
+        .args(["rm", "-f", container_name])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 /// Prune dangling images and build cache. Runs silently.

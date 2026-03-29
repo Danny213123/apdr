@@ -199,6 +199,7 @@ class BenchmarkWorker(threading.Thread):
                 summary["resumed_results"] = resumed_completed
             self._persist_run_contract(summary, run_contract)
             self._write_summary(summary)
+            run_contract_path = self.run_dir / "run_contract.json"
             self._emit(
                 "plan",
                 total=total_snippets,
@@ -285,6 +286,7 @@ class BenchmarkWorker(threading.Thread):
                     artifact_dir = case_artifacts_root / self._case_id_from_snippet(snippet)
                     artifact_dir.mkdir(parents=True, exist_ok=True)
                     command.extend(["--output-dir", str(artifact_dir)])
+                    command.extend(["--run-contract-json", str(run_contract_path)])
                     command.append("--no-execute-snippet")
 
                 case_tasks.append({

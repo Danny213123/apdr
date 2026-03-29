@@ -46,6 +46,7 @@ pub(super) fn validate_requirements_llm(
         config,
     ) {
         agent_summary.agent_invocations = env_summary.agent_invocations;
+        agent_summary.llm_duration_ms += env_summary.llm_duration_ms;
         let mut combined_attempts = env_summary.attempts;
         combined_attempts.append(&mut agent_summary.attempts);
         agent_summary.attempts = combined_attempts;
@@ -226,6 +227,7 @@ pub(super) fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
 
     if let Some(dur) = value.get("total_duration_ms").and_then(json_value_as_u128) {
         summary.validation_duration_ms = dur;
+        summary.llm_duration_ms = dur;
     }
 
     // The agent may have modified requirements; we record that info but

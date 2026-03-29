@@ -13,7 +13,8 @@ use apdr::context;
 use apdr::recovery::classifier;
 use apdr::resolver;
 use apdr::{
-    ResolveConfig, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
+    ResolveConfig, RunContractMetadata, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV,
+    VALIDATION_BACKEND_LLM,
 };
 
 fn main() {
@@ -46,6 +47,7 @@ fn run() -> Result<(), String> {
 fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
     let mut config = ResolveConfig::for_tool_root(tool_root);
     let mut snippet_path: Option<PathBuf> = None;
+    let mut run_contract_json: Option<PathBuf> = None;
     let mut read_from_stdin = false;
     let mut index = 0;
 
@@ -131,6 +133,13 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     .ok_or("--benchmark-context-log expects a value")?;
                 config.benchmark_context_log = Some(PathBuf::from(value));
             }
+            "--run-contract-json" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--run-contract-json expects a value")?;
+                run_contract_json = Some(PathBuf::from(value));
+            }
             "--allow-llm" => {
                 config.allow_llm = true;
             }
@@ -169,6 +178,12 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         config.benchmark_context_log =
             Some(context::debug_root(&config.output_dir).join("benchmark-context.log"));
     }
+    let run_contract = if let Some(path) = run_contract_json.as_ref() {
+        RunContractMetadata::from_json_path(path)?
+    } else {
+        RunContractMetadata::from_runtime_defaults(&config)
+    };
+    config.run_contract = run_contract.with_runtime_fallbacks(&config);
     context::ensure_debug_layout(&config.output_dir).map_err(|error| error.to_string())?;
 
     let temporary_snippet = if read_from_stdin {

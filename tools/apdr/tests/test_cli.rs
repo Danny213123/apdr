@@ -44,12 +44,22 @@ fn cli_resolves_from_stdin_without_validation() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("SOLVE_DURATION_MS="));
     assert!(stdout.contains("VALIDATION_DURATION_MS="));
+    assert!(stdout.contains("LLM_DURATION_MS="));
     assert!(stdout.contains("VALIDATION_SUCCEEDED=true"));
     assert!(stdout.contains("DEBUG_DIR="));
     assert!(stdout.contains("CONTEXT_LOG="));
     assert!(stdout.contains("ENV_CREATE_DURATION_MS=0"));
     assert!(stdout.contains("INSTALL_DURATION_MS=0"));
+    assert!(stdout.contains("DOCKER_STARTUP_DURATION_MS=0"));
     assert!(stdout.contains("SMOKE_DURATION_MS=0"));
+    assert!(stdout.contains("MODEL_NAME=qwen3.5:9b"));
+    assert!(stdout.contains("BASE_URL=http://localhost:11434"));
+    assert!(stdout.contains("RUN_INTENT=baseline"));
+    assert!(stdout.contains("EXECUTION_MODE=env-fast"));
+    assert!(stdout.contains("CACHE_STATE=unknown"));
+    assert!(stdout.contains("LLM_CONTEXT_WINDOW=16384"));
+    assert!(stdout.contains("INFERENCE_POLICY=temperature=inherited"));
+    assert!(stdout.contains("BUILD_PROFILE=standard"));
 
     let requirements = fs::read_to_string(output_dir.join("requirements.txt")).unwrap();
     let report = fs::read_to_string(output_dir.join("resolution-report.txt")).unwrap();
@@ -57,8 +67,14 @@ fn cli_resolves_from_stdin_without_validation() {
     assert!(requirements.contains("beautifulsoup4==4.12.3"));
     assert!(report.contains("env_create_duration_ms: 0"));
     assert!(report.contains("validation_duration_ms: 0"));
+    assert!(report.contains("llm_duration_ms: 0"));
     assert!(report.contains("install_duration_ms: 0"));
+    assert!(report.contains("docker_startup_duration_ms: 0"));
     assert!(report.contains("smoke_duration_ms: 0"));
+    assert!(report.contains("model_name: qwen3.5:9b"));
+    assert!(report.contains("run_intent: baseline"));
+    assert!(report.contains("execution_mode: env-fast"));
+    assert!(report.contains("build_profile: standard"));
     assert!(output_dir
         .join(".apdr-debug")
         .join("parse-summary.txt")
