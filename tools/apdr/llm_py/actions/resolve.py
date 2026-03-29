@@ -131,11 +131,17 @@ def _build_constrained_model(
 
 def handle(req: ResolutionRequest) -> ResolutionResponse:
     client = LlmClient(req.provider, req.model, req.base_url)
+    actual_agent_mode = "direct"
     if not client.is_available():
-        return ResolutionResponse(error="LLM provider not available")
+        return ResolutionResponse(
+            error="LLM provider not available",
+            failure_reason="LLM provider not available",
+            **_response_metadata(req, actual_agent_mode),
+        )
 
     notes: list[str] = []
     prompts_issued = 0
+    explicit_agent_requested = _uses_explicit_agent_mode(req)
 
     # --- #4 (local): Pre-LLM local module detection ---
     llm_imports, local_skips, framework_mappings = filter_imports(req.imports)
@@ -158,6 +164,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
             mappings=result_mappings,
             notes=notes,
             prompts_issued=0,
+            **_response_metadata(req, actual_agent_mode),
         )
 
     # --- #6: Load reverse index for RAG enrichment ---
@@ -259,6 +266,8 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
             unresolved=list(req.imports),
             notes=["LLM package-resolution call returned no output."],
             prompts_issued=prompts_issued,
+            abstain_reason="LLM package-resolution call returned no output.",
+            **_response_metadata(req, actual_agent_mode),
         )
 
     # Build initial mappings, merging pre-resolved + LLM results
@@ -298,34 +307,76 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     suspicious = _suspicious_identity_mappings(mappings, llm_imports)
     needs_agent_fallback = (
         len(llm_imports) > 1 and llm_confidence < 0.72
-    ) or bool(nonexistent) or bool(suspicious) or bool(missing_mappings)
+    ) or bool(nonexistent) or bool(suspicious) or bool(missing_mappings) or explicit_agent_requested
+
+    response_abstain_reason = ""
+    response_failure_reason = ""
 
     if needs_agent_fallback:
         from . import react_agent
 
         agent_req = req.model_copy(deep=True)
         agent_req.imports = list(llm_imports)
-        agent_req.context = context_parts
+        agent_req.context = context_parts + _agent_seed_context(
+            mappings=mappings,
+            llm_imports=llm_imports,
+            llm_confidence=llm_confidence,
+            missing_mappings=missing_mappings,
+            nonexistent=nonexistent,
+            suspicious=suspicious,
+        )
         agent_response = react_agent.handle(agent_req)
         prompts_issued += agent_response.prompts_issued
         notes.extend(agent_response.notes)
+        actual_agent_mode = agent_response.agent_mode or _normalized_agent_mode(req.agent_mode)
+        response_abstain_reason = str(agent_response.abstain_reason or "").strip()
+        response_failure_reason = str(agent_response.failure_reason or agent_response.error or "").strip()
 
-        for mapping in agent_response.mappings:
-            if mapping.import_name in mappings and mapping.package_name:
-                mappings[mapping.import_name] = mapping.package_name
-                notes.append(f"Agent fallback resolved {mapping.import_name} -> {mapping.package_name}")
+        if agent_response.tool_profile:
+            notes.append(
+                "Agent seam executed with "
+                f"agent_mode={actual_agent_mode}, "
+                f"tool_profile={agent_response.tool_profile}, "
+                f"retrieval_profile={agent_response.retrieval_profile or 'none'}"
+            )
+        if response_abstain_reason:
+            notes.append(f"Agent abstain: {response_abstain_reason}")
+        if response_failure_reason:
+            notes.append(f"Agent failure: {response_failure_reason}")
 
-        unresolved_from_agent = {
-            name for name in agent_response.unresolved if name in llm_imports
-        }
-        for import_name in unresolved_from_agent:
-            mappings.pop(import_name, None)
+        if explicit_agent_requested:
+            seeded = dict(pre_resolved)
+            for mapping in agent_response.mappings:
+                if mapping.import_name in llm_imports and mapping.package_name:
+                    seeded[mapping.import_name] = mapping.package_name
+                    notes.append(
+                        f"Explicit agent resolved {mapping.import_name} -> {mapping.package_name}"
+                    )
+            mappings = seeded
+        else:
+            for mapping in agent_response.mappings:
+                if mapping.import_name in mappings and mapping.package_name:
+                    mappings[mapping.import_name] = mapping.package_name
+                    notes.append(
+                        f"Agent fallback resolved {mapping.import_name} -> {mapping.package_name}"
+                    )
+
+            unresolved_from_agent = {
+                name for name in agent_response.unresolved if name in llm_imports
+            }
+            for import_name in unresolved_from_agent:
+                mappings.pop(import_name, None)
+
         if nonexistent:
             rejected = ", ".join(f"{imp}->{pkg}" for imp, pkg in nonexistent[:5])
             notes.append(f"Agent fallback triggered by PyPI rejection: {rejected}")
         if suspicious:
             notes.append(
                 "Agent fallback triggered by low-confidence or identity-heavy mappings"
+            )
+        if explicit_agent_requested:
+            notes.append(
+                f"Explicit agent seam requested via agent_mode={_normalized_agent_mode(req.agent_mode)}"
             )
 
     # Build response
@@ -341,6 +392,9 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         confidence=llm_confidence,
         notes=notes,
         prompts_issued=prompts_issued,
+        abstain_reason=response_abstain_reason,
+        failure_reason=response_failure_reason,
+        **_response_metadata(req, actual_agent_mode),
     )
 
 
@@ -397,3 +451,54 @@ def _suspicious_identity_mappings(
         if package_name == import_name and not package_exists_on_pypi(package_name):
             suspicious.append(import_name)
     return suspicious
+
+
+def _normalized_agent_mode(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"manual", "langchain", "langgraph", "auto"}:
+        return text
+    return "direct"
+
+
+def _uses_explicit_agent_mode(req: ResolutionRequest) -> bool:
+    return _normalized_agent_mode(req.agent_mode) != "direct"
+
+
+def _response_metadata(req: ResolutionRequest, agent_mode: str) -> dict[str, str]:
+    policy_label = str(req.policy_label or "").strip()
+    if not policy_label:
+        policy_label = f"{agent_mode}-{str(req.tool_profile or 'full').strip() or 'full'}"
+    return {
+        "agent_mode": agent_mode,
+        "tool_profile": str(req.tool_profile or "").strip() or "full",
+        "retrieval_profile": str(req.retrieval_profile or "").strip() or "none",
+        "policy_label": policy_label,
+    }
+
+
+def _agent_seed_context(
+    *,
+    mappings: dict[str, str],
+    llm_imports: list[str],
+    llm_confidence: float,
+    missing_mappings: list[str],
+    nonexistent: list[tuple[str, str]],
+    suspicious: list[str],
+) -> list[str]:
+    seeded: list[str] = [
+        f"Draft tier3 confidence: {llm_confidence:.2f}",
+    ]
+    for import_name in llm_imports:
+        package_name = mappings.get(import_name)
+        if package_name:
+            seeded.append(f"Draft mapping candidate: {import_name} -> {package_name}")
+    if missing_mappings:
+        seeded.append("Draft left unresolved: " + ", ".join(missing_mappings[:5]))
+    if nonexistent:
+        seeded.append(
+            "Draft rejected by PyPI existence check: "
+            + ", ".join(f"{imp}->{pkg}" for imp, pkg in nonexistent[:5])
+        )
+    if suspicious:
+        seeded.append("Draft contained suspicious identity mappings: " + ", ".join(suspicious[:5]))
+    return seeded

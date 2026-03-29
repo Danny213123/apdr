@@ -194,6 +194,35 @@ def _format_schema_instructions(model: type[BaseModel]) -> str:
     return "\n".join(lines)
 
 
+def build_optional_langchain_chat_model(
+    provider: str,
+    model: str,
+    base_url: str,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+) -> tuple[Any | None, str]:
+    """Build a LangChain-compatible chat model with lazy optional imports."""
+    try:
+        from langchain_community.chat_models import ChatLiteLLM
+    except ImportError as exc:
+        logger.info("Optional LangChain chat model unavailable: %s", exc)
+        return None, f"Optional LangChain dependency unavailable: {exc}"
+
+    model_name = f"ollama_chat/{model}" if provider == "ollama" else model
+    try:
+        llm = ChatLiteLLM(
+            model=model_name,
+            api_base=base_url if provider == "ollama" else None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize optional LangChain chat model: %s", exc)
+        return None, f"Failed to initialize optional LangChain chat model: {exc}"
+    return llm, ""
+
+
 class LlmClient:
     """Provider-agnostic LLM client backed by litellm + instructor."""
 
