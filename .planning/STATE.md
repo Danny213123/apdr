@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: executing
-stopped_at: Completed Plan 15-03; next step is executing Plan 15-04
-last_updated: "2026-03-29T20:04:07Z"
+status: ready_to_plan
+stopped_at: Phase 15 executed complete; next step is planning Phase 16
+last_updated: "2026-03-29T20:11:54Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 75
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Executing Phase 15
-**Progress:** [█████████░] 90%
+**Status:** Ready To Plan Phase 16
+**Progress:** [███████░░░] 75%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 15-03 benchmark-fed memory and context folding
-**Resume File:** .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-04-PLAN.md
+**Last Activity Description:** Phase 15 executed complete with checker-backed agent-quality proof contract
+**Resume File:** None
 
 ---
 
@@ -29,25 +29,25 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 15 — langchain-langgraph-tier3-intelligence-improvements
+**Current Focus:** Phase 16 — proof-comparison-and-closeout
 
 ---
 
 ## Current Position
 
-Phase: 15 (langchain-langgraph-tier3-intelligence-improvements) — EXECUTING
-Plan: 4 of 4
-Status: Executing Phase 15
-Last activity: 2026-03-29 -- Completed Plan 15-03 benchmark-fed memory and context folding
+Phase: 15 complete; Phase 16 next
+Plan: 0 of TBD for Phase 16
+Status: Ready to plan Phase 16
+Last activity: 2026-03-29 -- Phase 15 executed complete
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 9
-- v2.2 phases completed: 2 of 4
-- Active phase plan count: 1 remaining in Phase 15
-- Plan 15-03 now provides artifact-fed success and failure memory plus retrieval-profile context folding for the tier3 path.
+- v2.2 plans completed: 10
+- v2.2 phases completed: 3 of 4
+- Active phase plan count: 0 in the completed Phase 15
+- Phase 15 now provides an explicit agent seam, artifact-fed memory, Qwen policy controls, and a checker-backed proof contract for agent quality.
 
 ---
 
@@ -77,11 +77,13 @@ Last activity: 2026-03-29 -- Completed Plan 15-03 benchmark-fed memory and conte
 - [Plan 15-02]: Agent failures now propagate explicit abstain or failure reasons instead of silently converting unknown mappings into fabricated success.
 - [Plan 15-03]: Replay artifacts can now update inspectable success and failure memory rather than relying on prompt-side rule growth.
 - [Plan 15-03]: Retrieval profiles now control context selection and benchmark-context summarization for tier3 resolution.
+- [Plan 15-04]: Small-model policy variants are now explicit and attributable for `qwen3.5:9b`, and Phase 15 quality claims can be machine-checked against baseline-versus-candidate artifacts.
 
 ### Pending Todos
 
-- Execute Plan 15-04 next so small-model policy experiments and the final Phase 15 proof checker can run against the explicit agent, retrieval, and memory contract.
+- Plan Phase 16 next so milestone closeout can gather macOS, Windows, and Phase 15 live artifact proof into one reviewer-readable package.
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
+- Capture live `15-tier3-baseline.json` and `15-tier3-candidate.json` on a benchmark-capable host if you want fresh Phase 15 evidence beyond the in-repo sample proof contract.
 - Import representative Windows guardrail artifacts before milestone closeout.
 
 ### Blockers/Concerns
@@ -94,9 +96,9 @@ Last activity: 2026-03-29 -- Completed Plan 15-03 benchmark-fed memory and conte
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Completed Plan 15-03; next step is executing Plan 15-04
-Resume file: .planning/phases/15-langchain-langgraph-tier3-intelligence-improvements/15-04-PLAN.md
+Stopped at: Phase 15 executed complete; next step is planning Phase 16
+Resume file: None
 
 ---
 
-*State updated after Plan 15-03 on 2026-03-29*
+*State updated after Phase 15 execution on 2026-03-29*
