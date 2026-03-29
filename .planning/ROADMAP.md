@@ -63,7 +63,11 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
   5. A representative sub-10GB-VRAM local-model path, such as `qwen3.5:9b`, is benchmarked with model-specific inference policy including thinking versus non-thinking routing where supported, non-greedy decoding settings, tool-surface reduction, and verifier or self-consistency passes for hard cases.
   6. Compared with the v2.2 baseline for the locked replay slice, the LLM path resolves more tier3 cases successfully, including on the representative small-model benchmark path chosen for the milestone.
   7. When the agent still cannot solve a case, APDR records inspectable failure reasons and abstains cleanly instead of fabricating success.
-**Plans**: TBD
+**Plans**:
+  - `15-01` Tier3 replay benchmark harness and artifact contract
+  - `15-02` Explicit agent-runtime seam and abstain tracing
+  - `15-03` Benchmark-fed memory, retrieval, and context folding
+  - `15-04` Small-model policy matrix and agent-quality proof pack
 
 ### Phase 16: Proof, Comparison, and Closeout
 **Goal**: v2.2 closes with reviewer-readable proof for macOS performance gains and Windows non-regression without overstating what shipped
@@ -80,7 +84,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 |-------|----------------|--------|-----------|
 | 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
 | 14. macOS Execution-Path Optimization | 3/3 | Complete | 14-01, 14-02, 14-03 complete |
-| 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
+| 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/4 | Planned | - |
 | 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
 
 ## Dependencies
@@ -88,4 +92,4 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
-*Last updated: 2026-03-29 (Phase 14 complete)*
+*Last updated: 2026-03-29 (Phase 15 planned)*
