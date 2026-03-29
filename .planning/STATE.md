@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
 status: blocked
-stopped_at: Phase 16 closeout drafted; live benchmark evidence still pending
-last_updated: "2026-03-29T20:37:23.739Z"
+stopped_at: Phase 16 executed complete; live benchmark evidence still pending for milestone signoff
+last_updated: "2026-03-29T20:41:44Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
-  percent: 92
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 16 closeout drafted; live proof pending
-**Progress:** [█████████░] 92%
+**Status:** Phase 16 complete; live proof pending
+**Progress:** [██████████] 100%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Phase 16 closeout reconciled to sample-backed proof; live artifact capture still pending
+**Last Activity Description:** Phase 16 executed complete with sample-backed closeout and explicit live-proof blocker
 **Resume File:** None
 
 ---
@@ -29,7 +29,7 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone closeout pending live benchmark evidence
+**Current Focus:** Waiting for live benchmark evidence capture for milestone signoff
 
 ---
 
@@ -38,16 +38,16 @@ progress:
 Phase: 16 (proof-comparison-and-closeout) — COMPLETE, LIVE PROOF PENDING
 Plan: 3 of 3
 Status: Blocked on live artifact capture
-Last activity: 2026-03-29
+Last activity: 2026-03-29 -- Phase 16 executed complete; milestone signoff still blocked on live evidence
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 10
-- v2.2 phases completed: 3 of 4
-- Active phase plan count: 3
-- Phase 14 and Phase 15 now provide bounded proof contracts and sample artifacts that Phase 16 can aggregate into one honest milestone closeout package.
+- v2.2 plans completed: 13
+- v2.2 phases completed: 4 of 4
+- Active phase plan count: 0
+- Phase 16 now provides an honest milestone closeout package that keeps sample-backed proof and live-proof debt clearly separated.
 
 ---
 
@@ -88,6 +88,7 @@ Last activity: 2026-03-29
 - Capture live `14-macos-before.json` and `14-macos-after.json` when assembling milestone evidence.
 - Capture live `15-tier3-baseline.json` and `15-tier3-candidate.json` on a benchmark-capable host if you want fresh Phase 15 evidence beyond the in-repo sample proof contract.
 - Import representative Windows guardrail artifacts before milestone closeout.
+- Rerun the Phase 14, Phase 15, and Phase 16 checkers against the live artifact set once those files exist.
 
 ### Blockers/Concerns
 
@@ -99,9 +100,9 @@ Last activity: 2026-03-29
 ## Session Continuity
 
 Last session: 2026-03-29T19:04:00Z
-Stopped at: Phase 16 closeout drafted; live benchmark evidence still pending
+Stopped at: Phase 16 executed complete; live benchmark evidence still pending for milestone signoff
 Resume file: None
 
 ---
 
-*State updated after Phase 16 closeout reconciliation on 2026-03-29*
+*State updated after Phase 16 execution on 2026-03-29*
