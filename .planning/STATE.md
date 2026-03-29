@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: in_progress
-last_updated: "2026-03-29T04:20:27Z"
+status: ready_to_plan
+last_updated: "2026-03-29T04:29:06Z"
 last_activity: 2026-03-29
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 13 in progress; Plans 13-01 and 13-02 complete
-**Progress:** [█░░░░░░░░░] 13%
+**Status:** Phase 13 complete; ready to plan Phase 14
+**Progress:** [███░░░░░░░] 25%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Completed Plan 13-02 by propagating the canonical run contract into APDR case artifacts and adding explicit LLM/Docker-startup timings
-**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-02-SUMMARY.md
+**Last Activity Description:** Completed Plan 13-03 and closed Phase 13 with fixture-safe reporting, a deterministic measurement checker, and reviewer-facing sample artifacts
+**Resume File:** .planning/phases/13-measurement-and-run-contract-hardening/13-03-SUMMARY.md
 
 ---
 
@@ -22,25 +22,25 @@ last_activity: 2026-03-29
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 13 - Measurement and Run-Contract Hardening
+**Current Focus:** Phase 14 - macOS Execution-Path Optimization
 
 ---
 
 ## Current Position
 
-Phase: 13 of 16 (Measurement and Run-Contract Hardening)
-Plan: 2 of 3
-Status: Executing Plan 13-03 next
-Last activity: 2026-03-29 — Plans 13-01 and 13-02 completed; Plan 13-03 is next
+Phase: 14 of 16 (macOS Execution-Path Optimization)
+Plan: 0 of TBD
+Status: Phase 13 complete; Phase 14 ready to plan
+Last activity: 2026-03-29 — Phase 13 completed with all three plans closed
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 2
-- v2.2 phases completed: 0 of 4
-- Active phase plan count: 3
-- Progress baseline remains pending until Phase 13 execution captures the first comparable artifacts.
+- v2.2 plans completed: 3
+- v2.2 phases completed: 1 of 4
+- Active phase plan count: 0
+- Phase 13 now provides the first comparable measurement contract and checker for later milestone claims.
 
 ---
 
@@ -55,12 +55,13 @@ Last activity: 2026-03-29 — Plans 13-01 and 13-02 completed; Plan 13-03 is nex
 - Phase 13 is split into three sequential plans: canonical run-contract capture, APDR per-case metadata/timing propagation, then evidence normalization plus a deterministic measurement checker.
 - Plan 13-01 established `benchmark_ui/run_contract.py` as the canonical Phase 13 metadata contract and persisted it into saved benchmark runs.
 - Plan 13-02 pushed that same contract into APDR through `--run-contract-json` and made `llm_duration_ms` plus `docker_startup_duration_ms` first-class per-case timing fields.
+- Plan 13-03 finished the evidence layer with fixture-safe reporting, a deterministic contract checker, and reviewer-facing env-fast/docker-proof sample artifacts.
 
 ### Pending Todos
 
-- Choose the locked replay slice and baseline commands during Phase 13 and Phase 14 execution.
+- Choose the locked replay slice and baseline commands during Phase 14 execution.
 - Decide which model or build-profile comparisons are worth capturing once the measurement contract exists.
-- Execute Plan 13-03 next so reporting and fixture-backed artifacts enforce the Phase 13 measurement contract.
+- Plan Phase 14 so the macOS replay lane can improve against the Phase 13 baseline without regressing Windows.
 
 ### Blockers/Concerns
 
@@ -72,9 +73,9 @@ Last activity: 2026-03-29 — Plans 13-01 and 13-02 completed; Plan 13-03 is nex
 ## Session Continuity
 
 Last session: 2026-03-29
-Stopped at: Plan 13-02 complete; next step is Plan 13-03
-Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-02-SUMMARY.md
+Stopped at: Phase 13 complete; next step is Phase 14 planning
+Resume file: .planning/phases/13-measurement-and-run-contract-hardening/13-03-SUMMARY.md
 
 ---
 
-*State updated after completing Plan 13-02 on 2026-03-29*
+*State updated after completing Phase 13 on 2026-03-29*

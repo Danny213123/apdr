@@ -17,7 +17,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 
 ## Phases
 
-- [ ] **Phase 13: Measurement and Run-Contract Hardening** - Make benchmark runs comparable by recording architecture, backend, cache, intent, and stage timings up front
+- [x] **Phase 13: Measurement and Run-Contract Hardening** - Make benchmark runs comparable by recording architecture, backend, cache, intent, and stage timings up front
 - [ ] **Phase 14: macOS Execution-Path Optimization** - Create a fast native macOS replay lane and land runtime improvements without breaking Windows guardrails
 - [ ] **Phase 15: LangChain/LangGraph Tier3 Intelligence Improvements** - Improve tier3 recovery through benchmarked LangChain/LangGraph agent behavior, context engineering, and clean failure handling on the locked replay slice
 - [ ] **Phase 16: Proof, Comparison, and Closeout** - Package reviewer-readable macOS gains and Windows non-regression evidence for milestone closeout
@@ -75,7 +75,7 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 13. Measurement and Run-Contract Hardening | 2/3 | In progress | 13-01, 13-02 complete |
+| 13. Measurement and Run-Contract Hardening | 3/3 | Complete | 13-01, 13-02, 13-03 complete |
 | 14. macOS Execution-Path Optimization | 0/TBD | Not started | - |
 | 15. LangChain/LangGraph Tier3 Intelligence Improvements | 0/TBD | Not started | - |
 | 16. Proof, Comparison, and Closeout | 0/TBD | Not started | - |
@@ -85,4 +85,4 @@ This milestone stays measurement-first so later macOS and agent-quality claims a
 `Phase 13 -> Phase 14 -> Phase 15 -> Phase 16`
 
 *Roadmap created: 2026-03-28*
-*Last updated: 2026-03-29 (Plan 13-02 complete)*
+*Last updated: 2026-03-29 (Phase 13 complete)*
