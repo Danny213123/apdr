@@ -2,18 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: ready_to_execute
-last_updated: "2026-03-29T04:48:28Z"
+status: executing
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-29T05:16:57.851Z"
 last_activity: 2026-03-29
+progress:
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 6
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-29
-**Status:** Phase 14 planned; ready to execute
-**Progress:** [███░░░░░░░] 25%
+**Status:** Ready to execute
+**Progress:** [███████░░░] 67%
 **Last Activity:** 2026-03-29
-**Last Activity Description:** Planned Phase 14 into three execution waves covering MAC-03, MAC-04, and WIN-01
+**Last Activity Description:** Phase 14 execution started
 **Resume File:** None
 
 ---
@@ -22,16 +29,16 @@ last_activity: 2026-03-29
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 14 - macOS Execution-Path Optimization
+**Current Focus:** Phase 14 — macos-execution-path-optimization
 
 ---
 
 ## Current Position
 
-Phase: 14 of 16 (macOS Execution-Path Optimization)
-Plan: 0 of 3
-Status: Planned
-Last activity: 2026-03-29 — Phase 14 plans created and verified for execution
+Phase: 14 (macos-execution-path-optimization) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-03-29
 
 ---
 
@@ -57,6 +64,8 @@ Last activity: 2026-03-29 — Phase 14 plans created and verified for execution
 - Plan 13-02 pushed that same contract into APDR through `--run-contract-json` and made `llm_duration_ms` plus `docker_startup_duration_ms` first-class per-case timing fields.
 - Plan 13-03 finished the evidence layer with fixture-safe reporting, a deterministic contract checker, and reviewer-facing env-fast/docker-proof sample artifacts.
 - Phase 14 is split into three sequential plans: lock the macOS and Windows replay slices, build the native macOS replay runner and fast-lane policy, then add the regression/proof checker package for macOS gains plus Windows non-regression.
+- [Phase 14]: Manifest cases use fixture-relative paths for cross-platform portability
+- [Phase 14]: When replay_manifest is set, snippet_limit is ignored to prevent conflicting boundary controls
 
 ### Pending Todos
 
@@ -73,8 +82,8 @@ Last activity: 2026-03-29 — Phase 14 plans created and verified for execution
 
 ## Session Continuity
 
-Last session: 2026-03-29
-Stopped at: Phase 14 planning complete; next step is executing the three Phase 14 plans
+Last session: 2026-03-29T05:16:57.849Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None
 
 ---

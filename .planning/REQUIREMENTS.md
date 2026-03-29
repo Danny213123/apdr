@@ -20,12 +20,12 @@ Requirements for the v2.2 milestone. Each maps to exactly one roadmap phase.
 
 - [ ] **MAC-01**: Every saved macOS benchmark run records host architecture, APDR binary architecture, Python architecture, validation backend, run intent, cache state, and the configured LLM context-window and inference-policy settings used for the run
 - [ ] **MAC-02**: Benchmark artifacts report stage-level timings for resolution, LLM work, env creation, package install, validation, and Docker startup when applicable
-- [ ] **MAC-03**: APDR provides a fast macOS replay mode built around native env validation and a locked benchmark slice for local iteration
+- [x] **MAC-03**: APDR provides a fast macOS replay mode built around native env validation and a locked benchmark slice for local iteration
 - [ ] **MAC-04**: APDR demonstrates substantial before-and-after macOS benchmark performance gains on the locked replay slice compared with the v2.2 baseline without lowering correctness on preserved pass or skip cases
 
 ### Cross-Platform Guardrails
 
-- [ ] **WIN-01**: macOS-focused benchmark-performance changes do not regress benchmark runtime or sec-per-case on the representative Windows comparison slice chosen for this milestone
+- [x] **WIN-01**: macOS-focused benchmark-performance changes do not regress benchmark runtime or sec-per-case on the representative Windows comparison slice chosen for this milestone
 
 ### Benchmark Evidence
 
@@ -70,9 +70,9 @@ Deferred to a later milestone after the focused agent-quality and macOS performa
 | AGT-06 | Phase 15 | Pending |
 | MAC-01 | Phase 13 | Pending |
 | MAC-02 | Phase 13 | Pending |
-| MAC-03 | Phase 14 | Pending |
+| MAC-03 | Phase 14 | Complete |
 | MAC-04 | Phase 14 | Pending |
-| WIN-01 | Phase 14 | Pending |
+| WIN-01 | Phase 14 | Complete |
 | EVD-03 | Phase 13 | Pending |
 | EVD-04 | Phase 16 | Pending |
 | EVD-05 | Phase 13 | Pending |
