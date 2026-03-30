@@ -168,11 +168,11 @@ function syncDocumentTitle() {
   if (state.activePage === "run") {
     const run = displayRun();
     document.title = run?.runId
-      ? `FSE AIWare Bench • ${run.runId}`
-      : "FSE AIWare Bench • Benchmark View";
+      ? `APDR Bench • ${run.runId}`
+      : "APDR Bench • Benchmark View";
     return;
   }
-  document.title = "FSE AIWare Bench";
+  document.title = "APDR Bench";
 }
 
 function dropdownOptionNodes(dropdown) {
@@ -888,7 +888,7 @@ function renderHomeHeader() {
   const run = state.currentRun || {};
   const liveState = run.runId || isRunActive(run) || ["failed", "completed", "stopped"].includes(run.status || "");
   const selectedTool = state.form?.tool || "tool selection";
-  ui.homeTitle.textContent = liveState ? run.title || "APDR benchmark ready" : "FSE AIWare Command Center";
+  ui.homeTitle.textContent = liveState ? run.title || "APDR benchmark ready" : "APDR Command Center";
   ui.homeSubtitle.textContent = liveState
     ? run.subtitle || "Open Benchmark View to inspect progress and results."
     : "Run, report, and configure without memorizing commands.";
@@ -1776,13 +1776,13 @@ function updateSuccessRateDashboard() {
   ui.deterministicSuccessValue.innerHTML = formatSuccessRate(
     detStats.succeeded,
     detStats.failed,
-    detStats.passed,
+    detStats.skipped,
     detStats.total,
   );
   ui.llmSuccessValue.innerHTML = formatSuccessRate(
     llmStats.succeeded,
     llmStats.failed,
-    llmStats.passed,
+    llmStats.skipped,
     llmStats.total,
   );
 }
@@ -1801,19 +1801,18 @@ function bucketSuccessRateStats(run, cases, successKey, failureKey, skippedKey) 
   return {
     succeeded,
     failed,
-    // "Passed" in the dashboard is the count of cases that reached a terminal bucket outcome.
-    passed: total,
+    skipped,
     total,
   };
 }
 
-function formatSuccessRate(succeeded, failed, passed, total) {
+function formatSuccessRate(succeeded, failed, skipped, total) {
   return `
     <span style="color: #50fa7b;">Successes: <span style="font-weight: bold;">${succeeded}</span></span>
     <span style="color: #6272a4;"> / </span>
     <span style="color: #ff5555;">Failures: <span style="font-weight: bold;">${failed}</span></span>
     <span style="color: #6272a4;"> / </span>
-    <span style="color: #8be9fd;">Passed: <span style="font-weight: bold;">${passed}</span></span>
+    <span style="color: #f1fa8c;">Skipped: <span style="font-weight: bold;">${skipped}</span></span>
     <span style="color: #6272a4;"> / </span>
     <span style="color: #f8f8f2;">Total: <span style="font-weight: bold;">${total}</span></span>
   `;
@@ -1953,10 +1952,10 @@ function wireHomeControls() {
       document.body.innerHTML = `
         <main class="terminal-shell">
           <section class="terminal-frame">
-            <div class="terminal-badge">FSE AIWare Benchmark Dashboard</div>
+            <div class="terminal-badge">APDR Benchmark Dashboard</div>
             <section class="terminal-section">
               <div class="terminal-divider"><span>Server Stopped</span></div>
-              <div class="warning-title">FSE AIWare Bench</div>
+              <div class="warning-title">APDR Bench</div>
               <div class="warning-copy">The local web server is stopping. You can close this tab.</div>
             </section>
           </section>
@@ -2234,7 +2233,7 @@ initialize().catch((error) => {
   document.body.innerHTML = `
     <main class="terminal-shell">
       <section class="terminal-frame">
-        <div class="terminal-badge">FSE AIWare Benchmark Dashboard</div>
+        <div class="terminal-badge">APDR Benchmark Dashboard</div>
         <section class="terminal-section">
           <div class="terminal-divider"><span>Startup Error</span></div>
           <div class="warning-title">Unable to start the web UI</div>

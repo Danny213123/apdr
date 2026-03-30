@@ -9,7 +9,7 @@ from .state import AppState
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Web or terminal benchmark UI for the FSE AIWare tool repository.")
+    parser = argparse.ArgumentParser(description="Web or terminal benchmark UI for the APDR tool repository.")
     parser.add_argument("--cli", action="store_true", help="Launch the terminal CLI/TUI instead of the web server.")
     parser.add_argument("--doctor", action="store_true", help="Run environment checks and print them as JSON.")
     parser.add_argument("--list-tools", action="store_true", help="Print discovered tools and exit.")

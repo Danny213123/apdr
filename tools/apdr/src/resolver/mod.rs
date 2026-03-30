@@ -48,7 +48,7 @@ use crate::parser;
 use crate::recovery::classifier;
 use crate::{
     ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, SolvabilityAssessment,
-    UnsolvableModuleRecord, ValidationSummary,
+    UnsolvableModuleRecord, ValidationSummary, VALIDATION_BACKEND_LLM,
 };
 
 pub fn resolve_path(
@@ -415,7 +415,15 @@ pub fn resolve_path(
         &format_dependency_state(&resolved, &unresolved),
     )?;
 
-    let mut pre_solve = if unresolved.is_empty() {
+    let skip_pre_solve = unresolved.is_empty() && should_skip_smt_pre_solve(config);
+    if skip_pre_solve {
+        report.notes.push(
+            "Skipped SMT pre-solve for this force-validated LLM run and proceeded directly to validation."
+                .to_string(),
+        );
+    }
+
+    let mut pre_solve = if unresolved.is_empty() && !skip_pre_solve {
         Some(pre_solve::solve_dependency_graph(
             &parse_result,
             &resolved,
@@ -815,6 +823,10 @@ fn should_skip_from_assessment(assessment: Option<&crate::SolvabilityAssessment>
         return false;
     };
     assessment.decision == "skip" || assessment.confidence < 0.40
+}
+
+fn should_skip_smt_pre_solve(config: &ResolveConfig) -> bool {
+    config.force_validate && config.validation_backend() == VALIDATION_BACKEND_LLM
 }
 
 fn noninteractive_validation_note(
@@ -1519,6 +1531,28 @@ fn retry_nonexistent_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skips_smt_pre_solve_for_force_validated_llm_runs() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.force_validate = true;
+        config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+
+        assert!(should_skip_smt_pre_solve(&config));
+    }
+
+    #[test]
+    fn keeps_smt_pre_solve_for_non_llm_or_non_forced_runs() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        assert!(!should_skip_smt_pre_solve(&config));
+
+        config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+        assert!(!should_skip_smt_pre_solve(&config));
+
+        config.force_validate = true;
+        config.validation_backend = crate::VALIDATION_BACKEND_ENV.to_string();
+        assert!(!should_skip_smt_pre_solve(&config));
+    }
 
     #[test]
     fn extract_missing_module_from_standard_errors() {

@@ -232,7 +232,7 @@ def run_server(
     service.set_server_context(host, bound_port, api_only)
     local_url = service.bootstrap()["app"]["server"]["localUrl"]
     network_url = service.bootstrap()["app"]["server"]["networkUrl"]
-    print(f"FSE AIWare Bench web app listening on {local_url}")
+    print(f"APDR Bench web app listening on {local_url}")
     if network_url:
         print(f"Network URL: {network_url}")
     try:

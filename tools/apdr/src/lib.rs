@@ -46,6 +46,7 @@ pub struct ResolveConfig {
     pub max_retries: usize,
     pub cache_path: PathBuf,
     pub output_dir: PathBuf,
+    pub pre_solve_timeout: Duration,
     pub validation_timeout: Duration,
     pub validated_env_cache_max_entries: usize,
     pub validated_env_cache_max_bytes: Option<u64>,
@@ -242,6 +243,9 @@ impl ResolveConfig {
             max_retries: 7, // Increased from 5 to give LLM more opportunities to learn and recover
             cache_path: tool_root.join(".apdr-cache"),
             output_dir: tool_root.join("out"),
+            pre_solve_timeout: Duration::from_secs(
+                env_usize("APDR_PRE_SOLVE_TIMEOUT_SECS", 10) as u64
+            ),
             validation_timeout: Duration::from_secs(
                 env_usize("APDR_VALIDATION_TIMEOUT_SECS", 900) as u64
             ),

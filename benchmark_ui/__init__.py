@@ -1,2 +1,2 @@
-APP_NAME = "FSE AIWare Bench"
-APP_VERSION = "0.2.14"
+APP_NAME = "APDR Bench"
+APP_VERSION = "0.2.16"

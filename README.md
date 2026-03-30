@@ -1,16 +1,16 @@
 # Agentic Based Python Dependency Resolution
 ![Static Badge](https://img.shields.io/badge/Python-3.11-blue)
-![GitHub Discussions](https://img.shields.io/github/discussions/checkdgt/fse-aiware-python-dependencies)
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/checkdgt/fse-aiware-python-dependencies)
+![GitHub Discussions](https://img.shields.io/github/discussions/Danny213123/apdr)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/Danny213123/apdr)
 
 ## ** [DEADLINE UPDATE](#important-dates) **
 ## Abstract
 The first annual Agentic-based Python Dependency Resolution challenge, to be held at FSE 2026, invites researchers and practitioners to develop innovative agentic-based systems for automatically resolving complex Python dependency conflicts.
 The competition emphasizes open-source innovative memory constrained techniques, such as LLM fine-tuning, retrieval-augmented generation, graph-based databases, error log analysis, and prompt engineering. With open attendance and paper submissions appearing in ACM Digital Library, this event addresses the timely challenge of dependency management in modern Python ecosystems, fostering community collaboration and establishing best practices for LLM-based package management tools.
 
-[FSE-AIWare](https://conf.researchr.org/committee/fse-2026/fse-2026-aiware-2026-competition-program-committee)
+[APDR](https://conf.researchr.org/committee/fse-2026/fse-2026-aiware-2026-competition-program-committee)
 
-![Alt text](fse-aiware.jpeg "FSE-AIWare")
+![Alt text](apdr.jpeg "APDR")
 
 [Changelog](CHANGELOG.md)
 
@@ -133,7 +133,7 @@ The terminal UI reuses the same backend service as the web app and includes:
 - A Doctor screen for environment checks and automatic fixes
 - Saved run browsing with load and resume actions
 
-Current app version: `0.2.14`
+Current app version: `0.2.16`
 
 Optional frontend development workflow:
 
@@ -169,7 +169,7 @@ The docker compose should bring up the 'pllm-test' docker container. To use the 
 - **-v | Verbose** logging of information.
 
 ## Q&A
-Use [GitHub Discussions](https://github.com/checkdgt/fse-aiware-python-dependencies/discussions) for any kind of questions related to the tool competition.
+Use [GitHub Discussions](https://github.com/Danny213123/apdr/discussions) for any kind of questions related to the tool competition.
 
 > Do not hesitate to ask questions.
 > If something is unclear then it is likely it is unclear for others as well.
@@ -177,7 +177,7 @@ Use [GitHub Discussions](https://github.com/checkdgt/fse-aiware-python-dependenc
 
 ## License
 ```{text}
-FSE-AIWare - Python Dependency Competition Platform
+APDR - Python Dependency Competition Platform
 Copyright (C) 2025  Antony Bartlett
 
 This program is free software: you can redistribute it and/or modify

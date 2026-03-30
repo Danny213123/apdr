@@ -7,6 +7,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use pubgrub::{Dependencies, DependencyProvider, Map, PackageResolutionStatistics};
 use version_ranges::Ranges;
@@ -50,6 +51,8 @@ pub struct ApdrProvider<'a> {
     store: RefCell<&'a mut CacheStore>,
     python_version: String,
     budget: RefCell<usize>,
+    deadline: Option<Instant>,
+    timeout: Duration,
     /// Root package constraints injected at creation time.
     root_deps: Map<String, Ranges<PyVersion>>,
 }
@@ -57,12 +60,20 @@ pub struct ApdrProvider<'a> {
 #[derive(Debug)]
 pub enum ApdrError {
     BudgetExhausted,
+    DeadlineExceeded(Duration),
 }
 
 impl fmt::Display for ApdrError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BudgetExhausted => write!(f, "PubGrub budget exhausted"),
+            Self::DeadlineExceeded(timeout) => {
+                write!(
+                    f,
+                    "PubGrub wall-clock timeout exhausted after {:.1}s",
+                    timeout.as_secs_f64()
+                )
+            }
         }
     }
 }
@@ -141,6 +152,11 @@ impl<'a> DependencyProvider for ApdrProvider<'a> {
     }
 
     fn should_cancel(&self) -> Result<(), Self::Err> {
+        if let Some(deadline) = self.deadline {
+            if Instant::now() >= deadline {
+                return Err(ApdrError::DeadlineExceeded(self.timeout));
+            }
+        }
         let mut budget = self.budget.borrow_mut();
         if *budget == 0 {
             return Err(ApdrError::BudgetExhausted);
@@ -233,6 +249,8 @@ pub fn solve_with_pubgrub(
     store: &mut CacheStore,
     constraints: &BTreeMap<String, String>,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<BTreeMap<String, String>, String> {
     if constraints.is_empty() {
         return Ok(BTreeMap::new());
@@ -255,6 +273,8 @@ pub fn solve_with_pubgrub(
         store: RefCell::new(store),
         python_version: python_version.to_string(),
         budget: RefCell::new(12_000),
+        deadline,
+        timeout,
         root_deps,
     };
 
@@ -296,6 +316,12 @@ pub fn solve_with_pubgrub(
         }
         Err(pubgrub::PubGrubError::ErrorInShouldCancel(ApdrError::BudgetExhausted)) => {
             Err("PubGrub: budget exhausted (12,000 iterations)".to_string())
+        }
+        Err(pubgrub::PubGrubError::ErrorInShouldCancel(ApdrError::DeadlineExceeded(timeout))) => {
+            Err(format!(
+                "PubGrub: wall-clock timeout exhausted after {:.1}s",
+                timeout.as_secs_f64()
+            ))
         }
         Err(e) => Err(format!("PubGrub error: {e}")),
     }

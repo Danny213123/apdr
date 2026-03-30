@@ -13,14 +13,14 @@ APDR is the agentic dependency resolver in this repository. It now runs the full
 ## Build
 
 ```bash
-cd /Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr
+cd /path/to/apdr-repo/tools/apdr
 ./build.sh
 ```
 
 On Windows 11, build with Cargo directly:
 
 ```powershell
-cd C:\path\to\fse-aiware-python-dependencies\tools\apdr
+cd C:\path\to\apdr-repo\tools\apdr
 cargo build --release
 ```
 

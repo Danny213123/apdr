@@ -90,6 +90,16 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                 })?;
                 config.validation_timeout = std::time::Duration::from_secs(seconds);
             }
+            "--pre-solve-timeout" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--pre-solve-timeout expects a value")?;
+                let seconds = value.parse::<u64>().map_err(|_| {
+                    "--pre-solve-timeout must be an integer number of seconds".to_string()
+                })?;
+                config.pre_solve_timeout = std::time::Duration::from_secs(seconds);
+            }
             "--validation-backend" => {
                 index += 1;
                 let value = args
@@ -520,6 +530,7 @@ fn print_help() {
     println!(
         "              [--docker-timeout 300] [--validation-backend env|docker|llm] [--no-validate]"
     );
+    println!("              [--pre-solve-timeout 10]");
     println!("              [--no-execute-snippet]");
     println!("              [--no-parallel-versions] [--no-config-scan]");
     println!("  apdr classify-log <build.log>");

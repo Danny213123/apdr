@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.16 - 2026-03-30
+
+- Prevented benchmark stalls in APDR by adding a configurable SMT pre-solve wall-clock timeout, carrying that deadline through both the PubGrub and backtracking solver paths, bounding the host-Python metadata fallback, and skipping SMT pre-solve entirely for force-validated LLM benchmark runs that should proceed straight to validation.
+- Renamed the remaining FSE AIWare benchmark branding to APDR across the benchmark UI, web dashboard, README, and APDR docs, including the benchmark image asset and command examples.
+- Fixed the Success Rates dashboard so it reports skipped cases instead of duplicating the total count under a misleading `Passed` label, making the deterministic and LLM bucket counts add up correctly.
+
 ## 0.2.15 - 2026-03-28
 
 - Hardened the Phase 10 targeted benchmark rerun tooling so live proof is explicit instead of silently degrading to dry-run, with probe-only readiness output, a machine-readable live-proof status artifact, and rerun classification that now reads emitted APDR metadata and refreshed requirements instead of relying on subprocess exit codes alone.

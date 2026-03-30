@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashMap;
 
@@ -112,6 +113,9 @@ pub fn solve_dependency_graph(
         return result;
     }
 
+    let timeout = config.pre_solve_timeout;
+    let deadline = pre_solve_deadline(timeout);
+
     let python_candidates =
         solver_candidate_versions(parse_result, resolved, selected_python, config);
     result.notes.push(format!(
@@ -140,7 +144,14 @@ pub fn solve_dependency_graph(
     if python_candidates.len() == 1 {
         let python_version = &python_candidates[0];
         let mut budget = 12_000usize;
-        match solve_for_python(store, &state, python_version, &mut budget) {
+        match solve_for_python(
+            store,
+            &state,
+            python_version,
+            &mut budget,
+            deadline,
+            timeout,
+        ) {
             Ok(outcome) => {
                 let (requirements, transitive_packages) =
                     render_lockfile(&outcome.selected, &direct_packages);
@@ -185,6 +196,7 @@ pub fn solve_dependency_graph(
             let state_clone = state.clone();
             let mut store_clone = store.clone();
             let thread_python_version = python_version.clone();
+            let thread_deadline = deadline;
 
             let handle = scope.spawn(move || {
                 let mut budget = 12_000usize;
@@ -195,6 +207,8 @@ pub fn solve_dependency_graph(
                         &state_clone,
                         &thread_python_version,
                         &mut budget,
+                        thread_deadline,
+                        timeout,
                     ),
                 }
             });
@@ -357,14 +371,23 @@ fn solve_for_python(
     state: &SolveState,
     python_version: &str,
     budget: &mut usize,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<SolveOutcome, SolveError> {
+    check_deadline(deadline, timeout)?;
     // Tier 1: Try PubGrub CDCL solver (context-aware conflict learning).
     let constraints_btree: BTreeMap<String, String> = state
         .constraints
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    match super::pubgrub_solver::solve_with_pubgrub(store, &constraints_btree, python_version) {
+    match super::pubgrub_solver::solve_with_pubgrub(
+        store,
+        &constraints_btree,
+        python_version,
+        deadline,
+        timeout,
+    ) {
         Ok(selected) => {
             return Ok(SolveOutcome {
                 python_version: python_version.to_string(),
@@ -378,7 +401,14 @@ fn solve_for_python(
 
     // Tier 2: Existing backtracking solver with MRV + unit propagation.
     let mut working = state.clone();
-    match solve_recursive(store, &mut working, python_version, budget) {
+    match solve_recursive(
+        store,
+        &mut working,
+        python_version,
+        budget,
+        deadline,
+        timeout,
+    ) {
         Ok(selected) => Ok(SolveOutcome {
             python_version: python_version.to_string(),
             selected: selected.into_iter().collect(),
@@ -387,7 +417,7 @@ fn solve_for_python(
             // Budget exhausted — try Minimal Version Selection as fallback.
             // MVS picks the lowest compatible version for each package with
             // zero backtracking, producing a candidate in O(P) time.
-            solve_mvs(store, state, python_version)
+            solve_mvs(store, state, python_version, deadline, timeout)
         }
         Err(hard) => Err(hard),
     }
@@ -399,11 +429,20 @@ fn solve_mvs(
     store: &mut CacheStore,
     state: &SolveState,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<SolveOutcome, SolveError> {
     let mut selected = BTreeMap::new();
     for (package, constraint) in &state.constraints {
-        let versions =
-            compatible_versions_for_constraint(store, package, constraint, python_version)?;
+        check_deadline(deadline, timeout)?;
+        let versions = compatible_versions_for_constraint(
+            store,
+            package,
+            constraint,
+            python_version,
+            deadline,
+            timeout,
+        )?;
         if let Some(min_version) = versions.first() {
             selected.insert(package.clone(), min_version.clone());
         } else {
@@ -423,7 +462,10 @@ fn solve_recursive(
     state: &mut SolveState,
     python_version: &str,
     budget: &mut usize,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<FxHashMap<String, String>, SolveError> {
+    check_deadline(deadline, timeout)?;
     if *budget == 0 {
         return Err(SolveError::Incomplete(
             "solver budget exhausted before finding a compatible assignment".to_string(),
@@ -432,9 +474,10 @@ fn solve_recursive(
     *budget -= 1;
 
     // Unit propagation: eagerly assign packages with exactly 1 candidate.
-    propagate_forced(store, state, python_version, budget)?;
+    propagate_forced(store, state, python_version, budget, deadline, timeout)?;
 
-    let Some(package) = next_unsolved_package(store, state, python_version)? else {
+    let Some(package) = next_unsolved_package(store, state, python_version, deadline, timeout)?
+    else {
         return Ok(state.selected.clone());
     };
 
@@ -446,8 +489,15 @@ fn solve_recursive(
         .filter(|(cst, _)| *cst == constraint)
         .map(|(_, v)| v)
         .unwrap_or_else(|| {
-            compatible_versions_for_constraint(store, &package, &constraint, python_version)
-                .unwrap_or_default()
+            compatible_versions_for_constraint(
+                store,
+                &package,
+                &constraint,
+                python_version,
+                deadline,
+                timeout,
+            )
+            .unwrap_or_default()
         });
     if candidates.is_empty() {
         return Err(SolveError::Hard(format!(
@@ -464,14 +514,24 @@ fn solve_recursive(
     let mut last_failure: Option<SolveError> = None;
     for version in candidates.into_iter().rev() {
         state.record_select(package.clone(), version.clone());
-        match apply_dependency_specs(store, state, &package, &version, python_version) {
-            Ok(()) => match solve_recursive(store, state, python_version, budget) {
-                Ok(solution) => return Ok(solution),
-                Err(reason) => {
-                    last_failure = Some(reason);
-                    state.restore(branch_cp);
+        match apply_dependency_specs(
+            store,
+            state,
+            &package,
+            &version,
+            python_version,
+            deadline,
+            timeout,
+        ) {
+            Ok(()) => {
+                match solve_recursive(store, state, python_version, budget, deadline, timeout) {
+                    Ok(solution) => return Ok(solution),
+                    Err(reason) => {
+                        last_failure = Some(reason);
+                        state.restore(branch_cp);
+                    }
                 }
-            },
+            }
             Err(reason) => {
                 last_failure = Some(reason);
                 state.restore(branch_cp);
@@ -497,8 +557,11 @@ fn propagate_forced(
     state: &mut SolveState,
     python_version: &str,
     budget: &mut usize,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<(), SolveError> {
     loop {
+        check_deadline(deadline, timeout)?;
         let mut progress = false;
         // Build unsolved list once per outer loop instead of re-scanning all constraints.
         let unsolved: Vec<String> = state
@@ -509,11 +572,13 @@ fn propagate_forced(
             .collect();
 
         for package in unsolved {
+            check_deadline(deadline, timeout)?;
             // A prior iteration in this inner loop may have forced this package.
             if state.selected.contains_key(&package) {
                 continue;
             }
-            let (count, forced_version) = domain_info(store, state, &package, python_version)?;
+            let (count, forced_version) =
+                domain_info(store, state, &package, python_version, deadline, timeout)?;
             if count == 0 {
                 let constraint = state
                     .constraints
@@ -531,7 +596,15 @@ fn propagate_forced(
             }
             if let Some(version) = forced_version {
                 state.record_select(package.clone(), version.clone());
-                apply_dependency_specs(store, state, &package, &version, python_version)?;
+                apply_dependency_specs(
+                    store,
+                    state,
+                    &package,
+                    &version,
+                    python_version,
+                    deadline,
+                    timeout,
+                )?;
                 progress = true;
                 if *budget == 0 {
                     return Err(SolveError::Incomplete(
@@ -553,6 +626,8 @@ fn next_unsolved_package(
     store: &mut CacheStore,
     state: &mut SolveState,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<Option<String>, SolveError> {
     let mut best: Option<(String, usize)> = None;
 
@@ -566,7 +641,8 @@ fn next_unsolved_package(
         .collect();
 
     for package in unsolved {
-        let (count, _) = domain_info(store, state, &package, python_version)?;
+        check_deadline(deadline, timeout)?;
+        let (count, _) = domain_info(store, state, &package, python_version, deadline, timeout)?;
         if count == 0 {
             let constraint = state
                 .constraints
@@ -596,7 +672,10 @@ fn apply_dependency_specs(
     package: &str,
     version: &str,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<(), SolveError> {
+    check_deadline(deadline, timeout)?;
     for spec in pypi_client::dependency_specs(store, package, version) {
         let dep_package = pypi_client::requirement_name(&spec);
         if dep_package.is_empty() {
@@ -618,7 +697,14 @@ fn apply_dependency_specs(
             }
             continue;
         }
-        let (count, _) = domain_info(store, state, &dep_package, python_version)?;
+        let (count, _) = domain_info(
+            store,
+            state,
+            &dep_package,
+            python_version,
+            deadline,
+            timeout,
+        )?;
         if count == 0 {
             let merged = state
                 .constraints
@@ -641,7 +727,10 @@ fn domain_info(
     state: &mut SolveState,
     package: &str,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<(usize, Option<String>), SolveError> {
+    check_deadline(deadline, timeout)?;
     // Check cache hit first without cloning the constraint string.
     let current_cst = state
         .constraints
@@ -662,7 +751,14 @@ fn domain_info(
 
     // Cache miss — clone constraint only now.
     let constraint = current_cst.to_string();
-    let versions = compatible_versions_for_constraint(store, package, &constraint, python_version)?;
+    let versions = compatible_versions_for_constraint(
+        store,
+        package,
+        &constraint,
+        python_version,
+        deadline,
+        timeout,
+    )?;
     let len = versions.len();
     let forced = if len == 1 {
         Some(versions[0].clone())
@@ -701,7 +797,10 @@ fn compatible_versions_for_constraint(
     package: &str,
     constraint: &str,
     python_version: &str,
+    deadline: Option<Instant>,
+    timeout: Duration,
 ) -> Result<Vec<String>, SolveError> {
+    check_deadline(deadline, timeout)?;
     let all_versions = pypi_client::compatible_versions(store, package, python_version);
     if all_versions.is_empty() {
         return Err(SolveError::Incomplete(format!(
@@ -831,4 +930,50 @@ fn dedupe_strings(values: Vec<String>) -> Vec<String> {
         }
     }
     deduped
+}
+
+fn pre_solve_deadline(timeout: Duration) -> Option<Instant> {
+    if timeout.is_zero() {
+        None
+    } else {
+        Instant::now().checked_add(timeout)
+    }
+}
+
+fn check_deadline(deadline: Option<Instant>, timeout: Duration) -> Result<(), SolveError> {
+    if let Some(deadline) = deadline {
+        if Instant::now() >= deadline {
+            return Err(SolveError::Incomplete(format!(
+                "SMT pre-solve timed out after {:.1}s",
+                timeout.as_secs_f64()
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_timeout_disables_deadline() {
+        assert!(pre_solve_deadline(Duration::ZERO).is_none());
+    }
+
+    #[test]
+    fn expired_deadline_returns_incomplete_timeout_error() {
+        let err = check_deadline(
+            Some(Instant::now() - Duration::from_secs(1)),
+            Duration::from_secs(3),
+        )
+        .unwrap_err();
+
+        match err {
+            SolveError::Incomplete(message) => {
+                assert!(message.contains("timed out after 3.0s"));
+            }
+            other => panic!("expected incomplete timeout error, got {other:?}"),
+        }
+    }
 }
