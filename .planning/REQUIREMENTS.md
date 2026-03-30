@@ -1,90 +1,79 @@
-# Requirements: APDR v2.2 Improve LLM Performance and Benchmark Performance on macOS
+# Requirements: APDR v2.3 Tier3 Validation Recovery and Reliability
 
-**Defined:** 2026-03-28
+**Defined:** 2026-03-30
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
 ## v1 Requirements
 
-Requirements for the v2.2 milestone. Each maps to exactly one roadmap phase.
+Requirements for the v2.3 milestone. Each will map to exactly one roadmap phase.
 
-### Agent Intelligence
+### Agent Reliability
 
-- [ ] **AGT-01**: APDR's tier3 path can use an explicit tool-calling plus critique-and-refinement agent loop for hard cases, with LangChain/LangGraph adoption evaluated on the benchmarked path instead of relying on a single direct completion
-- [ ] **AGT-02**: APDR can feed benchmark outcome feedback into later tier3 attempts through inspectable memory, reflection, or retrieval instead of new hardcoded recovery tables as the primary mechanism
-- [ ] **AGT-03**: APDR improves the number of replay-slice cases the LLM path resolves successfully compared with the v2.2 baseline established for this milestone
-- [ ] **AGT-04**: When the agent cannot solve a case, APDR preserves inspectable failure reasons and abstains cleanly instead of silently masking the failure behind fabricated success
-- [ ] **AGT-05**: APDR can increase effective tier3 context on hard cases through benchmarked context engineering such as retrieval, memory, summarization, context folding, and model context-window configuration instead of relying on unstructured prompt growth alone
-- [ ] **AGT-06**: APDR can benchmark and improve a representative sub-10GB-VRAM local-model path for tier3 resolution through model-specific inference policy such as thinking-mode routing, decoding settings, self-consistency or verifier passes, and tool-surface reduction instead of assuming large-model defaults
+- [ ] **AGT-07**: Benchmark operator can run APDR with `--validation-backend llm` on tier3 cases without the LangGraph fallback crashing after env validation fails
+- [ ] **AGT-08**: Benchmark operator can inspect per-case artifacts to see whether the LLM fallback was invoked, passed, abstained, or failed
+- [ ] **AGT-09**: APDR resolves more cases successfully on the selected v2.3 tier3 benchmark slice than the March 30 2026 baseline for the same run mode and model
 
-### macOS Benchmark Performance
+### Validation Recovery
 
-- [ ] **MAC-01**: Every saved macOS benchmark run records host architecture, APDR binary architecture, Python architecture, validation backend, run intent, cache state, and the configured LLM context-window and inference-policy settings used for the run
-- [ ] **MAC-02**: Benchmark artifacts report stage-level timings for resolution, LLM work, env creation, package install, validation, and Docker startup when applicable
-- [x] **MAC-03**: APDR provides a fast macOS replay mode built around native env validation and a locked benchmark slice for local iteration
-- [ ] **MAC-04**: APDR demonstrates substantial before-and-after macOS benchmark performance gains on the locked replay slice compared with the v2.2 baseline without lowering correctness on preserved pass or skip cases
-
-### Cross-Platform Guardrails
-
-- [x] **WIN-01**: macOS-focused benchmark-performance changes do not regress benchmark runtime or sec-per-case on the representative Windows comparison slice chosen for this milestone
+- [ ] **VAL-01**: Benchmark operator can rerun eligible `environment-build-failed` and `version-not-found` tier3 cases in `llm` mode and have APDR attempt Docker-backed validation before final failure
+- [ ] **VAL-02**: Benchmark operator can inspect each validation attempt to see the actual backend path taken (`env`, `docker`, or `llm-agent`) instead of only the configured run mode
+- [ ] **VAL-03**: APDR reduces failures in the `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 buckets on the selected v2.3 benchmark slice compared with the March 30 2026 baseline
+- [ ] **VAL-04**: Benchmark operator can distinguish framework or host-runtime failures from dependency-resolution failures in per-case validation results so environment-specific cases are not counted as generic mapping misses
 
 ### Benchmark Evidence
 
-- [ ] **EVD-03**: Saved benchmark evidence distinguishes env-fast vs Docker-proof runs and warm vs cold cache state
-- [ ] **EVD-04**: Milestone closeout includes before-and-after macOS benchmark comparisons that make the claimed performance gain reviewer-readable on the reproducible replay slice
-- [ ] **EVD-05**: Any model, context-window, inference-policy, or build-profile comparison captured during the milestone records enough metadata to attribute gains to agent behavior, model choice, context configuration, decoding policy, runtime tuning, or backend differences
-- [ ] **EVD-06**: Milestone closeout includes an explicit Windows non-regression comparison for the benchmark-performance work performed in v2.2
+- [ ] **EVD-07**: Benchmark operator can trust resumed-run summaries not to mark skipped host-runtime cases as successes
+- [ ] **EVD-08**: Milestone evidence shows before-and-after tier3 bucket counts and representative case-level artifacts for the recovery changes shipped in v2.3
+- [ ] **EVD-09**: Milestone proof can compare live v2.3 tier3 recovery results against the March 30 2026 baseline without mixing stale historical case metadata into current-run conclusions
 
-Current Phase 16 state on 2026-03-29: the repo now has a reviewer-ready sample-contract proof pack for macOS, Windows, and Phase 15 quality, but the live macOS, Windows, and tier3 artifacts are still missing, so `EVD-04` and `EVD-06` remain pending live proof.
+### Compatibility Guardrails
+
+- [ ] **WIN-02**: Validation pipeline changes in v2.3 preserve Windows and Docker correctness paths instead of regressing support to env-only validation
 
 ## v2 Requirements
 
-Deferred to a later milestone after the focused agent-quality and macOS performance work lands.
+Deferred until the live tier3 recovery path is stable and benchmark evidence is trustworthy.
 
 ### Future Expansion
 
-- **CROSS-01**: Normalize benchmark comparisons across multiple macOS machines once local single-machine evidence is trustworthy
-- **CI-01**: Add continuous benchmark automation in CI after the local replay loop is stable and cheap enough to run regularly
-- **PROV-01**: Revisit broader model-provider changes only after the current agent loop has been improved and benchmarked fairly
-- **HIST-01**: Reopen the unfinished v2.1 live-proof debt only if a later milestone needs that historical claim closed explicitly
-- **TRAIN-01**: If test-time agent improvements plateau, evaluate benchmark-mined PEFT or QLoRA fine-tuning for the representative small local model as a later milestone
+- **PROV-02**: Revisit broader model-provider changes only after the current fallback and backend-routing problems are fixed
+- **TRAIN-02**: Evaluate fine-tuning or PEFT only if recovery gains plateau after runtime and agent-path fixes
+- **DATA-01**: Expand benchmark datasets only after the existing live benchmark evidence becomes trustworthy
+- **UI-01**: Rework benchmark UI summaries only after the underlying run accounting is correct
+- **HIST-02**: Revisit the unfinished v2.2 live-proof closeout only if a later milestone needs that historical claim closed explicitly
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Full LLM provider replacement | The milestone should improve the current agent behavior before changing providers |
-| Deterministic recovery-table expansion as the main strategy | The milestone explicitly targets more general agent intelligence instead |
-| Blind raw prompt bloat as the main context strategy | Larger raw context should be benchmarked, but the primary strategy is context engineering and retrieval |
-| Full model fine-tuning as the first response | Cheaper test-time and agent-loop improvements should be exhausted before opening a training-heavy scope |
-| Benchmark UI redesign | This milestone is about run quality, evidence, and performance, not a broad frontend refresh |
-| Running Docker for every macOS inner-loop experiment | Too slow for rapid local iteration on macOS |
-| Reopening the full v2.1 live-proof closeout as active scope | The user chose to supersede v2.1 with v2.2 |
+| Benchmark UI redesign | This milestone is about live recovery reliability and truthful reporting, not interface expansion |
+| Full LLM provider replacement | Fix the current fallback and backend path before changing providers |
+| Broad deterministic recovery-table expansion | The milestone should improve live recovery behavior without turning into another hardcoded patch sweep |
+| Benchmark dataset or scoring-rule changes | Results need to stay comparable while reliability work lands |
+| Full async or architecture rewrite | The goal is to improve the current system, not replace it |
+| Reopening v2.2 sample-proof packaging as active scope | The current priority is live tier3 reliability, not more closeout packaging |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGT-01 | Phase 15 | Pending |
-| AGT-02 | Phase 15 | Pending |
-| AGT-03 | Phase 15 | Pending |
-| AGT-04 | Phase 15 | Pending |
-| AGT-05 | Phase 15 | Pending |
-| AGT-06 | Phase 15 | Pending |
-| MAC-01 | Phase 13 | Pending |
-| MAC-02 | Phase 13 | Pending |
-| MAC-03 | Phase 14 | Complete |
-| MAC-04 | Phase 14 | Pending |
-| WIN-01 | Phase 14 | Complete |
-| EVD-03 | Phase 13 | Pending |
-| EVD-04 | Phase 16 | Pending live proof |
-| EVD-05 | Phase 13 | Pending |
-| EVD-06 | Phase 16 | Pending live proof |
+| AGT-07 | TBD | Pending |
+| AGT-08 | TBD | Pending |
+| AGT-09 | TBD | Pending |
+| VAL-01 | TBD | Pending |
+| VAL-02 | TBD | Pending |
+| VAL-03 | TBD | Pending |
+| VAL-04 | TBD | Pending |
+| EVD-07 | TBD | Pending |
+| EVD-08 | TBD | Pending |
+| EVD-09 | TBD | Pending |
+| WIN-02 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 15 total
-- Mapped to phases: 15
-- Unmapped: 0
+- v1 requirements: 11 total
+- Mapped to phases: 0
+- Unmapped: 11
 
 ---
-*Requirements defined: 2026-03-28*
-*Last updated: 2026-03-29 after Phase 16 closeout reconciliation*
+*Requirements defined: 2026-03-30*
+*Last updated: 2026-03-30 after starting milestone v2.3*
