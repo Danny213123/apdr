@@ -2,7 +2,7 @@
 
 ## What This Is
 
-APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. After the v2.0 modernization pass and the partially completed v2.1 accuracy effort, the next milestone focuses on improving the LLM agent's general problem-solving ability and making benchmark execution and performance evidence reliable on macOS.
+APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. After the v2.2 measurement and agent-seam work exposed live tier3 reliability gaps, the next milestone focuses on making LLM fallback, backend escalation, and benchmark reporting trustworthy on real benchmark runs.
 
 ## Core Value
 
@@ -12,24 +12,24 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 - v2.0 shipped with 6 completed phases and 17 completed plans.
 - The Rust modernization milestone closed its benchmark and review gates, including BENCH-03 through direct APDR private-memory comparison and BENCH-05 through the inherited five-command Rust review loop.
-- The latest local stopped benchmark run is `runs\20260327-150339-apdr`, which processed 1,257 cases with 285 failures and 297 skips; 228 of the failures are tier3.
-- The matching `pllm` comparison data in `pllm_results\csv\summary-all-runs.csv` overlaps all 1,257 processed APDR cases and shows 87 APDR failures where `pllm` passed at least once; Phase 7 locked that surface into a canonical 70-case tier3 parity slice plus a 17-case watchlist outside the Phase 7 contract.
-- Phase 7 also isolated a 17-case touched-family snapshot corpus under `tools/apdr/tests/phase7_family_fixtures` and a deterministic baseline check in `scripts/check_phase7_baseline.py` so Phase 8 can change family runtime behavior without moving the comparison boundary.
-- Phase 8 moved the touched family runtime into curated repo data under `tools/apdr/data/family_knowledge`, wired the resolver to consume it, and locked the migrated behavior behind `phase7_family_` regression tests plus `scripts/check_phase8_family_runtime.py`. Phase 11 completed the repo-backed verification backfill so `FAM-01`, `FAM-02`, and `FAM-03` are now closed at the milestone level.
-- Phase 9 added bounded targeted-recovery policies under `tools/apdr/data/recovery/` for module-provider, stop-reason, and compatibility clusters. The retry loop now consults these policies before generic fallbacks, and 11 `phase9_targeted_` regression tests lock the behavior, but live benchmark proof for `REC-02`, `REC-03`, and `REC-04` was never closed.
-- Phase 10 produced the v2.1 evidence package with machine-readable case deltas (`10-case-delta.json`), reviewer-facing benchmark verification, watchlist appendix, preservation guards, and unrecovered-gap reporting. The package is useful, but the on-disk rerun proof is still dry-run only.
-- Phase 11 closed the verification/state audit debt by backfilling `08-VERIFICATION.md`, backfilling the approved Phase 7 manual review, repairing milestone-state docs, adding `check_phase11_verification_backfill.py`, and refreshing the audit so only the live-proof recovery gaps remained.
-- v2.1 was superseded on 2026-03-28 before Phase 12 closed, so the family-knowledge migration stands as completed context while the unfinished live-proof claims remain historical debt rather than the active milestone target.
-- The new v2.2 direction is to improve LLM-agent intelligence without adding more hardcoded or deterministic recovery patches, while making benchmark execution and performance measurement trustworthy on macOS.
+- v2.1 delivered data-driven family knowledge migration, targeted recovery context, and verification backfill, but it was superseded before live-proof closeout.
+- v2.2 completed phases 13-16 and left behind useful measurement contracts, replay tooling, agent-runtime seams, and sample-backed proof packaging, but it was blocked on live artifact capture and superseded on 2026-03-30 before milestone signoff.
+- The latest resumed benchmark run is `runs/20260330-020943-apdr` (resumed from `runs/20260330-004502-apdr`), and its combined summary shows 396 tier3 cases with only 26 passes and 1 unsolvable skip.
+- The dominant live tier3 failure buckets in that run are `module-not-found` (139), `environment-build-failed` (107), and `version-not-found` (58), which together account for most of the current failure surface.
+- The same live run logged 452 attempted LangGraph fallback invocations, and every one failed with `ValueError: 'confidence' is already being used as a state key`, so `--validation-backend llm` is not currently getting a working second-stage recovery path after env validation fails.
+- Current run artifacts also show env-only attempt metadata and empty `docker_image_id` / `build_image_id` values for saved case outputs, so Docker-backed recovery is not meaningfully engaged in the live `llm` path today.
+- Benchmark summary and case-report accounting still have trust gaps, including resumed-run aggregation confusion and some host-runtime skip rows marked as successes, so reporting correctness is now part of the milestone surface instead of a side concern.
+- The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
 
-## Current Milestone: v2.2 Improve LLM Performance and Benchmark Performance on macOS
+## Current Milestone: v2.3 Tier3 Validation Recovery and Reliability
 
-**Goal:** Improve APDR's LLM agent success rate on real benchmark failures through more general reasoning and tool use, and make macOS benchmark performance easy to measure, compare, and iterate on.
+**Goal:** Improve real tier3 benchmark yield by making LLM fallback, backend escalation, and benchmark reporting trustworthy on live runs.
 
 **Target features:**
-- Improve tier3 LLM-agent reasoning, self-correction, and tool use on benchmark cases without expanding hardcoded recovery logic.
-- Make macOS benchmark runs and performance measurement repeatable enough to support rapid local iteration.
-- Produce benchmark artifacts that show both LLM success-rate deltas and macOS runtime or throughput deltas clearly.
+- Fix LangGraph fallback stability so `llm` validation mode can recover after env failure instead of crashing.
+- Add Docker-aware recovery and accurate backend accounting in live `llm` validation runs.
+- Improve tier3 handling for the dominant `module-not-found`, `environment-build-failed`, and `version-not-found` buckets without turning the milestone into another broad rule-table expansion.
+- Produce benchmark evidence that clearly shows before/after recovery deltas and trustworthy per-case status reporting.
 
 ## Requirements
 
@@ -47,42 +47,45 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Benchmark evidence makes APDR recovery deltas inspectable at the case level - validated in Phase 7: failure-baseline-parity-slice
 - [x] Benchmark reruns package targeted APDR versus baseline versus `pllm` deltas without reopening the Phase 8 migration boundary - validated in Phase 10: benchmark-verification-accuracy-closeout
 - [x] Data-driven family knowledge now has repo-backed milestone verification coverage for the touched runtime boundary - validated in Phase 11: verification-backfill-and-state-repair
+- [x] Replay-slice benchmark capture and fast native macOS replay tooling exist for focused local iteration - validated in Phase 14: macOS-execution-path-optimization
+- [x] Tier3 benchmark artifacts can record agent-mode and inference-policy metadata with an explicit runtime seam - validated in Phase 15: langchain-langgraph-tier3-intelligence-improvements
 
 ### Active
 
-- [ ] Improve general LLM-agent recovery performance on real benchmark cases without relying on new hardcoded fix tables
-- [ ] Make macOS benchmark execution and performance measurement repeatable, inspectable, and fast enough for iteration
-- [ ] Keep benchmark evidence strong enough to compare quality and speed changes across milestone phases
+- [ ] Make `--validation-backend llm` reliable on live benchmark runs instead of crashing after env validation fails
+- [ ] Ensure eligible tier3 validation failures can escalate through Docker and record the actual backend path taken per attempt
+- [ ] Reduce the dominant `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 failure buckets on the live benchmark baseline from 2026-03-30
+- [ ] Make resumed-run summaries and per-case artifacts trustworthy enough to compare live recovery changes without accounting confusion
 
 ### Out of Scope
 
-- New benchmark UI or product-surface features - this milestone is about agent quality and benchmark execution, not interface expansion
+- New benchmark UI or product-surface features - this milestone is about recovery reliability and reporting correctness, not interface expansion
 - Replacing the Rust/Python architecture - the goal is to improve the existing system, not rewrite it
 - Changing benchmark datasets or scoring rules - the benchmark needs to stay comparable while quality and performance work lands
 - Full async or Tokio migration - still deferred until benchmark evidence says it is the right next bottleneck
 - Dropping Windows or Docker support - compatibility remains a hard constraint
 - Full LLM provider replacement - improve the current agent behavior before considering a provider swap
-- More hardcoded or deterministic recovery patches as the primary strategy - the milestone is explicitly targeting better general intelligence instead
+- Another broad deterministic recovery-table expansion as the primary strategy - the milestone should target fallback reliability and benchmarked recovery behavior instead
+- Reopening v2.2 sample-proof packaging as the main objective - live recovery reliability is the active milestone target now
 
 ## Context
 
-- The primary v2.2 targets are LLM-agent quality and benchmark performance on macOS within the existing APDR stack.
-- The stopped local benchmark run at `runs\20260327-150339-apdr` used `qwen3.5:9b` with RAG enabled and ended in `stopped` state after processing 1,257 cases.
-- In that run, the visible dominant failure buckets were `module-not-found` (86), `environment-build-failed` (62), and `version-not-found` (33), with 228 of 285 failures landing in tier3.
-- The `pllm` comparison data lives in `pllm_results\csv\summary-all-runs.csv` rather than under `runs\`, and it exposes 87 APDR-failed cases where `pllm` passed at least once.
-- Among those APDR-failed and `pllm`-passing cases, the largest visible APDR validation statuses are `environment-build-failed` (21), `module-not-found` (19), missing explicit failure bucket tagging (18), `dependency-conflict` (12), and `version-not-found` (11).
-- v2.0 already improved performance, module boundaries, and review quality, so this milestone should concentrate on LLM-agent quality and macOS benchmark execution rather than reopening broad modernization work.
-- The user explicitly wants the next accuracy gains to come from better general intelligence and agent behavior, not more deterministic resolver patches.
-- v2.1 remains useful context because it moved family knowledge into data files and exposed the unresolved live-proof gap, but that gap is no longer the active milestone objective.
+- The v2.3 milestone is grounded in fresh local benchmark evidence from `runs/20260330-020943-apdr` and `runs/20260330-004502-apdr`, not in a new external product domain.
+- The combined live baseline is 26 passes out of 395 non-skipped tier3 cases, with the largest failure buckets at `module-not-found`, `environment-build-failed`, and `version-not-found`.
+- The benchmark command line for the latest run used `--validation-backend llm`, but live attempt metadata shows env-only attempts and the code path currently does env validation first, then LangGraph fallback, without meaningful Docker recovery in that mode.
+- The live fallback path is currently blocked by a repeated LangGraph crash on duplicate `confidence` state-key registration, which turns many `llm`-mode cases back into plain env failures.
+- Some tier3 misses are likely true dependency-recovery gaps, while others are framework or host-runtime issues, so the milestone needs better failure classification as well as better recovery.
+- v2.2 already created useful run-contract, replay, and agent-seam infrastructure, so v2.3 should reuse that groundwork instead of reopening broad measurement or UI work.
+- The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
 
 ## Constraints
 
 - **Tech stack**: Rust 2021 core plus existing Python and JS helpers - keep the current architecture intact
 - **Compatibility**: Windows and Docker validation flows must continue to work - benchmark users depend on both
 - **Correctness**: Accuracy work cannot weaken dependency resolution fidelity or validation behavior - correctness remains primary
-- **Benchmark target**: The benchmark corpus and saved-run evidence must remain comparable while agent-quality and performance work lands
-- **macOS focus**: Local benchmark execution and measurement must work well on macOS - that is part of the milestone, not an afterthought
-- **Scope discipline**: Focus on LLM-agent behavior and benchmark performance evidence - avoid slipping back into broad deterministic patching or UI work
+- **Benchmark target**: The benchmark corpus and saved-run evidence must remain comparable while live recovery and reporting fixes land
+- **Evidence discipline**: Reporting changes must make run summaries more truthful, not just more polished
+- **Scope discipline**: Focus on live fallback reliability, backend escalation, and benchmark trustworthiness - avoid slipping back into broad deterministic patching or UI work
 
 ## Key Decisions
 
@@ -100,6 +103,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Close Phase 8 with curated touched-family data, bounded Phase 7 fixture regressions, and `check_phase8_family_runtime.py` | Phase 9 recovery work needs a locked runtime boundary and deterministic checker before accuracy changes begin | Good |
 | Open Phase 11 and Phase 12 after the v2.1 milestone audit | The repo had real shipped work, but the audit showed missing verification/state artifacts and no live proof for the recovery-improvement claims | Good |
 | Start v2.2 before closing v2.1 | The next milestone should prioritize stronger agent intelligence and macOS benchmark performance instead of spending more time on the old deterministic recovery path | Pending |
+| Start v2.3 before closing v2.2 live-proof signoff | The latest live run exposed urgent reliability gaps in fallback and backend routing that matter more than extending sample-proof packaging | Pending |
+| Use `runs/20260330-020943-apdr` plus its resumed predecessor `runs/20260330-004502-apdr` as the v2.3 live baseline | The new milestone needs one concrete live failure surface before changing fallback and reporting behavior | Pending |
+| Skip optional external research for v2.3 | This milestone is driven by fresh local benchmark evidence and the existing codebase, not a new external domain | Good |
+| Prioritize fallback stability and backend truth before wider recovery intelligence changes | Agent reasoning improvements are hard to trust while the live fallback path crashes and backend reporting is misleading | Pending |
 
 ## Shipped Milestone Snapshot
 
@@ -133,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting milestone v2.2*
+*Last updated: 2026-03-30 after starting milestone v2.3*

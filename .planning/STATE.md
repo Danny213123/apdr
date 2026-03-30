@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: Improve LLM Performance and Benchmark Performance on macOS
-status: blocked
-stopped_at: Phase 16 executed complete; live benchmark evidence still pending for milestone signoff
-last_updated: "2026-03-29T20:41:44Z"
-last_activity: 2026-03-29
+milestone: v2.3
+milestone_name: Tier3 Validation Recovery and Reliability
+status: defining-requirements
+stopped_at:
+last_updated: "2026-03-30T12:01:19Z"
+last_activity: 2026-03-30
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: APDR
 
-**Last Updated:** 2026-03-29
-**Status:** Phase 16 complete; live proof pending
-**Progress:** [██████████] 100%
-**Last Activity:** 2026-03-29
-**Last Activity Description:** Phase 16 executed complete with sample-backed closeout and explicit live-proof blocker
+**Last Updated:** 2026-03-30
+**Status:** Defining requirements
+**Progress:** [░░░░░░░░░░] 0%
+**Last Activity:** 2026-03-30
+**Last Activity Description:** Milestone v2.3 started from live benchmark evidence and superseded blocked v2.2 closeout work
 **Resume File:** None
 
 ---
@@ -29,25 +29,25 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Waiting for live benchmark evidence capture for milestone signoff
+**Current Focus:** Define v2.3 requirements for tier3 validation recovery, backend escalation, and reporting reliability
 
 ---
 
 ## Current Position
 
-Phase: 16 (proof-comparison-and-closeout) — COMPLETE, LIVE PROOF PENDING
-Plan: 3 of 3
-Status: Blocked on live artifact capture
-Last activity: 2026-03-29 -- Phase 16 executed complete; milestone signoff still blocked on live evidence
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements
+Last activity: 2026-03-30 -- Milestone v2.3 started from the March 30 live benchmark baseline
 
 ---
 
 ## Performance Metrics
 
-- v2.2 plans completed: 13
-- v2.2 phases completed: 4 of 4
+- v2.3 plans completed: 0
+- v2.3 phases completed: 0 of 0
 - Active phase plan count: 0
-- Phase 16 now provides an honest milestone closeout package that keeps sample-backed proof and live-proof debt clearly separated.
+- The active milestone baseline is the March 30 live benchmark surface rather than the v2.2 sample-proof package.
 
 ---
 
@@ -57,6 +57,9 @@ Last activity: 2026-03-29 -- Phase 16 executed complete; milestone signoff still
 
 - v2.0 closed the Rust modernization track and remains the last fully shipped milestone.
 - v2.1 delivered useful family-knowledge and verification context, but its live-proof closeout remained unfinished when v2.2 superseded it on 2026-03-28.
+- v2.3 supersedes the blocked v2.2 closeout on 2026-03-30 because the latest live run exposed fallback and backend-routing reliability gaps that should be addressed before more proof packaging.
+- The active v2.3 baseline is `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`, with 26 passes in 395 non-skipped tier3 cases.
+- The latest live run recorded repeated LangGraph fallback crashes on duplicate `confidence` state-key registration and showed env-only attempt metadata despite `--validation-backend llm`.
 - v2.2 follows a fixed order: Phase 13 measurement, Phase 14 macOS execution-path optimization, Phase 15 LangChain/LangGraph tier3 intelligence improvements, then Phase 16 closeout proof.
 - v2.2 accuracy gains should come from tool use, reflection, context engineering, and model-specific inference policy rather than new deterministic recovery tables.
 - Phase 13 is split into three sequential plans: canonical run-contract capture, APDR per-case metadata/timing propagation, then evidence normalization plus a deterministic measurement checker.
@@ -99,10 +102,10 @@ Last activity: 2026-03-29 -- Phase 16 executed complete; milestone signoff still
 
 ## Session Continuity
 
-Last session: 2026-03-29T19:04:00Z
-Stopped at: Phase 16 executed complete; live benchmark evidence still pending for milestone signoff
+Last session: 2026-03-30T12:01:19Z
+Stopped at: Milestone v2.3 initialization in progress
 Resume file: None
 
 ---
 
-*State updated after Phase 16 execution on 2026-03-29*
+*State updated after starting milestone v2.3 on 2026-03-30*
