@@ -57,23 +57,23 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGT-07 | TBD | Pending |
-| AGT-08 | TBD | Pending |
-| AGT-09 | TBD | Pending |
-| VAL-01 | TBD | Pending |
-| VAL-02 | TBD | Pending |
-| VAL-03 | TBD | Pending |
-| VAL-04 | TBD | Pending |
-| EVD-07 | TBD | Pending |
-| EVD-08 | TBD | Pending |
-| EVD-09 | TBD | Pending |
-| WIN-02 | TBD | Pending |
+| AGT-07 | Phase 17 | Pending |
+| AGT-08 | Phase 17 | Pending |
+| AGT-09 | Phase 20 | Pending |
+| VAL-01 | Phase 18 | Pending |
+| VAL-02 | Phase 18 | Pending |
+| VAL-03 | Phase 20 | Pending |
+| VAL-04 | Phase 19 | Pending |
+| EVD-07 | Phase 19 | Pending |
+| EVD-08 | Phase 21 | Pending |
+| EVD-09 | Phase 19 | Pending |
+| WIN-02 | Phase 18 | Pending |
 
 **Coverage:**
 - v1 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after starting milestone v2.3*
+*Last updated: 2026-03-30 after roadmap creation for milestone v2.3*
