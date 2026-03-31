@@ -116,7 +116,9 @@ pub(super) fn merge_backend_retry_history(
 #[cfg(test)]
 use self::agent_backend::docker_agent_importable_with_probe;
 #[cfg(test)]
-use self::agent_backend::{merge_llm_retry_history, parse_agent_result};
+use self::agent_backend::{
+    llm_env_failure_requires_docker_escalation, merge_llm_retry_history, parse_agent_result,
+};
 #[cfg(test)]
 use self::env_backend::prepare_env_validation_attempt;
 #[cfg(test)]
@@ -451,5 +453,129 @@ mod tests {
             }
         ));
         assert_eq!(*probe_calls.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn phase18_backend_interpreter_failure_is_docker_eligible() {
+        let summary = ValidationSummary {
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "build-failed".to_string(),
+                log_excerpt:
+                    "No local interpreter found for Python 3.11. Install a matching interpreter."
+                        .to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert!(llm_env_failure_requires_docker_escalation(
+            &summary,
+            "requests==2.31.0"
+        ));
+    }
+
+    #[test]
+    fn phase18_backend_build_timeout_is_docker_eligible() {
+        let summary = ValidationSummary {
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "build-timeout".to_string(),
+                log_excerpt: "pip install timed out while building wheels".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert!(llm_env_failure_requires_docker_escalation(
+            &summary,
+            "scipy==1.10.1"
+        ));
+    }
+
+    #[test]
+    fn phase18_backend_host_runtime_failure_is_not_docker_eligible() {
+        let summary = ValidationSummary {
+            status: "skipped-host-runtime".to_string(),
+            failure_bucket: "skipped-host-runtime".to_string(),
+            reason: Some(
+                "Detected macOS framework dependency (OpenDirectory/SystemConfiguration). APDR cannot validate this snippet without the macOS host framework runtime."
+                    .to_string(),
+            ),
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "runtime-failed".to_string(),
+                log_excerpt: "requires the macOS host framework runtime".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert!(!llm_env_failure_requires_docker_escalation(
+            &summary,
+            "pyobjc-framework-SystemConfiguration==10.0"
+        ));
+    }
+
+    #[test]
+    fn phase18_backend_llm_path_tries_docker_before_agent() {
+        let mut env_summary = ValidationSummary {
+            attempts: vec![
+                ValidationAttempt {
+                    attempt_index: 1,
+                    python_version: "3.11".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "build-failed".to_string(),
+                    ..Default::default()
+                },
+                ValidationAttempt {
+                    attempt_index: 2,
+                    python_version: "3.10".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "build-timeout".to_string(),
+                    ..Default::default()
+                },
+            ],
+            validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+            ..Default::default()
+        };
+
+        let mut docker_summary = ValidationSummary {
+            attempts: vec![ValidationAttempt {
+                attempt_index: 3,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+                status: "build-failed".to_string(),
+                ..Default::default()
+            }],
+            validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+            escalated_backend: Some(VALIDATION_BACKEND_DOCKER.to_string()),
+            ..Default::default()
+        };
+
+        merge_backend_retry_history(&mut env_summary, &mut docker_summary);
+
+        let mut agent_summary = parse_agent_result(
+            r#"{"status":"failed","confidence_reason":"still unresolved","attempts":[]}"#,
+            Path::new("apdr-agent-output"),
+        )
+        .expect("failed agent result should parse");
+
+        merge_llm_retry_history(&mut docker_summary, &mut agent_summary);
+
+        assert_eq!(agent_summary.attempts.len(), 4);
+        assert_eq!(agent_summary.attempts[0].validation_backend, VALIDATION_BACKEND_ENV);
+        assert_eq!(agent_summary.attempts[1].validation_backend, VALIDATION_BACKEND_ENV);
+        assert_eq!(
+            agent_summary.attempts[2].validation_backend,
+            VALIDATION_BACKEND_DOCKER
+        );
+        assert_eq!(agent_summary.attempts[3].validation_backend, VALIDATION_BACKEND_LLM);
     }
 }
