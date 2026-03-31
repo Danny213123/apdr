@@ -153,6 +153,7 @@ pub struct ValidationSummary {
     pub repair_strategy_applied: Option<String>,
     pub skip_candidate: bool,
     pub escalated_backend: Option<String>,
+    pub validation_path: Option<String>,
     pub repeat_failure_signature: Option<String>,
     pub validation_backend: String,
     pub solve_duration_ms: u128,
@@ -236,6 +237,52 @@ pub struct ClassifierResult {
     pub conflict_class: String,
     pub matched_pattern: String,
     pub recommended_fix: String,
+}
+
+impl ValidationSummary {
+    pub fn effective_validation_path(&self) -> Option<String> {
+        self.validation_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| derive_validation_path_from_attempts(&self.attempts, &self.validation_backend))
+    }
+
+    pub fn refresh_validation_path(&mut self) {
+        self.validation_path = self.effective_validation_path();
+    }
+}
+
+fn derive_validation_path_from_attempts(
+    attempts: &[ValidationAttempt],
+    fallback_backend: &str,
+) -> Option<String> {
+    let mut segments: Vec<String> = Vec::new();
+    for attempt in attempts {
+        let Some(segment) = validation_path_segment(&attempt.validation_backend) else {
+            continue;
+        };
+        if segments.last() != Some(&segment) {
+            segments.push(segment);
+        }
+    }
+    if segments.is_empty() {
+        validation_path_segment(fallback_backend)
+    } else {
+        Some(segments.join("->"))
+    }
+}
+
+fn validation_path_segment(backend: &str) -> Option<String> {
+    let trimmed = backend.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed {
+        VALIDATION_BACKEND_LLM => Some("llm-agent".to_string()),
+        _ => Some(trimmed.to_string()),
+    }
 }
 
 impl ResolveConfig {
@@ -518,6 +565,7 @@ impl ResolveResult {
     }
 
     pub fn report_text(&self) -> String {
+        let validation_path = self.validation.effective_validation_path();
         let resolved_rows = self
             .resolved
             .iter()
@@ -579,7 +627,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nvalidation_backend: {}\nvalidation_path: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -626,6 +674,7 @@ impl ResolveResult {
             self.run_contract.inference_policy,
             self.run_contract.build_profile,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
+            validation_path.as_deref().unwrap_or("--"),
             self.validation.succeeded,
             if self.validation.status.is_empty() {
                 if self.validation.succeeded {
@@ -760,8 +809,9 @@ fn extract_error_hint(log: &str) -> String {
 
 impl ResolveResult {
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
+        let validation_path = self.validation.effective_validation_path();
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nVALIDATION_BACKEND={}\nVALIDATION_PATH={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -806,6 +856,7 @@ impl ResolveResult {
             self.run_contract.inference_policy,
             self.run_contract.build_profile,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
+            validation_path.as_deref().unwrap_or(""),
             self.validation.succeeded,
             if self.validation.status.is_empty() {
                 if self.validation.succeeded {
@@ -929,5 +980,48 @@ mod tests {
         assert!(summary.contains("fallback_invoked=true"));
         assert!(summary.contains("fallback_outcome=failed"));
         assert!(summary.contains("fallback_reason=state key crash"));
+    }
+
+    fn phase18_backend_path_fixture_result() -> ResolveResult {
+        let mut result = phase17_llm_fixture_result();
+        result.validation.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+        result.validation.escalated_backend = Some(VALIDATION_BACKEND_DOCKER.to_string());
+        result.validation.attempts = vec![
+            ValidationAttempt {
+                attempt_index: 1,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "build-failed".to_string(),
+                ..Default::default()
+            },
+            ValidationAttempt {
+                attempt_index: 2,
+                python_version: "3.11".to_string(),
+                validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+                status: "build-failed".to_string(),
+                ..Default::default()
+            },
+        ];
+        result
+    }
+
+    #[test]
+    fn phase18_backend_report_text_includes_validation_path() {
+        let result = phase18_backend_path_fixture_result();
+        let report = result.report_text();
+
+        assert!(report.contains("validation_backend: llm"));
+        assert!(report.contains("validation_path: env->docker"));
+        assert!(report.contains("escalated_backend: docker"));
+    }
+
+    #[test]
+    fn phase18_backend_summary_lines_include_validation_path() {
+        let result = phase18_backend_path_fixture_result();
+        let summary = result.summary_lines(Path::new("requirements.txt"), Path::new("report.txt"));
+
+        assert!(summary.contains("VALIDATION_BACKEND=llm"));
+        assert!(summary.contains("VALIDATION_PATH=env->docker"));
+        assert!(summary.contains("ESCALATED_BACKEND=docker"));
     }
 }
