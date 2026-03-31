@@ -116,6 +116,8 @@ pub(super) fn merge_backend_retry_history(
 #[cfg(test)]
 use self::agent_backend::docker_agent_importable_with_probe;
 #[cfg(test)]
+use self::agent_backend::{merge_llm_retry_history, parse_agent_result};
+#[cfg(test)]
 use self::env_backend::prepare_env_validation_attempt;
 #[cfg(test)]
 use self::env_backend::validated_env_archive_path;
@@ -347,6 +349,81 @@ mod tests {
             VALIDATION_BACKEND_DOCKER
         );
         assert!(docker_summary.succeeded);
+    }
+
+    #[test]
+    fn phase17_llm_parse_agent_result_accepts_failed_status() {
+        let summary = parse_agent_result(
+            r#"{"status":"failed","confidence_reason":"state key crash","attempts":[]}"#,
+            Path::new("apdr-agent-output"),
+        )
+        .expect("failed agent result should remain structured");
+
+        assert!(!summary.succeeded);
+        assert_eq!(summary.status, "failed");
+        assert_eq!(summary.reason.as_deref(), Some("state key crash"));
+        assert_eq!(summary.attempts.len(), 1);
+        assert_eq!(summary.attempts[0].status, "failed");
+        assert_eq!(
+            summary.attempts[0].validation_backend,
+            VALIDATION_BACKEND_LLM
+        );
+    }
+
+    #[test]
+    fn phase17_llm_parse_agent_result_accepts_abstained_status() {
+        let summary = parse_agent_result(
+            r#"{"status":"abstained","confidence_reason":"low confidence","attempts":[]}"#,
+            Path::new("apdr-agent-output"),
+        )
+        .expect("abstained agent result should remain structured");
+
+        assert!(!summary.succeeded);
+        assert_eq!(summary.status, "abstained");
+        assert_eq!(summary.reason.as_deref(), Some("low confidence"));
+        assert_eq!(summary.attempts.len(), 1);
+        assert_eq!(summary.attempts[0].status, "abstained");
+        assert_eq!(
+            summary.attempts[0].validation_backend,
+            VALIDATION_BACKEND_LLM
+        );
+    }
+
+    #[test]
+    fn phase17_llm_merge_preserves_env_attempts_before_agent_attempt() {
+        let mut env_summary = ValidationSummary {
+            attempts: vec![
+                ValidationAttempt {
+                    attempt_index: 1,
+                    python_version: "3.11".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "build-failed".to_string(),
+                    ..Default::default()
+                },
+                ValidationAttempt {
+                    attempt_index: 2,
+                    python_version: "3.10".to_string(),
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "runtime-failed".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let mut agent_summary = parse_agent_result(
+            r#"{"status":"failed","confidence_reason":"state key crash","attempts":[]}"#,
+            Path::new("apdr-agent-output"),
+        )
+        .expect("failed agent result should parse");
+
+        merge_llm_retry_history(&mut env_summary, &mut agent_summary);
+
+        assert_eq!(agent_summary.attempts.len(), 3);
+        assert_eq!(agent_summary.attempts[0].validation_backend, VALIDATION_BACKEND_ENV);
+        assert_eq!(agent_summary.attempts[1].validation_backend, VALIDATION_BACKEND_ENV);
+        assert_eq!(agent_summary.attempts[2].validation_backend, VALIDATION_BACKEND_LLM);
+        assert_eq!(agent_summary.attempts[2].attempt_index, 3);
     }
 
     #[test]
