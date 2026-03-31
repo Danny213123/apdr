@@ -79,7 +79,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 17. LLM Fallback Stability and Outcome Tracing | 1/3 | In Progress | 17-01 |
+| 17. LLM Fallback Stability and Outcome Tracing | 2/3 | In Progress | 17-01, 17-02 |
 | 18. Backend Escalation and Path Truth | 0/TBD | Not started | - |
 | 19. Failure Classification and Run-Accounting Integrity | 0/TBD | Not started | - |
 | 20. Dominant Bucket Recovery Gains | 0/TBD | Not started | - |
@@ -90,4 +90,4 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-03-31 (17-01 complete; roadmap progress updated)*
+*Last updated: 2026-03-31 (17-02 complete; roadmap progress updated)*
