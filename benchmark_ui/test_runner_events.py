@@ -16,6 +16,7 @@ from .runner import (
     filter_snippets_by_manifest,
     load_replay_manifest,
 )
+from .service import BenchmarkService
 from .state import AppState
 
 
@@ -274,6 +275,90 @@ class TestRunnerEventEmission(unittest.TestCase):
         emit_event("case_complete", caseId="test-008", status="pass", tier="tier1")
         event = event_queue.get_nowait()
         self.assertNotIn("confidence", event)
+
+    def test_tier3_fallback_metadata_survives_result_shaping_without_reclassification(self):
+        worker = BenchmarkWorker(self.state, self.run_config, self.message_queue)
+        service = BenchmarkService(self.state)
+
+        failing_result = {
+            "snippet": "cases/fallback-fail/snippet.py",
+            "returncode": 0,
+            "succeeded": False,
+            "skipped": False,
+            "requirements": [],
+            "output_files": ["output_data_3.11.yml"],
+            "log_tail": [],
+            "duration_seconds": 1.25,
+            "tier": "tier3",
+            "confidence": 0.82,
+            "cached": False,
+            "output_metadata": {
+                "validation_status": "environment-build-failed",
+                "validation_reason": "env build failed",
+                "fallback_invoked": "true",
+                "fallback_outcome": "abstained",
+                "fallback_reason": "low confidence after env failure",
+                "llm_calls": "1",
+                "env_builds": "1",
+                "retries": "0",
+            },
+        }
+        failing_result["fallbackInvoked"] = worker._metadata_bool(
+            failing_result["output_metadata"]["fallback_invoked"]
+        )
+        failing_result["fallbackOutcome"] = worker._metadata_text(
+            failing_result["output_metadata"]["fallback_outcome"]
+        )
+        failing_result["fallbackReason"] = worker._metadata_text(
+            failing_result["output_metadata"]["fallback_reason"]
+        )
+
+        self.assertFalse(worker._result_succeeded(failing_result))
+        self.assertFalse(worker._result_skipped(failing_result))
+        failing_row = service._build_case_row(failing_result, self.run_config)
+        self.assertTrue(failing_row["fallbackInvoked"])
+        self.assertEqual(failing_row["fallbackOutcome"], "abstained")
+        self.assertEqual(
+            failing_row["fallbackReason"],
+            "low confidence after env failure",
+        )
+
+        passing_result = {
+            "snippet": "cases/fallback-pass/snippet.py",
+            "returncode": 0,
+            "succeeded": True,
+            "skipped": False,
+            "requirements": ["requests==2.32.0"],
+            "output_files": ["output_data_3.11.yml"],
+            "log_tail": [],
+            "duration_seconds": 0.75,
+            "tier": "tier3",
+            "confidence": 0.91,
+            "cached": False,
+            "output_metadata": {
+                "validation_status": "passed",
+                "validation_reason": "",
+                "fallback_invoked": "true",
+                "fallback_outcome": "failed",
+                "fallback_reason": "first agent attempt crashed before retry recovery",
+                "llm_calls": "1",
+                "env_builds": "1",
+                "retries": "1",
+            },
+            "fallbackInvoked": True,
+            "fallbackOutcome": "failed",
+            "fallbackReason": "first agent attempt crashed before retry recovery",
+        }
+
+        self.assertTrue(worker._result_succeeded(passing_result))
+        self.assertFalse(worker._result_skipped(passing_result))
+        passing_row = service._build_case_row(passing_result, self.run_config)
+        self.assertTrue(passing_row["fallbackInvoked"])
+        self.assertEqual(passing_row["fallbackOutcome"], "failed")
+        self.assertEqual(
+            passing_row["fallbackReason"],
+            "first agent attempt crashed before retry recovery",
+        )
 
 
 class TestReplayManifest(unittest.TestCase):

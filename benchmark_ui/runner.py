@@ -771,6 +771,9 @@ class BenchmarkWorker(threading.Thread):
         llm_calls = self._metadata_int(output_metadata.get("llm_calls"))
         env_builds = self._metadata_int(output_metadata.get("env_builds"))
         retries = self._metadata_int(output_metadata.get("retries"))
+        fallback_invoked = self._metadata_bool(output_metadata.get("fallback_invoked"))
+        fallback_outcome = self._metadata_text(output_metadata.get("fallback_outcome"))
+        fallback_reason = self._metadata_text(output_metadata.get("fallback_reason"))
 
         result = {
             "snippet": self.state.relative_path(snippet),
@@ -793,6 +796,9 @@ class BenchmarkWorker(threading.Thread):
             "llm_calls": llm_calls,
             "env_builds": env_builds,
             "retries": retries,
+            "fallbackInvoked": fallback_invoked,
+            "fallbackOutcome": fallback_outcome,
+            "fallbackReason": fallback_reason,
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
@@ -816,6 +822,11 @@ class BenchmarkWorker(threading.Thread):
             if confidence is not None:
                 event_data["confidence"] = confidence
             event_data["cached"] = cached
+        event_data["fallbackInvoked"] = fallback_invoked
+        if fallback_outcome:
+            event_data["fallbackOutcome"] = fallback_outcome
+        if fallback_reason:
+            event_data["fallbackReason"] = fallback_reason
         emit_event("case_complete", **event_data)
 
         # Store tier in result for tier_stats calculation
@@ -912,6 +923,17 @@ class BenchmarkWorker(threading.Thread):
             return max(0, int(text))
         except (TypeError, ValueError):
             return 0
+
+    def _metadata_bool(self, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _metadata_text(self, value: Any) -> str:
+        text = str(value or "").strip()
+        return text
 
     def _metadata_millis_to_seconds(self, value: Any) -> float | None:
         text = str(value or "").strip()

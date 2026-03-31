@@ -929,6 +929,9 @@ class BenchmarkService:
             "tier": result.get("tier", "unknown"),
             "confidence": result.get("confidence"),
             "cached": result.get("cached", False),
+            "fallbackInvoked": self._result_fallback_invoked(result),
+            "fallbackOutcome": self._result_fallback_outcome(result),
+            "fallbackReason": self._result_fallback_reason(result),
         }
 
     def _append_activity(self, text: str) -> None:
@@ -1716,6 +1719,33 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("validation_reason") or "").strip()
+
+    def _result_fallback_invoked(self, result: dict[str, Any]) -> bool:
+        direct = result.get("fallbackInvoked")
+        if direct is not None:
+            return self._as_bool(direct)
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return False
+        return self._as_bool(metadata.get("fallback_invoked"))
+
+    def _result_fallback_outcome(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("fallbackOutcome") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("fallback_outcome") or "").strip()
+
+    def _result_fallback_reason(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("fallbackReason") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("fallback_reason") or "").strip()
 
     def _meaningful_failure_line(self, tail: list[str]) -> str:
         priority_terms = ("error", "fail", "exception", "traceback", "importerror", "no matching distribution")
