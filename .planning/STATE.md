@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
-status: ready-to-execute
-stopped_at: Phase 18 planned
-last_updated: "2026-03-31T02:20:00.000Z"
+status: planning
+stopped_at: Phase 18 complete
+last_updated: "2026-03-31T03:06:48Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 6
+  percent: 40
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-31
-**Status:** Ready to execute
-**Progress:** [█████░░░░░] 50%
+**Status:** Ready to plan
+**Progress:** [████░░░░░░] 40%
 **Last Activity:** 2026-03-31
-**Last Activity Description:** Planned Phase 18 with research, validation strategy, and three execution-ready plans
-**Resume File:** .planning/phases/18-backend-escalation-and-path-truth/18-01-PLAN.md
+**Last Activity Description:** Phase 18 complete, verified, and advanced to Phase 19
+**Resume File:** .planning/ROADMAP.md
 
 ---
 
@@ -29,26 +29,26 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Execute Phase 18, `Backend Escalation and Path Truth`.
+**Current Focus:** Phase 19 — failure-classification-and-run-accounting-integrity
 
 ---
 
 ## Current Position
 
-Phase: 18 of 21 (Backend Escalation and Path Truth)
-Plan: 01-03 queued
-Status: Ready to execute
-Last activity: 2026-03-31 -- Phase 18 planned with research, validation, and execution-ready plan files
+Phase: 19 (failure-classification-and-run-accounting-integrity) — READY TO PLAN
+Plan: Not started
+Status: Ready to discuss or plan Phase 19
+Last activity: 2026-03-31 -- Phase 18 execution and verification complete
 
 ---
 
 ## Performance Metrics
 
-- v2.3 phases completed: 1 of 5
-- v2.3 plans completed: 3
-- Active phase plan count: 3
+- v2.3 phases completed: 2 of 5
+- v2.3 plans completed: 6
+- Active phase plan count: 0 (Phase 19 not planned yet)
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
-- Latest completed plan: `17-03` in `108s` across `2` tasks and `5` modified files
+- Latest completed plan: `18-03` in `8 min` across `2` tasks and `7` modified files
 
 ---
 
@@ -72,24 +72,27 @@ Last activity: 2026-03-31 -- Phase 18 planned with research, validation, and exe
 - [Phase 18-backend-escalation-and-path-truth]: Docker escalation must stay targeted and signal-based rather than retrying every env failure.
 - [Phase 18-backend-escalation-and-path-truth]: Keep top-level `validation_backend` equal to the requested run mode and surface actual route truth separately.
 - [Phase 18-backend-escalation-and-path-truth]: Prove Phase 18 on deterministic tests plus a small fixed March 30 live-derived replay slice.
+- [Phase 18]: Persist routed backend truth as `validation_path` and `escalated_backend` rather than overloading configured backend semantics.
+- [Phase 18]: Treat missing Docker in APDR `llm` mode as a targeted warning while keeping pure Docker validation as a hard requirement.
 
 ### Pending Todos
 
-- Next step is `$gsd-execute-phase 18`.
+- Next step is `$gsd-discuss-phase 19`.
 
 ### Blockers/Concerns
 
 - Do not treat v2.2 sample-backed proof as live evidence for v2.3 closeout.
 - Benchmark reporting changes must improve truthfulness without breaking comparability against the March 30 2026 baseline.
+- The fixed-slice Phase 18 proof is deterministic and green, but a real replay of that slice is still useful milestone evidence for later closeout.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-03-31T01:54:19.198Z
-Stopped at: Phase 18 planned
-Resume file: .planning/phases/18-backend-escalation-and-path-truth/18-01-PLAN.md
+Last session: 2026-03-31T03:06:48Z
+Stopped at: Phase 18 complete
+Resume file: .planning/ROADMAP.md
 
 ---
 
-*State updated after Phase 18 planning on 2026-03-31*
+*State updated after Phase 18 completion on 2026-03-31*
