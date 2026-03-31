@@ -16,6 +16,7 @@ Make `--validation-backend llm` survive post-env validation failures on tier3 ca
 ### Fallback Strategy
 - **D-01:** Phase 17 should repair the existing LangGraph fallback path rather than introduce a second recovery mechanism or a broad replacement path.
 - **D-02:** When env validation fails, APDR should still attempt the configured LLM fallback path, but internal agent exceptions must degrade into recorded fallback failure metadata instead of terminating the case or the run.
+- **D-09:** Phase 17 should keep `llm` mode env-first. A global "skip env and go straight to Docker for all `llm` cases" policy is not adopted here because it changes backend routing rather than fallback stability, would add Docker cost to every `llm` case, and overlaps the targeted Docker escalation work already scoped to Phase 18.
 
 ### Outcome Vocabulary
 - **D-03:** Per-case artifacts must explicitly record whether fallback was invoked and, when invoked, the terminal agent outcome using the milestone vocabulary `passed`, `abstained`, or `failed`.
@@ -83,6 +84,7 @@ Make `--validation-backend llm` survive post-env validation failures on tier3 ca
 ## Specific Ideas
 
 - Keep the phase narrow: this is about making the existing `llm` path survive and tell the truth, not about adding Docker escalation yet.
+- Direct `llm` -> Docker-first validation was considered and rejected for Phase 17. If revisited, treat it as a Phase 18 routing experiment against targeted env-to-Docker escalation, not as the default Phase 17 behavior.
 - The live March 30, 2026 benchmark is the anchor. The known production failure is the repeated `ValueError: 'confidence' is already being used as a state key` after env validation failure.
 - The artifact contract should answer two operator questions quickly: "Did fallback run?" and "How did it end?"
 - Use the milestone vocabulary directly in saved artifacts so later phases can compare pass, abstain, and failure behavior without parsing raw logs.
@@ -94,6 +96,7 @@ Make `--validation-backend llm` survive post-env validation failures on tier3 ca
 ## Deferred Ideas
 
 - Docker escalation for eligible `environment-build-failed` and `version-not-found` cases belongs to Phase 18.
+- A global Docker-first policy for all `llm` cases is deferred out of Phase 17. If it is ever tested, it should be compared in Phase 18 as an explicit routing variant against env-first plus targeted Docker escalation.
 - Broader backend-path truth for `env` versus `docker` versus `llm-agent` across every validation attempt belongs to Phase 18.
 - Failure-bucket repair and resumed-run accounting cleanup belong to Phase 19.
 - Large-scale recovery work on dominant tier3 buckets belongs to Phase 20.

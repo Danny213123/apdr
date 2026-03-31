@@ -61,6 +61,19 @@
 
 ---
 
+## Backend Routing Idea
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Keep `llm` env-first in Phase 17 | Preserve the current env-first contract and focus this phase on fallback stability plus artifact truth. | ✓ |
+| Make all `llm` cases Docker-first | Skip env validation entirely and run Docker first for every `llm` case. | |
+| Use targeted env-to-Docker escalation later | Keep env-first generally, then add Docker only for eligible failure classes in a later phase. | |
+
+**User's choice:** Discussed as a new idea after planning; recorded as not adopted for Phase 17.
+**Notes:** Docker-first for every `llm` case is a routing-policy change, not a fallback-stability fix. It would add Docker overhead and platform requirements to cases that may already succeed or classify cleanly in env mode, and it overlaps the targeted Docker escalation already mapped to Phase 18.
+
+---
+
 ## the agent's Discretion
 
 - Exact field names for fallback invocation and terminal outcome metadata.
