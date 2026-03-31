@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "probe_only": true,
+  "slice_contract": {
+    "case_count": 5,
+    "path": "/Users/dannyguan/Documents/fse-aiware-python-dependencies/.planning/phases/18-backend-escalation-and-path-truth/18-live-backend-slice.json",
+    "relative_paths": [
+      "hard-gists/00e9638c0efad1adac878522cf172484/snippet.py",
+      "hard-gists/056626de3fbdc7cf7b59de1d9f6279d1/snippet.py",
+      "hard-gists/01c99322cf985e771827/snippet.py",
+      "hard-gists/10295174/snippet.py",
+      "hard-gists/1231964e784ab9acb65d/snippet.py"
+    ],
+    "slice_id": "phase18-backend-path-live-slice"
+  }
+}
