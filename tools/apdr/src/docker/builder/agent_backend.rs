@@ -1,6 +1,6 @@
 use super::process::{run_command_with_timeout, truncate_log};
 use super::*;
-use crate::{ResolveConfig, ValidationSummary, VALIDATION_BACKEND_LLM};
+use crate::{ResolveConfig, ValidationAttempt, ValidationSummary, VALIDATION_BACKEND_LLM};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -46,10 +46,33 @@ pub(super) fn validate_requirements_llm(
         config,
     ) {
         agent_summary.agent_invocations = env_summary.agent_invocations;
+        agent_summary.validation_duration_ms += env_summary.validation_duration_ms;
         agent_summary.llm_duration_ms += env_summary.llm_duration_ms;
-        let mut combined_attempts = env_summary.attempts;
-        combined_attempts.append(&mut agent_summary.attempts);
-        agent_summary.attempts = combined_attempts;
+        agent_summary.env_create_duration_ms += env_summary.env_create_duration_ms;
+        agent_summary.install_duration_ms += env_summary.install_duration_ms;
+        agent_summary.smoke_duration_ms += env_summary.smoke_duration_ms;
+        if agent_summary.failure_bucket.is_empty() {
+            agent_summary.failure_bucket = env_summary.failure_bucket.clone();
+        }
+        if agent_summary.root_cause.is_none() {
+            agent_summary.root_cause = env_summary.root_cause.clone();
+        }
+        if agent_summary.missing_module.is_none() {
+            agent_summary.missing_module = env_summary.missing_module.clone();
+        }
+        if agent_summary.failing_package.is_none() {
+            agent_summary.failing_package = env_summary.failing_package.clone();
+        }
+        if agent_summary.repair_strategy_applied.is_none() {
+            agent_summary.repair_strategy_applied = env_summary.repair_strategy_applied.clone();
+        }
+        if agent_summary.repeat_failure_signature.is_none() {
+            agent_summary.repeat_failure_signature = env_summary.repeat_failure_signature.clone();
+        }
+        if agent_summary.selected_python_version.is_none() {
+            agent_summary.selected_python_version = env_summary.selected_python_version.clone();
+        }
+        merge_llm_retry_history(&mut env_summary, &mut agent_summary);
         agent_summary.validation_backend = VALIDATION_BACKEND_LLM.to_string();
         return Ok(agent_summary);
     }
@@ -57,6 +80,27 @@ pub(super) fn validate_requirements_llm(
     // Agent unavailable or also failed â€” return the original env result
     eprintln!("[llm-resolver] LangGraph agent unavailable or failed, returning env result");
     Ok(env_summary)
+}
+
+pub(super) fn merge_llm_retry_history(
+    env_summary: &mut ValidationSummary,
+    agent_summary: &mut ValidationSummary,
+) {
+    let next_attempt_index = env_summary
+        .attempts
+        .last()
+        .map(|attempt| attempt.attempt_index + 1)
+        .unwrap_or(1);
+
+    for (offset, attempt) in agent_summary.attempts.iter_mut().enumerate() {
+        if attempt.attempt_index == 0 {
+            attempt.attempt_index = next_attempt_index + offset;
+        }
+    }
+
+    let mut combined_attempts = std::mem::take(&mut env_summary.attempts);
+    combined_attempts.append(&mut agent_summary.attempts);
+    agent_summary.attempts = combined_attempts;
 }
 
 pub(super) fn attempt_langgraph_agent(
@@ -150,7 +194,7 @@ pub(super) fn attempt_langgraph_agent(
     // Parse JSON result from stdout (last line is the JSON)
     let stdout = &agent_output.combined_output;
     let json_line = stdout.lines().last()?;
-    parse_agent_result(json_line)
+    parse_agent_result(json_line, &agent_output_dir)
 }
 
 pub(super) fn docker_agent_importable(agent_parent: &Path) -> bool {
@@ -207,21 +251,51 @@ pub(super) fn find_docker_agent_parent() -> Option<PathBuf> {
     None
 }
 
-pub(super) fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
+pub(super) fn parse_agent_result(
+    json_str: &str,
+    agent_output_dir: &Path,
+) -> Option<ValidationSummary> {
     let value = serde_json::from_str::<serde_json::Value>(json_str).ok()?;
     let status = value.get("status")?.as_str()?;
-    if status != "passed" {
-        eprintln!("[docker-agent] agent returned status={status}, falling back to deterministic");
+    let supported_status = status == "passed" || status == "abstained" || status == "failed";
+    if !supported_status {
+        eprintln!("[docker-agent] agent returned unsupported status={status}");
         return None;
     }
 
+    let reason = value
+        .get("error_detail")
+        .and_then(|item| item.as_str())
+        .filter(|item| !item.trim().is_empty())
+        .or_else(|| {
+            value
+                .get("confidence_reason")
+                .and_then(|item| item.as_str())
+                .filter(|item| !item.trim().is_empty())
+        })
+        .map(|item| item.to_string())
+        .unwrap_or_else(|| format!("LangGraph agent returned status={status}"));
+
+    let mut attempts = Vec::with_capacity(1);
+    attempts.push(ValidationAttempt {
+        status: status.to_string(),
+        validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+        log_excerpt: reason.clone(),
+        artifact_dir: Some(agent_output_dir.display().to_string()),
+        ..ValidationAttempt::default()
+    });
+
     let mut summary = ValidationSummary {
-        succeeded: true,
-        validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
+        succeeded: status == "passed",
+        status: status.to_string(),
+        reason: Some(reason),
+        validation_backend: VALIDATION_BACKEND_LLM.to_string(),
         selected_python_version: value
             .get("selected_python_version")
             .and_then(|item| item.as_str())
             .map(|item| item.to_string()),
+        llm_trace_dir: Some(agent_output_dir.display().to_string()),
+        attempts,
         ..ValidationSummary::default()
     };
 
@@ -230,8 +304,6 @@ pub(super) fn parse_agent_result(json_str: &str) -> Option<ValidationSummary> {
         summary.llm_duration_ms = dur;
     }
 
-    // The agent may have modified requirements; we record that info but
-    // it does not change the resolved list (the Rust side already resolved).
     Some(summary)
 }
 

@@ -182,7 +182,7 @@ def build_graph():
     graph = StateGraph(AgentState)
 
     # Add nodes (each is an agent or logic node)
-    graph.add_node("confidence", confidence_node)
+    graph.add_node("confidence_check", confidence_node)
     graph.add_node("build", builder_node)
     graph.add_node("analyze", analyst_node)
     graph.add_node("recover", recovery_node)
@@ -191,11 +191,11 @@ def build_graph():
     graph.add_node("mark_failed", _mark_failed)
 
     # Entry point
-    graph.set_entry_point("confidence")
+    graph.set_entry_point("confidence_check")
 
     # Conditional edges
     graph.add_conditional_edges(
-        "confidence",
+        "confidence_check",
         _should_build,
         {"build": "build", "end": END},
     )
