@@ -932,6 +932,9 @@ class BenchmarkService:
             "fallbackInvoked": self._result_fallback_invoked(result),
             "fallbackOutcome": self._result_fallback_outcome(result),
             "fallbackReason": self._result_fallback_reason(result),
+            "validationBackend": self._result_validation_backend(result),
+            "validationPath": self._result_validation_path(result),
+            "escalatedBackend": self._result_escalated_backend(result),
         }
 
     def _append_activity(self, text: str) -> None:
@@ -1746,6 +1749,33 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("fallback_reason") or "").strip()
+
+    def _result_validation_backend(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("validationBackend") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("validation_backend") or "").strip()
+
+    def _result_validation_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("validationPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("validation_path") or "").strip()
+
+    def _result_escalated_backend(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("escalatedBackend") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("escalated_backend") or "").strip()
 
     def _meaningful_failure_line(self, tail: list[str]) -> str:
         priority_terms = ("error", "fail", "exception", "traceback", "importerror", "no matching distribution")

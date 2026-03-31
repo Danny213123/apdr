@@ -220,6 +220,40 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(info_fields["Workers"], "1")
             self.assertIn("Rosetta 2", info_fields["Replay warnings"])
 
+    def test_case_row_keeps_requested_backend_distinct_from_validation_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            row = service._build_case_row(
+                {
+                    "snippet": "cases/routed/snippet.py",
+                    "returncode": 0,
+                    "succeeded": False,
+                    "skipped": False,
+                    "requirements": [],
+                    "output_files": ["output_data_3.11.yml"],
+                    "log_tail": [],
+                    "duration_seconds": 1.1,
+                    "output_metadata": {
+                        "validation_backend": "llm",
+                        "validation_path": "env->docker",
+                        "escalated_backend": "docker",
+                        "validation_status": "environment-build-failed",
+                        "validation_reason": "env build failed",
+                        "llm_calls": "1",
+                        "env_builds": "2",
+                        "retries": "0",
+                    },
+                },
+                {
+                    "tool": "apdr",
+                    "loop_count": 5,
+                },
+            )
+
+            self.assertEqual(row["validationBackend"], "llm")
+            self.assertEqual(row["validationPath"], "env->docker")
+            self.assertEqual(row["escalatedBackend"], "docker")
+
 
 if __name__ == "__main__":
     unittest.main()

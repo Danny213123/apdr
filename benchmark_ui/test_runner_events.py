@@ -293,6 +293,9 @@ class TestRunnerEventEmission(unittest.TestCase):
             "confidence": 0.82,
             "cached": False,
             "output_metadata": {
+                "validation_backend": "llm",
+                "validation_path": "env->docker->llm-agent",
+                "escalated_backend": "docker",
                 "validation_status": "environment-build-failed",
                 "validation_reason": "env build failed",
                 "fallback_invoked": "true",
@@ -312,11 +315,20 @@ class TestRunnerEventEmission(unittest.TestCase):
         failing_result["fallbackReason"] = worker._metadata_text(
             failing_result["output_metadata"]["fallback_reason"]
         )
+        failing_result["validationPath"] = worker._metadata_text(
+            failing_result["output_metadata"]["validation_path"]
+        )
+        failing_result["escalatedBackend"] = worker._metadata_text(
+            failing_result["output_metadata"]["escalated_backend"]
+        )
 
         self.assertFalse(worker._result_succeeded(failing_result))
         self.assertFalse(worker._result_skipped(failing_result))
         failing_row = service._build_case_row(failing_result, self.run_config)
         self.assertTrue(failing_row["fallbackInvoked"])
+        self.assertEqual(failing_row["validationBackend"], "llm")
+        self.assertEqual(failing_row["validationPath"], "env->docker->llm-agent")
+        self.assertEqual(failing_row["escalatedBackend"], "docker")
         self.assertEqual(failing_row["fallbackOutcome"], "abstained")
         self.assertEqual(
             failing_row["fallbackReason"],
@@ -336,6 +348,9 @@ class TestRunnerEventEmission(unittest.TestCase):
             "confidence": 0.91,
             "cached": False,
             "output_metadata": {
+                "validation_backend": "llm",
+                "validation_path": "env->docker",
+                "escalated_backend": "docker",
                 "validation_status": "passed",
                 "validation_reason": "",
                 "fallback_invoked": "true",
@@ -354,6 +369,9 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertFalse(worker._result_skipped(passing_result))
         passing_row = service._build_case_row(passing_result, self.run_config)
         self.assertTrue(passing_row["fallbackInvoked"])
+        self.assertEqual(passing_row["validationBackend"], "llm")
+        self.assertEqual(passing_row["validationPath"], "env->docker")
+        self.assertEqual(passing_row["escalatedBackend"], "docker")
         self.assertEqual(passing_row["fallbackOutcome"], "failed")
         self.assertEqual(
             passing_row["fallbackReason"],

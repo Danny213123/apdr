@@ -774,6 +774,9 @@ class BenchmarkWorker(threading.Thread):
         fallback_invoked = self._metadata_bool(output_metadata.get("fallback_invoked"))
         fallback_outcome = self._metadata_text(output_metadata.get("fallback_outcome"))
         fallback_reason = self._metadata_text(output_metadata.get("fallback_reason"))
+        validation_backend = self._metadata_text(output_metadata.get("validation_backend"))
+        validation_path = self._metadata_text(output_metadata.get("validation_path"))
+        escalated_backend = self._metadata_text(output_metadata.get("escalated_backend"))
 
         result = {
             "snippet": self.state.relative_path(snippet),
@@ -799,6 +802,9 @@ class BenchmarkWorker(threading.Thread):
             "fallbackInvoked": fallback_invoked,
             "fallbackOutcome": fallback_outcome,
             "fallbackReason": fallback_reason,
+            "validationBackend": validation_backend,
+            "validationPath": validation_path,
+            "escalatedBackend": escalated_backend,
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
@@ -827,6 +833,10 @@ class BenchmarkWorker(threading.Thread):
             event_data["fallbackOutcome"] = fallback_outcome
         if fallback_reason:
             event_data["fallbackReason"] = fallback_reason
+        if validation_path:
+            event_data["validationPath"] = validation_path
+        if escalated_backend:
+            event_data["escalatedBackend"] = escalated_backend
         emit_event("case_complete", **event_data)
 
         # Store tier in result for tier_stats calculation
