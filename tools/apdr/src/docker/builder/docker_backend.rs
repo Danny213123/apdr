@@ -27,6 +27,49 @@ pub(super) fn validate_requirements_docker(
     config: &ResolveConfig,
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
+    validate_requirements_docker_inner(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        attempt_offset,
+        config,
+        store,
+        config.allow_llm,
+    )
+}
+
+pub(super) fn validate_requirements_docker_deterministic(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    validate_requirements_docker_inner(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        attempt_offset,
+        config,
+        store,
+        false,
+    )
+}
+
+fn validate_requirements_docker_inner(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+    allow_agent_fallback: bool,
+) -> io::Result<ValidationSummary> {
     let mut summary = ValidationSummary {
         validation_backend: VALIDATION_BACKEND_DOCKER.to_string(),
         ..ValidationSummary::default()
@@ -34,7 +77,7 @@ pub(super) fn validate_requirements_docker(
     context::ensure_debug_layout(&config.output_dir)?;
 
     // Try LangGraph multi-agent pipeline first when LLM is enabled
-    if config.allow_llm {
+    if allow_agent_fallback {
         summary.agent_invocations += 1;
         if let Some(mut agent_summary) = attempt_langgraph_agent(
             snippet_path,
