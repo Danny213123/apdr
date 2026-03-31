@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
-status: planning
-stopped_at: Phase 18 context gathered
-last_updated: "2026-03-31T01:54:19.202Z"
+status: ready-to-execute
+stopped_at: Phase 18 planned
+last_updated: "2026-03-31T02:20:00.000Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
+  total_plans: 6
   completed_plans: 3
-  percent: 100
+  percent: 50
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-31
-**Status:** Ready to plan
-**Progress:** [██████████] 100%
+**Status:** Ready to execute
+**Progress:** [█████░░░░░] 50%
 **Last Activity:** 2026-03-31
-**Last Activity Description:** Phase 17 complete, transitioned to Phase 18
-**Resume File:** .planning/phases/18-backend-escalation-and-path-truth/18-CONTEXT.md
+**Last Activity Description:** Planned Phase 18 with research, validation strategy, and three execution-ready plans
+**Resume File:** .planning/phases/18-backend-escalation-and-path-truth/18-01-PLAN.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 17 complete; next active work is backend escalation and path truth in Phase 18.
+**Current Focus:** Execute Phase 18, `Backend Escalation and Path Truth`.
 
 ---
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-31
+Phase: 18 of 21 (Backend Escalation and Path Truth)
+Plan: 01-03 queued
+Status: Ready to execute
+Last activity: 2026-03-31 -- Phase 18 planned with research, validation, and execution-ready plan files
 
 ---
 
@@ -68,10 +68,14 @@ Last activity: 2026-03-31
 - [Phase 17]: Keep benchmark pass/skip/fail classification driven by validation_status, validation_reason, and existing success rules while surfacing fallback metadata separately.
 - [Phase 17]: Keep the Phase 17 proof anchored to a fixed March 30 slice and validate that manifest order explicitly in the checker.
 - [Phase 17]: Treat the frozen March 30 run as before-state evidence; probe mode is the deterministic in-repo gate, while live mode is the post-replay audit for crash removal and fallback keys.
+- [Phase 18-backend-escalation-and-path-truth]: Keep `llm` routing env-first, then Docker, then final `llm-agent`; do not skip env globally for `llm` mode.
+- [Phase 18-backend-escalation-and-path-truth]: Docker escalation must stay targeted and signal-based rather than retrying every env failure.
+- [Phase 18-backend-escalation-and-path-truth]: Keep top-level `validation_backend` equal to the requested run mode and surface actual route truth separately.
+- [Phase 18-backend-escalation-and-path-truth]: Prove Phase 18 on deterministic tests plus a small fixed March 30 live-derived replay slice.
 
 ### Pending Todos
 
-- None.
+- Next step is `$gsd-execute-phase 18`.
 
 ### Blockers/Concerns
 
@@ -83,9 +87,9 @@ Last activity: 2026-03-31
 ## Session Continuity
 
 Last session: 2026-03-31T01:54:19.198Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-backend-escalation-and-path-truth/18-CONTEXT.md
+Stopped at: Phase 18 planned
+Resume file: .planning/phases/18-backend-escalation-and-path-truth/18-01-PLAN.md
 
 ---
 
-*State updated after Phase 17 Plan 03 execution on 2026-03-31*
+*State updated after Phase 18 planning on 2026-03-31*
