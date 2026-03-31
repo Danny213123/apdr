@@ -9,8 +9,8 @@ Requirements for the v2.3 milestone. Each will map to exactly one roadmap phase.
 
 ### Agent Reliability
 
-- [ ] **AGT-07**: Benchmark operator can run APDR with `--validation-backend llm` on tier3 cases without the LangGraph fallback crashing after env validation fails
-- [ ] **AGT-08**: Benchmark operator can inspect per-case artifacts to see whether the LLM fallback was invoked, passed, abstained, or failed
+- [x] **AGT-07**: Benchmark operator can run APDR with `--validation-backend llm` on tier3 cases without the LangGraph fallback crashing after env validation fails
+- [x] **AGT-08**: Benchmark operator can inspect per-case artifacts to see whether the LLM fallback was invoked, passed, abstained, or failed
 - [ ] **AGT-09**: APDR resolves more cases successfully on the selected v2.3 tier3 benchmark slice than the March 30 2026 baseline for the same run mode and model
 
 ### Validation Recovery
@@ -57,8 +57,8 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGT-07 | Phase 17 | Pending |
-| AGT-08 | Phase 17 | Pending |
+| AGT-07 | Phase 17 | Complete |
+| AGT-08 | Phase 17 | Complete |
 | AGT-09 | Phase 20 | Pending |
 | VAL-01 | Phase 18 | Pending |
 | VAL-02 | Phase 18 | Pending |
@@ -76,4 +76,4 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after roadmap creation for milestone v2.3*
+*Last updated: 2026-03-31 after Phase 17 Plan 01 execution*

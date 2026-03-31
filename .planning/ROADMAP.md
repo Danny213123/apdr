@@ -34,7 +34,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
   1. On the selected v2.3 tier3 slice, cases that fail env validation can continue into LLM fallback without the LangGraph `confidence` state-key crash or an equivalent post-env fallback crash terminating the run.
   2. Saved per-case artifacts show whether LLM fallback was invoked and whether it passed, abstained, or failed for each attempted case.
   3. When fallback does not solve a case, the saved artifact still exposes the agent outcome instead of collapsing back into an unlabeled env-only failure.
-**Plans**: TBD
+**Plans**: `17-01` complete; `17-02` and `17-03` pending
 
 ### Phase 18: Backend Escalation and Path Truth
 **Goal**: Eligible tier3 failures in `llm` mode can escalate through Docker, and every validation attempt records the actual backend route without regressing Windows or Docker correctness
@@ -79,7 +79,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 17. LLM Fallback Stability and Outcome Tracing | 0/TBD | Not started | - |
+| 17. LLM Fallback Stability and Outcome Tracing | 1/3 | In Progress | 17-01 |
 | 18. Backend Escalation and Path Truth | 0/TBD | Not started | - |
 | 19. Failure Classification and Run-Accounting Integrity | 0/TBD | Not started | - |
 | 20. Dominant Bucket Recovery Gains | 0/TBD | Not started | - |
@@ -90,4 +90,4 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-03-30 (v2.3 initialized; v2.2 marked superseded unfinished)*
+*Last updated: 2026-03-31 (17-01 complete; roadmap progress updated)*
