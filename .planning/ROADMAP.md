@@ -79,7 +79,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 17. LLM Fallback Stability and Outcome Tracing | 3/3 | Complete   | 2026-03-31 |
+| 17. LLM Fallback Stability and Outcome Tracing | 3/3 | Complete    | 2026-03-31 |
 | 18. Backend Escalation and Path Truth | 0/TBD | Not started | - |
 | 19. Failure Classification and Run-Accounting Integrity | 0/TBD | Not started | - |
 | 20. Dominant Bucket Recovery Gains | 0/TBD | Not started | - |
