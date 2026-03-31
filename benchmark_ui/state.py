@@ -297,6 +297,14 @@ class AppState:
             return requested
         return "env"
 
+    def apdr_backend_description(self, validation_backend: str = "") -> str:
+        resolved = self.normalize_validation_backend("apdr", validation_backend)
+        if resolved == "docker":
+            return "Docker build + run validation"
+        if resolved == "llm":
+            return "Local env validation + targeted Docker escalation + agent fallback"
+        return "Isolated local Python env validation"
+
     def choose_runner(self, tool: str, python_command: str = "") -> list[str]:
         if python_command.strip():
             return shlex.split(python_command.strip())
@@ -380,9 +388,7 @@ class AppState:
                 detail = output or "Unable to run the Python wrapper for APDR."
                 return False, detail, runner
             backend_detail = (
-                "Docker build + run validation"
-                if resolved_backend == "docker"
-                else "isolated local Python env validation"
+                self.apdr_backend_description(resolved_backend)
             )
             if built_binary:
                 runtime_detail = f"APDR binary ready at {self.relative_path(built_binary)} for {backend_detail}."
@@ -593,16 +599,23 @@ class AppState:
         docker_required = resolved_tool == "pllm" or (
             resolved_tool == "apdr" and resolved_backend == "docker"
         )
+        docker_targeted_for_llm = resolved_tool == "apdr" and resolved_backend == "llm"
         docker_optional = not docker_required
         if shutil.which("docker"):
             code, output = self._run_command(["docker", "--version"], cwd=self.repo_root, timeout=5)
             docker_cli_label = (
+                "Docker CLI (targeted for APDR llm escalation)"
+                if docker_targeted_for_llm
+                else
                 "Docker CLI (optional for APDR env validation)"
                 if resolved_tool == "apdr" and docker_optional
                 else "Docker CLI"
             )
             docker_cli_status = "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL")
             docker_cli_detail = output or (
+                "Docker is installed and can support targeted APDR llm escalation."
+                if docker_targeted_for_llm
+                else
                 "Docker is installed, but the selected backend does not require it."
                 if docker_optional
                 else "Unable to read docker version."
@@ -612,12 +625,20 @@ class AppState:
             detail = output or "Unable to talk to the Docker daemon."
             if code != 0 and not docker_optional:
                 detail = f"{detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor."
+            elif code != 0 and docker_targeted_for_llm:
+                detail = (
+                    f"{detail} APDR llm mode can still run env-first, but eligible cases cannot use "
+                    "targeted Docker escalation until Docker is available."
+                )
             elif code != 0 and docker_optional:
                 detail = f"{detail} Docker is optional for the selected backend."
             checks.append(
                 self._doctor_row(
                     "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL"),
                     (
+                        "Docker daemon (targeted for APDR llm escalation)"
+                        if docker_targeted_for_llm
+                        else
                         "Docker daemon (optional for APDR env validation)"
                         if resolved_tool == "apdr" and docker_optional
                         else "Docker daemon"
@@ -626,7 +647,15 @@ class AppState:
                 )
             )
         else:
-            if docker_optional:
+            if docker_targeted_for_llm:
+                checks.append(
+                    self._doctor_row(
+                        "WARN",
+                        "Docker (targeted for APDR llm escalation)",
+                        "Docker is not installed. APDR llm mode can still run env-first, but eligible cases cannot use targeted Docker escalation.",
+                    )
+                )
+            elif docker_optional:
                 checks.append(
                     self._doctor_row(
                         "WARN",
@@ -652,12 +681,10 @@ class AppState:
                     self._doctor_row(
                         "PASS",
                         "apdr validation backend",
-                        "Docker build + run validation"
-                        if tool_backend == "docker"
-                        else "Isolated local Python env validation",
+                        self.apdr_backend_description(tool_backend),
                     )
                 )
-                if tool_backend == "env":
+                if tool_backend in ("env", "llm"):
                     available, missing = self.apdr_local_interpreters()
                     interpreter_status = "FAIL" if not available else ("WARN" if missing else "PASS")
                     checks.append(
@@ -680,7 +707,7 @@ class AppState:
                         self._doctor_row(
                             "PASS",
                             "apdr env tooling",
-                            "Not required when APDR validation backend is Docker.",
+                            "Not required when APDR validation backend is Docker-only.",
                         )
                     )
                 kgraph_server_up = self.apdr_kgraph_server_available()
@@ -710,7 +737,7 @@ class AppState:
         log("Starting automatic setup checks.")
         resolved_tool = selected_tool or (tools[0] if tools else "")
         resolved_backend = self.normalize_validation_backend(resolved_tool, validation_backend)
-        if resolved_tool != "apdr" or resolved_backend == "docker":
+        if resolved_tool != "apdr" or resolved_backend in {"docker", "llm"}:
             self._auto_start_docker_if_needed(log)
         else:
             log("Skipping Docker auto-start because APDR is using local env validation.")
@@ -722,11 +749,11 @@ class AppState:
                 log(f"APDR KGraph server: {detail}")
             else:
                 log(f"APDR KGraph server: {detail}")
-            if resolved_backend == "env":
+            if resolved_backend in {"env", "llm"}:
                 available, missing = self.apdr_local_interpreters()
                 log(f"APDR interpreter availability: {self.format_apdr_interpreter_detail(available, missing)}")
             else:
-                log("APDR interpreter installation skipped because Docker validation was selected.")
+                log("APDR interpreter installation skipped because Docker-only validation was selected.")
 
         if "pllm" in tools and resolved_tool != "apdr":
             self._auto_fix_pllm(selected_tool, python_command, log)
@@ -1411,7 +1438,7 @@ class AppState:
     def _auto_fix_apdr(self, log: Any, validation_backend: str = "env") -> None:
         tool_dir = self.tool_dir("apdr")
         resolved_backend = self.normalize_validation_backend("apdr", validation_backend)
-        if resolved_backend == "env":
+        if resolved_backend in {"env", "llm"}:
             available, missing = self.apdr_local_interpreters()
             if missing:
                 log(f"Attempting to install missing APDR Python interpreters: {', '.join(missing)}")
@@ -1444,7 +1471,7 @@ class AppState:
                 else:
                     log("virtualenv is already available for Python 2.7 env creation.")
         else:
-            log("Skipping APDR interpreter installation because Docker validation was selected.")
+            log("Skipping APDR interpreter installation because Docker-only validation was selected.")
 
         binary_candidates = [
             tool_dir / "target" / "release" / "apdr",
