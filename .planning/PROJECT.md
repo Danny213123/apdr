@@ -20,6 +20,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Current run artifacts also show env-only attempt metadata and empty `docker_image_id` / `build_image_id` values for saved case outputs, so Docker-backed recovery is not meaningfully engaged in the live `llm` path today.
 - Benchmark summary and case-report accounting still have trust gaps, including resumed-run aggregation confusion and some host-runtime skip rows marked as successes, so reporting correctness is now part of the milestone surface instead of a side concern.
 - The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
+- Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 
 ## Current Milestone: v2.3 Tier3 Validation Recovery and Reliability
 
@@ -49,10 +50,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Data-driven family knowledge now has repo-backed milestone verification coverage for the touched runtime boundary - validated in Phase 11: verification-backfill-and-state-repair
 - [x] Replay-slice benchmark capture and fast native macOS replay tooling exist for focused local iteration - validated in Phase 14: macOS-execution-path-optimization
 - [x] Tier3 benchmark artifacts can record agent-mode and inference-policy metadata with an explicit runtime seam - validated in Phase 15: langchain-langgraph-tier3-intelligence-improvements
+- [x] `--validation-backend llm` fallback no longer collapses non-pass agent outcomes into unlabeled env-only results, and saved artifacts expose `fallback_invoked`, `fallback_outcome`, and `fallback_reason` - validated in Phase 17: llm-fallback-stability-and-outcome-tracing
 
 ### Active
 
-- [ ] Make `--validation-backend llm` reliable on live benchmark runs instead of crashing after env validation fails
 - [ ] Ensure eligible tier3 validation failures can escalate through Docker and record the actual backend path taken per attempt
 - [ ] Reduce the dominant `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 failure buckets on the live benchmark baseline from 2026-03-30
 - [ ] Make resumed-run summaries and per-case artifacts trustworthy enough to compare live recovery changes without accounting confusion
@@ -106,7 +107,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Start v2.3 before closing v2.2 live-proof signoff | The latest live run exposed urgent reliability gaps in fallback and backend routing that matter more than extending sample-proof packaging | Pending |
 | Use `runs/20260330-020943-apdr` plus its resumed predecessor `runs/20260330-004502-apdr` as the v2.3 live baseline | The new milestone needs one concrete live failure surface before changing fallback and reporting behavior | Pending |
 | Skip optional external research for v2.3 | This milestone is driven by fresh local benchmark evidence and the existing codebase, not a new external domain | Good |
-| Prioritize fallback stability and backend truth before wider recovery intelligence changes | Agent reasoning improvements are hard to trust while the live fallback path crashes and backend reporting is misleading | Pending |
+| Prioritize fallback stability and backend truth before wider recovery intelligence changes | Agent reasoning improvements are hard to trust while the live fallback path crashes and backend reporting is misleading | Good |
+| Keep `llm` routing env-first in Phase 17 and defer Docker escalation policy to Phase 18 | The immediate need was to restore fallback stability and truthful artifact output without widening the routing surface mid-phase | Good |
 
 ## Shipped Milestone Snapshot
 
@@ -140,4 +142,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-30 after starting milestone v2.3*
+*Last updated: 2026-03-31 after completing Phase 17*
