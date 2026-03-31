@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
-status: executing
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-03-31T00:41:50.769Z"
+status: verifying
+stopped_at: Completed 17-03-PLAN.md
+last_updated: "2026-03-31T00:56:40Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-03-31
-**Status:** Ready to execute
-**Progress:** [███████░░░] 67%
+**Status:** Phase complete — ready for verification
+**Progress:** [██████████] 100%
 **Last Activity:** 2026-03-31
-**Last Activity Description:** Completed Phase 17 Plan 02
-**Resume File:** .planning/phases/17-llm-fallback-stability-and-outcome-tracing/17-03-PLAN.md
+**Last Activity Description:** Completed Phase 17 Plan 03
+**Resume File:** None
 
 ---
 
@@ -29,26 +29,26 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 17 — llm-fallback-stability-and-outcome-tracing
+**Current Focus:** Phase 17 complete; next active work is backend escalation and path truth in Phase 18.
 
 ---
 
 ## Current Position
 
-Phase: 17 (llm-fallback-stability-and-outcome-tracing) — EXECUTING
+Phase: 17 (llm-fallback-stability-and-outcome-tracing) — COMPLETE
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 ---
 
 ## Performance Metrics
 
-- v2.3 phases completed: 0 of 5
-- v2.3 plans completed: 2
+- v2.3 phases completed: 1 of 5
+- v2.3 plans completed: 3
 - Active phase plan count: 3
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
-- Latest completed plan: `17-02` in `604s` across `2` tasks and `7` modified files
+- Latest completed plan: `17-03` in `108s` across `2` tasks and `5` modified files
 
 ---
 
@@ -66,10 +66,12 @@ Last activity: 2026-03-31
 - [Phase 17]: Expose fallback summary output with exact lowercase keys so test_executor can copy artifact fields directly.
 - [Phase 17]: Derive fallback invocation and terminal outcome from llm attempts plus agent invocation counts instead of overloading validation_status.
 - [Phase 17]: Keep benchmark pass/skip/fail classification driven by validation_status, validation_reason, and existing success rules while surfacing fallback metadata separately.
+- [Phase 17]: Keep the Phase 17 proof anchored to a fixed March 30 slice and validate that manifest order explicitly in the checker.
+- [Phase 17]: Treat the frozen March 30 run as before-state evidence; probe mode is the deterministic in-repo gate, while live mode is the post-replay audit for crash removal and fallback keys.
 
 ### Pending Todos
 
-- Next step is `.planning/phases/17-llm-fallback-stability-and-outcome-tracing/17-03-PLAN.md`.
+- None.
 
 ### Blockers/Concerns
 
@@ -80,10 +82,10 @@ Last activity: 2026-03-31
 
 ## Session Continuity
 
-Last session: 2026-03-31T00:41:50.766Z
-Stopped at: Completed 17-02-PLAN.md
-Resume file: .planning/phases/17-llm-fallback-stability-and-outcome-tracing/17-03-PLAN.md
+Last session: 2026-03-31T00:55:37.456Z
+Stopped at: Completed 17-03-PLAN.md
+Resume file: None
 
 ---
 
-*State updated after Phase 17 Plan 02 execution on 2026-03-31*
+*State updated after Phase 17 Plan 03 execution on 2026-03-31*

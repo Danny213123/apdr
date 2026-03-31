@@ -18,7 +18,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 
 ## Phases
 
-- [ ] **Phase 17: LLM Fallback Stability and Outcome Tracing** - Make `llm` validation mode survive post-env failures and expose inspectable agent outcomes per case
+- [x] **Phase 17: LLM Fallback Stability and Outcome Tracing** - Make `llm` validation mode survive post-env failures and expose inspectable agent outcomes per case (completed 2026-03-31)
 - [ ] **Phase 18: Backend Escalation and Path Truth** - Route eligible `llm`-mode failures through Docker and record the actual validation backend path
 - [ ] **Phase 19: Failure Classification and Run-Accounting Integrity** - Separate host or framework failures from dependency misses and make resumed-run reporting trustworthy
 - [ ] **Phase 20: Dominant Bucket Recovery Gains** - Turn the repaired fallback and backend path into measurable tier3 improvements on the live baseline buckets
@@ -34,7 +34,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
   1. On the selected v2.3 tier3 slice, cases that fail env validation can continue into LLM fallback without the LangGraph `confidence` state-key crash or an equivalent post-env fallback crash terminating the run.
   2. Saved per-case artifacts show whether LLM fallback was invoked and whether it passed, abstained, or failed for each attempted case.
   3. When fallback does not solve a case, the saved artifact still exposes the agent outcome instead of collapsing back into an unlabeled env-only failure.
-**Plans**: `17-01` complete; `17-02` and `17-03` pending
+**Plans**: `17-01`, `17-02`, and `17-03` complete
 
 ### Phase 18: Backend Escalation and Path Truth
 **Goal**: Eligible tier3 failures in `llm` mode can escalate through Docker, and every validation attempt records the actual backend route without regressing Windows or Docker correctness
@@ -79,7 +79,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 17. LLM Fallback Stability and Outcome Tracing | 2/3 | In Progress | 17-01, 17-02 |
+| 17. LLM Fallback Stability and Outcome Tracing | 3/3 | Complete   | 2026-03-31 |
 | 18. Backend Escalation and Path Truth | 0/TBD | Not started | - |
 | 19. Failure Classification and Run-Accounting Integrity | 0/TBD | Not started | - |
 | 20. Dominant Bucket Recovery Gains | 0/TBD | Not started | - |
@@ -90,4 +90,4 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-03-31 (17-02 complete; roadmap progress updated)*
+*Last updated: 2026-03-31 (Phase 17 complete; roadmap progress updated)*
