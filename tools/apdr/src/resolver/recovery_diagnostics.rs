@@ -255,6 +255,80 @@ pub(super) fn update_failure_metadata(
     if validation.failing_package.is_none() {
         validation.failing_package = resolved.iter().last().map(|dep| dep.package_name.clone());
     }
+    update_fallback_metadata(validation);
+}
+
+pub(super) fn fallback_outcome_from_status(status: &str) -> Option<&'static str> {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "passed" => Some("passed"),
+        "abstained" => Some("abstained"),
+        "failed" => Some("failed"),
+        _ => None,
+    }
+}
+
+pub(super) fn update_fallback_metadata(validation: &mut ValidationSummary) {
+    if let Some(attempt) = validation.attempts.iter().rev().find(|attempt| {
+        attempt.validation_backend == crate::VALIDATION_BACKEND_LLM
+            && fallback_outcome_from_status(&attempt.status).is_some()
+    }) {
+        validation.fallback_invoked = true;
+        validation.fallback_outcome =
+            fallback_outcome_from_status(&attempt.status).map(std::string::ToString::to_string);
+        if validation
+            .fallback_reason
+            .as_deref()
+            .is_none_or(|reason| reason.trim().is_empty())
+        {
+            validation.fallback_reason =
+                Some(attempt.log_excerpt.trim().to_string()).filter(|reason| !reason.is_empty());
+        }
+        return;
+    }
+
+    if validation.agent_invocations == 0
+        && !validation.fallback_invoked
+        && validation.fallback_outcome.is_none()
+        && validation.fallback_reason.is_none()
+    {
+        return;
+    }
+
+    validation.fallback_invoked = true;
+    if validation.fallback_outcome.is_none() {
+        validation.fallback_outcome = Some(
+            if validation.succeeded {
+                "passed"
+            } else if validation.status.eq_ignore_ascii_case("abstained") {
+                "abstained"
+            } else {
+                "failed"
+            }
+            .to_string(),
+        );
+    }
+    if validation
+        .fallback_reason
+        .as_deref()
+        .is_none_or(|reason| reason.trim().is_empty())
+    {
+        validation.fallback_reason =
+            validation
+                .reason
+                .clone()
+                .or_else(|| match validation.fallback_outcome.as_deref() {
+                    Some("abstained") => {
+                        Some("LLM fallback abstained without a structured reason.".to_string())
+                    }
+                    Some("failed") => {
+                        Some("LLM fallback failed without a structured reason.".to_string())
+                    }
+                    Some("passed") => {
+                        Some("LLM fallback passed without a structured reason.".to_string())
+                    }
+                    _ => None,
+                });
+    }
 }
 
 /// Returns the last known Python 2.7-compatible version for popular packages.
@@ -1249,4 +1323,49 @@ pub(super) fn check_unsolvable_cache(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ValidationAttempt, VALIDATION_BACKEND_ENV};
+    use std::path::Path;
+
+    #[test]
+    fn phase17_llm_update_failure_metadata_preserves_terminal_fallback_state() {
+        let mut validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            reason: Some("env build failed".to_string()),
+            validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+            attempts: vec![
+                ValidationAttempt {
+                    attempt_index: 1,
+                    validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                    status: "build-failed".to_string(),
+                    log_excerpt: "pip install failed".to_string(),
+                    ..ValidationAttempt::default()
+                },
+                ValidationAttempt {
+                    attempt_index: 2,
+                    validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+                    status: "abstained".to_string(),
+                    log_excerpt: "low confidence after env failure".to_string(),
+                    ..ValidationAttempt::default()
+                },
+            ],
+            agent_invocations: 1,
+            ..ValidationSummary::default()
+        };
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        update_failure_metadata(&mut validation, &config, &[], None);
+
+        assert!(validation.fallback_invoked);
+        assert_eq!(validation.fallback_outcome.as_deref(), Some("abstained"));
+        assert_eq!(
+            validation.fallback_reason.as_deref(),
+            Some("low confidence after env failure")
+        );
+        assert_eq!(validation.status, "environment-build-failed");
+    }
 }

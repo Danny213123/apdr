@@ -198,6 +198,7 @@ pub(super) fn validate_with_retries(
             .build_cache_key
             .clone()
             .or(validation.build_cache_key.clone());
+        validation.agent_invocations += attempt_result.agent_invocations;
         if validation.validation_backend.is_empty() && !attempt_result.validation_backend.is_empty()
         {
             validation.validation_backend = attempt_result.validation_backend.clone();
@@ -206,6 +207,7 @@ pub(super) fn validate_with_retries(
         validation.install_duration_ms += attempt_result.install_duration_ms;
         validation.smoke_duration_ms += attempt_result.smoke_duration_ms;
         validation.attempts.extend(attempt_result.attempts.clone());
+        update_fallback_metadata(&mut validation);
 
         if let Some((pattern, error_type, conflict_class, fix)) = pending_pattern_learning.take() {
             let _ = store.record_failure_pattern_outcome(

@@ -143,6 +143,9 @@ pub struct ValidationSummary {
     pub succeeded: bool,
     pub status: String,
     pub reason: Option<String>,
+    pub fallback_invoked: bool,
+    pub fallback_outcome: Option<String>,
+    pub fallback_reason: Option<String>,
     pub failure_bucket: String,
     pub root_cause: Option<String>,
     pub missing_module: Option<String>,
@@ -576,7 +579,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfailure_bucket: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nvalidation_backend: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -634,6 +637,15 @@ impl ResolveResult {
                 &self.validation.status
             },
             self.validation.reason.as_deref().unwrap_or("--"),
+            self.validation.fallback_invoked,
+            self.validation
+                .fallback_outcome
+                .as_deref()
+                .unwrap_or("--"),
+            self.validation
+                .fallback_reason
+                .as_deref()
+                .unwrap_or("--"),
             if self.validation.failure_bucket.is_empty() {
                 "--"
             } else {
@@ -749,7 +761,7 @@ fn extract_error_hint(log: &str) -> String {
 impl ResolveResult {
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nFAILURE_BUCKET={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nVALIDATION_BACKEND={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -805,6 +817,15 @@ impl ResolveResult {
                 &self.validation.status
             },
             self.validation.reason.as_deref().unwrap_or(""),
+            self.validation.fallback_invoked,
+            self.validation
+                .fallback_outcome
+                .as_deref()
+                .unwrap_or(""),
+            self.validation
+                .fallback_reason
+                .as_deref()
+                .unwrap_or(""),
             self.validation.failure_bucket.as_str(),
             self.validation.root_cause.as_deref().unwrap_or(""),
             self.validation.missing_module.as_deref().unwrap_or(""),
@@ -828,5 +849,85 @@ impl ResolveResult {
             self.validation.context_log_path.as_deref().unwrap_or(""),
             self.validation.iterations_dir.as_deref().unwrap_or("")
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn phase17_llm_fixture_result() -> ResolveResult {
+        ResolveResult {
+            snippet_path: PathBuf::from("snippet.py"),
+            python_version: "3.11".to_string(),
+            parse_result: ParseResult {
+                imports: vec!["requests".to_string()],
+                import_paths: Vec::new(),
+                config_deps: Vec::new(),
+                python_version_min: "3.11".to_string(),
+                python_version_max: None,
+                confidence: 0.9,
+                scanned_files: vec!["snippet.py".to_string()],
+                stdlib_modules: std::collections::BTreeSet::new(),
+                attribute_usage: BTreeMap::new(),
+            },
+            run_contract: RunContractMetadata {
+                run_contract_version: "1".to_string(),
+                model_name: "qwen".to_string(),
+                base_url: "http://localhost:11434".to_string(),
+                run_intent: "benchmark".to_string(),
+                execution_mode: "llm-hybrid".to_string(),
+                cache_state: "warm".to_string(),
+                host_architecture: "arm64".to_string(),
+                apdr_binary_architecture: "arm64".to_string(),
+                python_architecture: "arm64".to_string(),
+                llm_context_window: "8192".to_string(),
+                inference_policy: "phase17".to_string(),
+                build_profile: "debug".to_string(),
+            },
+            solvability: None,
+            resolved: vec![ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.0".to_string()),
+                strategy: "heuristic".to_string(),
+                confidence: 0.91,
+            }],
+            unresolved: Vec::new(),
+            requirements_txt: "requests==2.32.0\n".to_string(),
+            lockfile: None,
+            build_image_id: None,
+            validation: ValidationSummary {
+                succeeded: false,
+                status: "environment-build-failed".to_string(),
+                reason: Some("env build failed".to_string()),
+                fallback_invoked: true,
+                fallback_outcome: Some("failed".to_string()),
+                fallback_reason: Some("state key crash".to_string()),
+                validation_backend: VALIDATION_BACKEND_LLM.to_string(),
+                ..ValidationSummary::default()
+            },
+            resolution_report: ResolutionReport::default(),
+        }
+    }
+
+    #[test]
+    fn phase17_llm_report_text_includes_fallback_fields() {
+        let result = phase17_llm_fixture_result();
+        let report = result.report_text();
+
+        assert!(report.contains("fallback_invoked: true"));
+        assert!(report.contains("fallback_outcome: failed"));
+        assert!(report.contains("fallback_reason: state key crash"));
+    }
+
+    #[test]
+    fn phase17_llm_summary_lines_include_fallback_fields() {
+        let result = phase17_llm_fixture_result();
+        let summary = result.summary_lines(Path::new("requirements.txt"), Path::new("report.txt"));
+
+        assert!(summary.contains("fallback_invoked=true"));
+        assert!(summary.contains("fallback_outcome=failed"));
+        assert!(summary.contains("fallback_reason=state key crash"));
     }
 }
