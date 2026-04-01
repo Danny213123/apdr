@@ -24,6 +24,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
 - Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
 - Phase 20 completed on 2026-04-01: dominant-bucket module and compatibility recovery rules now target the selected March 30 failure families directly, and the repo now ships a deterministic nine-case proof package showing a positive pass delta with lower `module-not-found`, `version-not-found`, and `environment-build-failed` counts on a like-for-like llm-mode slice.
+- Phase 21 completed on 2026-04-01: the repo now carries a live fixed-slice evidence pack with before/after counts, representative case artifacts, a final evidence checker, and a milestone closeout note anchored to the April 1 resumed candidate run.
 
 ## Current Milestone: v2.3 Tier3 Validation Recovery and Reliability
 
@@ -59,7 +60,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 ### Active
 
-- [ ] Publish reviewer-ready live before/after evidence and representative case artifacts for the fixed v2.3 dominant-bucket slice
+- [x] Publish reviewer-ready live before/after evidence and representative case artifacts for the fixed v2.3 dominant-bucket slice
 
 ### Out of Scope
 
@@ -149,4 +150,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-01 after completing Phase 20*
+*Last updated: 2026-04-01 after completing Phase 21*

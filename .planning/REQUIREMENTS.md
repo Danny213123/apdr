@@ -23,7 +23,7 @@ Requirements for the v2.3 milestone. Each will map to exactly one roadmap phase.
 ### Benchmark Evidence
 
 - [x] **EVD-07**: Benchmark operator can trust resumed-run summaries not to mark skipped host-runtime cases as successes
-- [ ] **EVD-08**: Milestone evidence shows before-and-after tier3 bucket counts and representative case-level artifacts for the recovery changes shipped in v2.3
+- [x] **EVD-08**: Milestone evidence shows before-and-after tier3 bucket counts and representative case-level artifacts for the recovery changes shipped in v2.3
 - [x] **EVD-09**: Milestone proof can compare live v2.3 tier3 recovery results against the March 30 2026 baseline without mixing stale historical case metadata into current-run conclusions
 
 ### Compatibility Guardrails
@@ -65,7 +65,7 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 | VAL-03 | Phase 20 | Complete |
 | VAL-04 | Phase 19 | Complete |
 | EVD-07 | Phase 19 | Complete |
-| EVD-08 | Phase 21 | Pending |
+| EVD-08 | Phase 21 | Complete |
 | EVD-09 | Phase 19 | Complete |
 | WIN-02 | Phase 18 | Complete |
 
@@ -76,4 +76,4 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-04-01 after Phase 20 completion*
+*Last updated: 2026-04-01 after Phase 21 completion*

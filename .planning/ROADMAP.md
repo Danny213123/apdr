@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.3 Tier3 Validation Recovery and Reliability** - Phases 17-21
+- [x] **v2.3 Tier3 Validation Recovery and Reliability** - Phases 17-21 completed; ready for milestone closeout on 2026-04-01
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
 - [x] `v2.0` Rust Codebase Modernization - shipped 2026-03-28, archived in `.planning/milestones/v2.0-ROADMAP.md`
@@ -22,7 +22,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 - [x] **Phase 18: Backend Escalation and Path Truth** - Route eligible `llm`-mode failures through Docker and record the actual validation backend path (completed 2026-03-31)
 - [x] **Phase 19: Failure Classification and Run-Accounting Integrity** - Separate host or framework failures from dependency misses and make resumed-run reporting trustworthy (completed 2026-04-01)
 - [x] **Phase 20: Dominant Bucket Recovery Gains** - Turn the repaired fallback and backend path into measurable tier3 improvements on the live baseline buckets (completed 2026-04-01)
-- [ ] **Phase 21: Live Evidence and Closeout Pack** - Publish before-and-after recovery deltas and representative case artifacts for milestone review
+- [x] **Phase 21: Live Evidence and Closeout Pack** - Publish before-and-after recovery deltas and representative case artifacts for milestone review (completed 2026-04-01)
 
 ## Phase Details
 
@@ -73,7 +73,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 **Success Criteria** (what must be TRUE):
   1. Milestone evidence includes before-and-after tier3 bucket counts for the selected v2.3 slice and clearly labels the March 30 2026 baseline versus the v2.3 candidate run.
   2. Milestone evidence includes representative case-level artifacts that show the shipped recovery-path behavior on real tier3 cases.
-**Plans**: `21-01`, `21-02`, and `21-03` planned
+**Plans**: `21-01`, `21-02`, and `21-03` complete
 
 ## Progress
 
@@ -83,11 +83,11 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 | 18. Backend Escalation and Path Truth | 3/3 | Complete    | 2026-03-31 |
 | 19. Failure Classification and Run-Accounting Integrity | 3/3 | Complete    | 2026-04-01 |
 | 20. Dominant Bucket Recovery Gains | 3/3 | Complete    | 2026-04-01 |
-| 21. Live Evidence and Closeout Pack | 0/3 | Planned | - |
+| 21. Live Evidence and Closeout Pack | 3/3 | Complete | 2026-04-01 |
 
 ## Dependencies
 
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-04-01 (Phase 21 planned; ready to execute)*
+*Last updated: 2026-04-01 (Phase 21 complete; milestone ready for closeout)*
