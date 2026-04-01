@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
 status: planning
-stopped_at: Phase 19 complete, Phase 20 ready to plan
-last_updated: "2026-04-01T18:48:29.804Z"
+stopped_at: Phase 20 planned, ready to execute
+last_updated: "2026-04-01T19:03:58Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 9
+  total_plans: 12
   completed_plans: 9
-  percent: 67
+  percent: 75
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready to plan
-**Progress:** [███████░░░] 67%
+**Status:** Planned, ready to execute
+**Progress:** [████████░░] 75%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 19 complete, transitioned to Phase 20
+**Last Activity Description:** Phase 20 planning completed and execution is next
 **Resume File:** None
 
 ---
@@ -36,9 +36,9 @@ progress:
 ## Current Position
 
 Phase: 20
-Plan: Not started
-Status: Ready to discuss or plan
-Last activity: 2026-04-01 -- Phase 19 execution completed and verification passed
+Plan: Planned (`20-01`, `20-02`, `20-03`)
+Status: Ready to execute
+Last activity: 2026-04-01 -- Phase 20 planning completed with research and validation artifacts
 
 ---
 
@@ -46,9 +46,10 @@ Last activity: 2026-04-01 -- Phase 19 execution completed and verification passe
 
 - v2.3 phases completed: 3 of 5
 - v2.3 plans completed: 9
-- Next phase plan count: TBD
+- Next phase plan count: 3
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Latest completed plan: `19-03` in `9 min` across `2` tasks and `5` modified files
+- Planned next plan set: `20-01`, `20-02`, and `20-03` across `3` waves
 
 ---
 
@@ -79,10 +80,13 @@ Last activity: 2026-04-01 -- Phase 19 execution completed and verification passe
 - [Phase 19-failure-classification-and-run-accounting-integrity]: Resumed historical rows must stay separable from live rows so proof and comparison logic can compute live-only conclusions.
 - [Phase 19-failure-classification-and-run-accounting-integrity]: Prove Phase 19 on a fixed March 30 live-derived slice plus a deterministic mixed-provenance fixture.
 - [Phase 19]: Keep benchmark-proof accounting anchored to the March 30 wrapper summary and validate provenance through the real `BenchmarkService` snapshot path.
+- [Phase 20-dominant-bucket-recovery-gains]: Prove gains on a fixed nine-case dominant-bucket slice derived from the March 30 live baseline rather than a full-corpus rerun.
+- [Phase 20-dominant-bucket-recovery-gains]: Attack the dominant buckets with bounded rule/data changes first: module alias recovery and explicit bucket exits, then compatibility replacements and Python floors.
+- [Phase 20-dominant-bucket-recovery-gains]: Keep Phase 20 proof like-for-like by requiring identical `slice_id`, `validation_backend: llm`, and `model_name: qwen3.5:9b` across baseline and candidate artifacts.
 
 ### Pending Todos
 
-- Next step is `$gsd-discuss-phase 20` or `$gsd-plan-phase 20`.
+- Next step is `$gsd-execute-phase 20`.
 
 ### Blockers/Concerns
 
@@ -95,10 +99,10 @@ Last activity: 2026-04-01 -- Phase 19 execution completed and verification passe
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:47:39Z
-Stopped at: Phase 19 complete, Phase 20 ready to plan
+Last session: 2026-04-01T19:03:58Z
+Stopped at: Phase 20 planned, ready to execute
 Resume file: None
 
 ---
 
-*State updated after Phase 19 completion on 2026-04-01*
+*State updated after Phase 20 planning on 2026-04-01*
