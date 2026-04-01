@@ -2498,3 +2498,109 @@ fn phase9_targeted_compatibility_normalizes_transitive_specifier() {
         "pymc3 ceiling should be 3.11"
     );
 }
+
+#[test]
+fn phase20_compat_beautifulsoup_rewrites_to_bs4() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+    let cluster = policy
+        .compatibility_cluster_for_package("BeautifulSoup")
+        .expect("should find a compatibility cluster for BeautifulSoup");
+
+    let mut resolved = vec![apdr::ResolvedDependency {
+        import_name: "BeautifulSoup".to_string(),
+        package_name: "BeautifulSoup".to_string(),
+        version: Some("3.2.2".to_string()),
+        strategy: "cache:seed".to_string(),
+        confidence: 0.7,
+    }];
+
+    let notes = apdr::resolver::targeted_recovery::apply_compatibility_cluster(
+        cluster,
+        &mut resolved,
+        "phase20-test",
+    );
+
+    assert_eq!(cluster.id, "compat-beautifulsoup-rename");
+    assert!(!notes.is_empty(), "expected replacement notes for BeautifulSoup");
+    assert_eq!(resolved[0].package_name, "beautifulsoup4");
+    assert_eq!(resolved[0].version.as_deref(), Some("4.12.3"));
+}
+
+#[test]
+fn phase20_compat_pymc3_keeps_python_floor() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let resolved = vec![apdr::ResolvedDependency {
+        import_name: "pymc3".to_string(),
+        package_name: "pymc3".to_string(),
+        version: Some("3.11.5".to_string()),
+        strategy: "family:legacy-pymc3".to_string(),
+        confidence: 0.9,
+    }];
+
+    let filtered = apdr::resolver::targeted_recovery::filter_candidate_versions_for_resolved(
+        &policy,
+        &resolved,
+        vec![
+            "3.12".to_string(),
+            "3.11".to_string(),
+            "3.10".to_string(),
+            "3.9".to_string(),
+            "2.7".to_string(),
+        ],
+    );
+
+    assert_eq!(filtered, vec!["3.11", "3.10", "3.9"]);
+}
+
+#[test]
+fn phase20_compat_opencv_cluster_converges() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+    let cluster = policy
+        .compatibility_cluster_for_package("opencv-python")
+        .expect("should find a compatibility cluster for opencv-python");
+
+    let mut resolved = vec![
+        apdr::ResolvedDependency {
+            import_name: "cv2".to_string(),
+            package_name: "opencv-python".to_string(),
+            version: Some("4.1.0.25".to_string()),
+            strategy: "heuristic:cv2".to_string(),
+            confidence: 0.7,
+        },
+        apdr::ResolvedDependency {
+            import_name: "numpy".to_string(),
+            package_name: "numpy".to_string(),
+            version: Some("1.21.6".to_string()),
+            strategy: "family:legacy-pymc3".to_string(),
+            confidence: 0.8,
+        },
+    ];
+
+    let notes = apdr::resolver::targeted_recovery::apply_compatibility_cluster(
+        cluster,
+        &mut resolved,
+        "phase20-test",
+    );
+
+    let opencv = resolved
+        .iter()
+        .find(|dep| dep.import_name == "cv2")
+        .expect("expected cv2 dependency");
+    let numpy = resolved
+        .iter()
+        .find(|dep| dep.package_name == "numpy")
+        .expect("expected numpy dependency");
+
+    assert_eq!(cluster.id, "compat-opencv-headless-legacy");
+    assert!(!notes.is_empty(), "expected convergence notes for opencv cluster");
+    assert_eq!(opencv.package_name, "opencv-python-headless");
+    assert_eq!(opencv.version.as_deref(), Some("3.4.11.43"));
+    assert_eq!(numpy.version.as_deref(), Some("1.24.4"));
+}

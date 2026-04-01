@@ -151,7 +151,7 @@ pub(super) fn validate_with_retries(
             break;
         }
 
-        let versions = if config.parallel_versions {
+        let mut versions = if config.parallel_versions {
             family_knowledge::validation_candidate_versions(
                 parse_result,
                 resolved,
@@ -170,6 +170,10 @@ pub(super) fn validate_with_retries(
         } else {
             vec![selected_python.to_string()]
         };
+        if let Some(policy) = targeted_recovery::get_targeted_recovery_policy() {
+            versions =
+                targeted_recovery::filter_candidate_versions_for_resolved(&policy, resolved, versions);
+        }
         iteration_snapshots.push((
             iter_num,
             "candidate-versions.txt".to_string(),
@@ -533,6 +537,22 @@ pub(super) fn validate_with_retries(
             .map(|seen| seen.len() >= 4)
             .unwrap_or(false)
         {
+            if matches!(
+                classified.error_type.as_str(),
+                "BuildFailure" | "DependencyConflict" | "VersionNotFound" | "InvalidVersion"
+            ) {
+                if let Some(note) = try_targeted_compatibility_recovery(&last_log, resolved, None) {
+                    report.retries += 1;
+                    report.notes.push(note.clone());
+                    validation.iteration_history.push(note.clone());
+                    set_repair_strategy(&mut validation, &note);
+                    if let Some(last_attempt) = validation.attempts.last_mut() {
+                        last_attempt.fix_applied = Some(note);
+                    }
+                    retry_state.requirements_dirty = true;
+                    continue;
+                }
+            }
             let note = format!(
                 "Repeated failure signature `{current_signature}` across multiple dependency sets; ending recovery loop."
             );
@@ -619,6 +639,21 @@ pub(super) fn validate_with_retries(
                     "DependencyConflict" | "VersionNotFound" | "InvalidVersion"
                 )
             {
+                if let Some(note) = try_targeted_compatibility_recovery(
+                    &last_log,
+                    resolved,
+                    Some(&package_name),
+                ) {
+                    report.retries += 1;
+                    report.notes.push(note.clone());
+                    validation.iteration_history.push(note.clone());
+                    set_repair_strategy(&mut validation, &note);
+                    if let Some(last_attempt) = validation.attempts.last_mut() {
+                        last_attempt.fix_applied = Some(note);
+                    }
+                    retry_state.requirements_dirty = true;
+                    continue;
+                }
                 let note = format!(
                     "Repeated contradictory pins for `{package_name}` exhausted recovery; ending compatibility retries."
                 );
@@ -1072,7 +1107,10 @@ fn apply_recovery_fix(
         classified.error_type.as_str(),
         "DependencyConflict" | "VersionNotFound" | "InvalidVersion"
     ) {
-        if let Some(note) = try_targeted_compatibility_recovery(log, resolved) {
+        let package_hint = extract_package_and_version(log).map(|(package, _)| package);
+        if let Some(note) =
+            try_targeted_compatibility_recovery(log, resolved, package_hint.as_deref())
+        {
             return Some(note);
         }
         // Also try normalizing transitive specifiers from the log so the
@@ -2035,53 +2073,24 @@ pub(super) fn apply_compatibility_overrides(
 fn try_targeted_compatibility_recovery(
     log: &str,
     resolved: &mut Vec<ResolvedDependency>,
+    package_hint: Option<&str>,
 ) -> Option<String> {
     let policy = targeted_recovery::get_targeted_recovery_policy()?;
-    let cluster = policy.compatibility_cluster_for_log(log)?;
-
-    let mut notes: Vec<String> = Vec::new();
-    let mut applied = false;
-
-    // Apply preferred versions for anchor packages already in the resolved set.
-    for (package, preferred_version) in &cluster.preferred_versions {
-        if let Some(dep_index) = dependency_index_by_package(resolved, package) {
-            let dep = &mut resolved[dep_index];
-            let current = dep.version.as_deref().unwrap_or("(none)").to_string();
-            if dep.version.as_deref() != Some(preferred_version.as_str()) {
-                dep.version = Some(preferred_version.clone());
-                dep.strategy = format!("recovery:phase9-compatibility-{}", cluster.id);
-                dep.confidence = 0.75;
-                notes.push(format!(
-                    "phase9 compatibility [{}]: pinned `{}` from {} to {} (preferred).",
-                    cluster.id, package, current, preferred_version
-                ));
-                applied = true;
-            }
-        }
-    }
-
-    // Apply companion packages from the cluster.
-    for companion in &cluster.companions {
-        if dependency_index_by_package(resolved, &companion.package).is_none() {
-            ensure_dependency(
-                resolved,
-                &companion.package,
-                &companion.package,
-                None,
-                &format!("recovery:phase9-compatibility-{}", cluster.id),
-            );
-            notes.push(format!(
-                "phase9 compatibility [{}]: added companion `{}`.",
-                cluster.id, companion.package
-            ));
-            applied = true;
-        }
-    }
-
-    if applied {
-        Some(notes.join(" "))
-    } else {
+    let cluster = policy
+        .compatibility_cluster_for_log(log)
+        .or_else(|| {
+            package_hint.and_then(|package| policy.compatibility_cluster_for_package(package))
+        })
+        .or_else(|| policy.compatibility_cluster_for_resolved(resolved))?;
+    let notes = targeted_recovery::apply_compatibility_cluster(
+        cluster,
+        resolved,
+        &format!("recovery:phase20-compatibility-{}", cluster.id),
+    );
+    if notes.is_empty() {
         None
+    } else {
+        Some(notes.join(" "))
     }
 }
 
@@ -2128,28 +2137,14 @@ fn try_targeted_transitive_specifier_recovery(
 
                     // Check compatibility clusters for the extracted package
                     if let Some(cluster) = policy.compatibility_cluster_for_package(&pkg_key) {
-                        let mut notes = Vec::new();
-                        let mut changed = false;
-                        for (package, preferred) in &cluster.preferred_versions {
-                            if let Some(dep_index) = dependency_index_by_package(resolved, package)
-                            {
-                                let dep = &mut resolved[dep_index];
-                                if dep.version.as_deref() != Some(preferred.as_str()) {
-                                    dep.version = Some(preferred.clone());
-                                    dep.strategy =
-                                        format!("recovery:phase9-compatibility-{}", cluster.id);
-                                    dep.confidence = 0.75;
-                                    notes.push(format!(
-                                        "pinned `{}` to {} (cluster {})",
-                                        package, preferred, cluster.id
-                                    ));
-                                    changed = true;
-                                }
-                            }
-                        }
-                        if changed {
+                        let notes = targeted_recovery::apply_compatibility_cluster(
+                            cluster,
+                            resolved,
+                            &format!("recovery:phase20-compatibility-{}", cluster.id),
+                        );
+                        if !notes.is_empty() {
                             return Some(format!(
-                                "phase9 transitive specifier: normalized `{}` to `{}` -- {}.",
+                                "phase20 transitive specifier: normalized `{}` to `{}` -- {}.",
                                 candidate,
                                 pkg_key,
                                 notes.join(", ")
