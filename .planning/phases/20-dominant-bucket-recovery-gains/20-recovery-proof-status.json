@@ -1,0 +1,103 @@
+{
+  "baseline_contract": {
+    "checked_cases": [
+      {
+        "failure_bucket": "module-not-found",
+        "relative_path": "hard-gists/04ef258fa29e4e685287a30cf60462d0/snippet.py",
+        "validation_status": "module-not-found"
+      },
+      {
+        "failure_bucket": "module-not-found",
+        "relative_path": "hard-gists/09648344984565f9477a/snippet.py",
+        "validation_status": "module-not-found"
+      },
+      {
+        "failure_bucket": "module-not-found",
+        "relative_path": "hard-gists/101323115e70bb6671d3/snippet.py",
+        "validation_status": "module-not-found"
+      },
+      {
+        "failure_bucket": "version-not-found",
+        "relative_path": "hard-gists/10295174/snippet.py",
+        "validation_status": "version-not-found"
+      },
+      {
+        "failure_bucket": "version-not-found",
+        "relative_path": "hard-gists/1096373/snippet.py",
+        "validation_status": "version-not-found"
+      },
+      {
+        "failure_bucket": "version-not-found",
+        "relative_path": "hard-gists/1239373/snippet.py",
+        "validation_status": "version-not-found"
+      },
+      {
+        "failure_bucket": "environment-build-failed",
+        "relative_path": "hard-gists/00e9638c0efad1adac878522cf172484/snippet.py",
+        "validation_status": "environment-build-failed"
+      },
+      {
+        "failure_bucket": "environment-build-failed",
+        "relative_path": "hard-gists/056626de3fbdc7cf7b59de1d9f6279d1/snippet.py",
+        "validation_status": "environment-build-failed"
+      },
+      {
+        "failure_bucket": "environment-build-failed",
+        "relative_path": "hard-gists/03de5c4c21138da5c29d/snippet.py",
+        "validation_status": "environment-build-failed"
+      }
+    ],
+    "counts": {
+      "failure_buckets": {
+        "environment-build-failed": 3,
+        "module-not-found": 3,
+        "version-not-found": 3
+      },
+      "failures": 9,
+      "passes": 0,
+      "skips": 0
+    },
+    "path": "/Users/dannyguan/Documents/fse-aiware-python-dependencies/.planning/phases/20-dominant-bucket-recovery-gains/20-baseline-sample.json"
+  },
+  "bucket_deltas": {
+    "environment-build-failed": -1,
+    "module-not-found": -1,
+    "version-not-found": -3
+  },
+  "candidate_contract": {
+    "counts": {
+      "failure_buckets": {
+        "environment-build-failed": 2,
+        "module-not-found": 2,
+        "version-not-found": 0
+      },
+      "failures": 4,
+      "passes": 5,
+      "skips": 0
+    },
+    "path": "/Users/dannyguan/Documents/fse-aiware-python-dependencies/.planning/phases/20-dominant-bucket-recovery-gains/20-candidate-sample.json"
+  },
+  "delta_passes": 5,
+  "errors": [],
+  "mode": "probe",
+  "passed": true,
+  "phase": "20",
+  "plan": "03",
+  "probe_only": true,
+  "slice_contract": {
+    "case_count": 9,
+    "path": "/Users/dannyguan/Documents/fse-aiware-python-dependencies/.planning/phases/20-dominant-bucket-recovery-gains/20-dominant-bucket-slice.json",
+    "relative_paths": [
+      "hard-gists/04ef258fa29e4e685287a30cf60462d0/snippet.py",
+      "hard-gists/09648344984565f9477a/snippet.py",
+      "hard-gists/101323115e70bb6671d3/snippet.py",
+      "hard-gists/10295174/snippet.py",
+      "hard-gists/1096373/snippet.py",
+      "hard-gists/1239373/snippet.py",
+      "hard-gists/00e9638c0efad1adac878522cf172484/snippet.py",
+      "hard-gists/056626de3fbdc7cf7b59de1d9f6279d1/snippet.py",
+      "hard-gists/03de5c4c21138da5c29d/snippet.py"
+    ],
+    "slice_id": "phase20-dominant-bucket-proof-2026-03-30"
+  }
+}
