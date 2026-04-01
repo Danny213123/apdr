@@ -77,9 +77,13 @@ pub struct CompatibilityCluster {
     #[serde(default)]
     pub trigger_substrings: Vec<String>,
     #[serde(default)]
+    pub replacement_packages: BTreeMap<String, String>,
+    #[serde(default)]
     pub preferred_versions: BTreeMap<String, String>,
     #[serde(default)]
     pub companions: Vec<CompanionEntry>,
+    #[serde(default)]
+    pub python_floor: Option<String>,
     #[serde(default)]
     pub python_ceiling: Option<String>,
     #[serde(default)]
@@ -225,6 +229,20 @@ impl TargetedRecoveryPolicy {
         None
     }
 
+    pub fn compatibility_cluster_for_resolved(
+        &self,
+        resolved: &[crate::ResolvedDependency],
+    ) -> Option<&CompatibilityCluster> {
+        self.compatibility_clusters.iter().find(|cluster| {
+            cluster.anchor_packages.iter().any(|anchor| {
+                let normalized_anchor = normalize_key(anchor);
+                resolved
+                    .iter()
+                    .any(|dep| normalize_key(&dep.package_name) == normalized_anchor)
+            })
+        })
+    }
+
     /// Find a companion-package rule for a given trigger package.
     pub fn companion_rule_for_package(&self, package: &str) -> Option<&CompanionPackageRule> {
         let key = normalize_key(package);
@@ -255,6 +273,157 @@ pub fn unsolvable_status_for_reason(reason: &str) -> &'static str {
         }
         _ => "skipped-unsolvable",
     }
+}
+
+pub fn apply_compatibility_cluster(
+    cluster: &CompatibilityCluster,
+    resolved: &mut Vec<crate::ResolvedDependency>,
+    strategy: &str,
+) -> Vec<String> {
+    let mut notes = Vec::new();
+
+    for (existing_package, replacement_spec) in &cluster.replacement_packages {
+        let existing_key = normalize_key(existing_package);
+        if let Some(dep_index) = resolved
+            .iter()
+            .position(|dep| normalize_key(&dep.package_name) == existing_key)
+        {
+            let Some((replacement_package, replacement_version)) =
+                parse_replacement_spec(replacement_spec)
+            else {
+                continue;
+            };
+            let dep = &mut resolved[dep_index];
+            let old_package = dep.package_name.clone();
+            let old_version = dep.version.clone();
+            let changed = normalize_key(&old_package) != normalize_key(&replacement_package)
+                || old_version != replacement_version;
+            if changed {
+                dep.package_name = replacement_package.clone();
+                dep.version = replacement_version.clone();
+                dep.strategy = strategy.to_string();
+                dep.confidence = 0.76;
+                notes.push(format!(
+                    "cluster {}: replaced `{}` with `{}{}`.",
+                    cluster.id,
+                    old_package,
+                    replacement_package,
+                    replacement_version
+                        .as_deref()
+                        .map(|version| format!("=={version}"))
+                        .unwrap_or_default()
+                ));
+            }
+        }
+    }
+
+    for (package, preferred_version) in &cluster.preferred_versions {
+        let package_key = normalize_key(package);
+        if let Some(dep_index) = resolved
+            .iter()
+            .position(|dep| normalize_key(&dep.package_name) == package_key)
+        {
+            let dep = &mut resolved[dep_index];
+            if dep.version.as_deref() != Some(preferred_version.as_str()) {
+                let previous = dep.version.clone().unwrap_or_else(|| "(none)".to_string());
+                dep.version = Some(preferred_version.clone());
+                dep.strategy = strategy.to_string();
+                dep.confidence = 0.75;
+                notes.push(format!(
+                    "cluster {}: pinned `{}` from {} to {}.",
+                    cluster.id, dep.package_name, previous, preferred_version
+                ));
+            }
+        }
+    }
+
+    for companion in &cluster.companions {
+        let package_key = normalize_key(&companion.package);
+        if resolved
+            .iter()
+            .all(|dep| normalize_key(&dep.package_name) != package_key)
+        {
+            resolved.push(crate::ResolvedDependency {
+                import_name: companion.package.clone(),
+                package_name: companion.package.clone(),
+                version: None,
+                strategy: strategy.to_string(),
+                confidence: 0.69,
+            });
+            notes.push(format!(
+                "cluster {}: added companion `{}`.",
+                cluster.id, companion.package
+            ));
+        }
+    }
+
+    notes
+}
+
+pub fn filter_candidate_versions_for_resolved(
+    policy: &TargetedRecoveryPolicy,
+    resolved: &[crate::ResolvedDependency],
+    versions: Vec<String>,
+) -> Vec<String> {
+    let original_versions = versions.clone();
+    let mut floor: Option<(u32, u32)> = None;
+    let mut ceiling: Option<(u32, u32)> = None;
+
+    for dep in resolved {
+        if let Some(cluster) = policy.compatibility_cluster_for_package(&dep.package_name) {
+            if let Some(cluster_floor) = cluster.python_floor.as_deref().map(version_tuple_safe) {
+                floor = Some(match floor {
+                    Some(current) => current.max(cluster_floor),
+                    None => cluster_floor,
+                });
+            }
+            if let Some(cluster_ceiling) =
+                cluster.python_ceiling.as_deref().map(version_tuple_safe)
+            {
+                ceiling = Some(match ceiling {
+                    Some(current) => current.min(cluster_ceiling),
+                    None => cluster_ceiling,
+                });
+            }
+        }
+        if let Some(rule) = policy.python_ceiling_for_package(&dep.package_name) {
+            let rule_ceiling = version_tuple_safe(&rule.max_python);
+            ceiling = Some(match ceiling {
+                Some(current) => current.min(rule_ceiling),
+                None => rule_ceiling,
+            });
+        }
+    }
+
+    let filtered = versions
+        .into_iter()
+        .filter(|version| {
+            let tuple = version_tuple_safe(version);
+            floor.map(|min| tuple >= min).unwrap_or(true)
+                && ceiling.map(|max| tuple <= max).unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+
+    if filtered.is_empty() {
+        original_versions
+    } else {
+        filtered
+    }
+}
+
+fn parse_replacement_spec(spec: &str) -> Option<(String, Option<String>)> {
+    let trimmed = spec.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some((package, version)) = trimmed.split_once("==") {
+        return Some((package.trim().to_string(), Some(version.trim().to_string())));
+    }
+    Some((trimmed.to_string(), None))
+}
+
+fn version_tuple_safe(value: &str) -> (u32, u32) {
+    crate::parser::version_detect::version_tuple(value)
 }
 
 // ---------------------------------------------------------------------------
@@ -461,12 +630,14 @@ fn validate_and_build(
         }
 
         if cluster.trigger_substrings.is_empty()
+            && cluster.replacement_packages.is_empty()
             && cluster.preferred_versions.is_empty()
             && cluster.companions.is_empty()
+            && cluster.python_floor.is_none()
             && cluster.python_ceiling.is_none()
         {
             return Err(format!(
-                "compatibility cluster `{}` has no trigger substrings, preferred versions, companions, or python ceiling",
+                "compatibility cluster `{}` has no trigger substrings, replacement packages, preferred versions, companions, python floor, or python ceiling",
                 cluster.id
             ));
         }
