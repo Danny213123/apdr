@@ -1,21 +1,79 @@
 # Roadmap: APDR
 
-**Project:** APDR
-**Status:** No active milestone
-**Last Archived Milestone:** `v2.3` on 2026-04-01
+**Project:** APDR v2.4 - Docker-First LLM Validation Decision and Proof
+**Created:** 2026-04-01
+**Granularity:** Standard (4 phases)
 
 ## Milestones
 
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 22-25 planned; active as of 2026-04-01
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
 - [x] `v2.0` Rust Codebase Modernization - shipped 2026-03-28, archived in `.planning/milestones/v2.0-ROADMAP.md`
 - [x] `v1.0` Accuracy & Performance - shipped 2026-03-27, archived in `.planning/milestones/v1.0-ROADMAP.md`
 
-## Current Status
+## Roadmap v2.4: Docker-First LLM Validation Decision and Proof
 
-No active milestone is open. Start the next milestone with `$gsd-new-milestone`.
+This milestone starts from the repaired v2.3 `llm` path and asks one explicit policy question: should supported `llm` validation go straight to Docker instead of trying env validation first? The work introduces a docker-first control path, keeps safe degradation and truthful metadata, compares docker-first against env-first on a like-for-like slice, and closes with a reviewer-readable recommendation rather than an assumption.
 
-Active requirements are intentionally absent until the next milestone recreates `.planning/REQUIREMENTS.md`.
+## Phases
 
-*Last updated: 2026-04-01 after archiving v2.3*
+- [ ] **Phase 22: Docker-First Policy and Safe Degradation** - Add a docker-first `llm` policy while preserving env-first control mode and safe fallback when Docker is unavailable or unsupported
+- [ ] **Phase 23: Policy Truth and Failure Semantics** - Make requested policy, actual validation path, bypass reasons, and failure-family truth inspectable end to end
+- [ ] **Phase 24: Env-First vs Docker-First Comparison Harness** - Compare the two first-hop policies on a fixed slice with matched model, backend, bucket, and timing contracts
+- [ ] **Phase 25: Docker-First Decision Closeout** - Publish the final evidence-backed recommendation on whether docker-first should replace env-first, remain optional, or be rejected
+
+## Phase Details
+
+### Phase 22: Docker-First Policy and Safe Degradation
+**Goal**: Benchmark operators can explicitly run docker-first `llm` validation on supported hosts without losing the existing env-first control path or breaking unsupported environments
+**Depends on**: Phase 21 complete (v2.3 truth surfaces available)
+**Requirements**: DFV-01, DFV-03, GDR-01
+**Success Criteria** (what must be TRUE):
+  1. Operators can request a docker-first `llm` validation policy that attempts Docker before env validation on supported hosts.
+  2. Operators can still run the existing env-first `llm` policy as a control path for comparison.
+  3. When Docker is unavailable, unsupported, or bypassed for a case, APDR degrades clearly instead of silently breaking `llm` validation.
+
+### Phase 23: Policy Truth and Failure Semantics
+**Goal**: Operators and reviewers can see which first-hop policy was requested, what path actually ran, why docker-first was bypassed when it was, and whether non-pass cases remain classified truthfully
+**Depends on**: Phase 22
+**Requirements**: DFV-02, GDR-02
+**Success Criteria** (what must be TRUE):
+  1. Saved artifacts and benchmark readers expose requested policy, actual validation path, and bypass or fallback reason per case.
+  2. Docker-first evaluation preserves host-runtime and framework-failure truth instead of flattening those cases into generic dependency-resolution failures.
+  3. Reviewers can distinguish docker-first policy behavior from env-first control behavior without scraping raw logs.
+
+### Phase 24: Env-First vs Docker-First Comparison Harness
+**Goal**: The repo can compare docker-first and env-first `llm` behavior on the same slice and report whether the first-hop change helps or hurts correctness and cost
+**Depends on**: Phase 22, Phase 23
+**Requirements**: CMP-01, CMP-02
+**Success Criteria** (what must be TRUE):
+  1. APDR can generate or extract env-first and docker-first artifacts for the same fixed slice with matching model and backend contracts.
+  2. Comparison outputs report pass delta, dominant-bucket delta, and timing delta between the two policies.
+  3. A deterministic checker fails if the comparison drifts from the locked slice or omits required metrics.
+
+### Phase 25: Docker-First Decision Closeout
+**Goal**: v2.4 closes with a reviewer-readable answer to the docker-first policy question, backed by the actual comparison evidence
+**Depends on**: Phase 24
+**Requirements**: EVD-10
+**Success Criteria** (what must be TRUE):
+  1. Closeout artifacts state whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode.
+  2. The recommendation cites the comparison evidence and calls out the main correctness, compatibility, and runtime tradeoffs.
+  3. The final verdict updates requirements, roadmap, and state truth without overstating fixed-slice evidence as a full-corpus result.
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 22. Docker-First Policy and Safe Degradation | 0/0 | Not Started | — |
+| 23. Policy Truth and Failure Semantics | 0/0 | Not Started | — |
+| 24. Env-First vs Docker-First Comparison Harness | 0/0 | Not Started | — |
+| 25. Docker-First Decision Closeout | 0/0 | Not Started | — |
+
+## Dependencies
+
+`Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
+
+*Roadmap created: 2026-04-01*
+*Last updated: 2026-04-01 after milestone initialization*
