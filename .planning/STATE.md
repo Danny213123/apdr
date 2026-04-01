@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: phase_context_gathered
-stopped_at: Phase 22 context gathered
-last_updated: "2026-04-01T23:20:00Z"
+status: planning
+stopped_at: Phase 21.1 planned, ready to execute
+last_updated: "2026-04-01T23:13:08Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -17,11 +17,11 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Phase 22 context gathered
+**Status:** Ready to execute
 **Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 22 context captured for docker-first `llm` policy and safe degradation
-**Resume File:** .planning/phases/22-docker-first-policy-and-safe-degradation/22-CONTEXT.md
+**Last Activity Description:** Phase 21.1 planned and ready for execution
+**Resume File:** None
 
 ---
 
@@ -29,29 +29,31 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 22 planning
+**Current Focus:** Phase 21.1 — repository-footprint-and-download-size-reduction
 
 ---
 
 ## Current Position
 
-Phase: 22
-Plan: —
-Status: Ready to plan Phase 22
-Last activity: 2026-04-01 -- Phase 22 context gathered for docker-first routing policy
+Phase: 21.1
+Plan: `21.1-01`, `21.1-02`, `21.1-03`
+Status: Ready to execute
+Last activity: 2026-04-01 -- Phase 21.1 planning completed and execution plans are ready
 
 ---
 
 ## Performance Metrics
 
 - Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
-- Planned phases: 4
+- Planned phases: 5
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
 - Fixed-slice dominant bucket deltas: `module-not-found -3`, `version-not-found -3`, `environment-build-failed -3`
 - Active live baseline for the shipped evidence: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
+- Current local footprint baseline: `tools ~29G`, `tools/apdr/.apdr-cache ~15G`, `tools/apdr/target ~6.7G`
 
 ---
 
@@ -74,18 +76,28 @@ Last activity: 2026-04-01 -- Phase 22 context gathered for docker-first routing 
 - [Phase 21]: The final candidate evidence came from `runs/20260401-173232-apdr` after resuming `runs/20260401-162919-apdr`; one tail case is preserved explicitly as `validation_status: interrupted` rather than being silently dropped.
 - [Milestone closeout]: v2.3 is archived on the strength of the fixed-slice live evidence pack and should not be presented as a full-corpus rerun win.
 - [Milestone start]: v2.4 begins by testing whether the repaired `llm` path still needs an env-first hop or should move to Docker-first on supported environments.
-- [Milestone structure]: v2.4 phase order is docker-first policy -> policy truth -> env-first-vs-docker-first comparison -> final decision closeout.
+- [Milestone structure]: v2.4 now starts with an urgent repository-footprint reduction phase, then continues docker-first policy -> policy truth -> env-first-vs-docker-first comparison -> final decision closeout.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: The inserted phase should target both GitHub/source-distributed bytes and large local tool outputs, with priority on `tools/` and especially tracked `tools/apdr/target-*` directories plus local `tools/apdr/target` and `tools/apdr/.apdr-cache`.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: Prefer structural/default reduction and supported cleanup flows over docs-only advice to manually delete gigabytes.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: Phase 21.1 is planned as a three-step execution flow: source-distributed artifact cleanup, local cache/build default and cleanup improvements, then a deterministic footprint proof package.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: The proof contract must distinguish tracked source bloat from local cache/build bloat rather than collapsing all reclaimed bytes into one number.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Make docker-first the standard `llm` policy now, but preserve env-first as an explicit comparison control.
 - [Phase 22-docker-first-policy-and-safe-degradation]: If Docker is unavailable or unsupported, fall back to env with an explicit bypass reason instead of failing or skipping the case.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Apply docker-first broadly to `llm` cases except host-runtime or clearly unsuitable cases, and gate support by runtime checks rather than by platform carve-outs.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Each `llm` case should leave Docker-oriented debug artifacts or an explicit Docker-bypass note in its debug folder.
 
+### Roadmap Evolution
+
+- Phase 21.1 inserted before Phase 22: Reduce repository disk footprint and download size (URGENT)
+
 ### Pending Todos
 
-- Plan Phase 22 with `$gsd-plan-phase 22`
+- Next step is `$gsd-execute-phase 21.1`
+- Revisit Phase 22 planning assumptions only after Phase 21.1 execution confirms the footprint contract
 
 ### Blockers/Concerns
 
+- Repo footprint is currently distorted by tracked `tools/apdr/target-*` build outputs and large local APDR cache/build directories; footprint work must preserve reproducibility without treating checked-in binaries as normal source.
 - Do not overstate the fixed-slice evidence as a full-corpus benchmark claim.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
 
@@ -93,10 +105,10 @@ Last activity: 2026-04-01 -- Phase 22 context gathered for docker-first routing 
 
 ## Session Continuity
 
-Last session: 2026-04-01T23:20:00Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-docker-first-policy-and-safe-degradation/22-CONTEXT.md
+Last session: 2026-04-01T23:13:08Z
+Stopped at: Phase 21.1 planned, ready to execute
+Resume file: None
 
 ---
 
-*State updated after Phase 22 context capture on 2026-04-01*
+*State updated after Phase 21.1 planning on 2026-04-01*
