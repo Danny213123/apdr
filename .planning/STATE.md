@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
 status: planning
-stopped_at: Phase 20 complete, Phase 21 ready to plan
-last_updated: "2026-04-01T19:36:12Z"
+stopped_at: Phase 21 planned, ready to execute
+last_updated: "2026-04-01T19:47:02Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 12
+  total_plans: 15
   completed_plans: 12
   percent: 80
 ---
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready to plan
+**Status:** Ready to execute
 **Progress:** [████████░░] 80%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 20 complete, transitioned to Phase 21
+**Last Activity Description:** Phase 21 planned and ready for execution
 **Resume File:** None
 
 ---
@@ -36,9 +36,9 @@ progress:
 ## Current Position
 
 Phase: 21
-Plan: Not started
-Status: Ready to discuss or plan
-Last activity: 2026-04-01 -- Phase 20 execution completed and verification passed
+Plan: `21-01`, `21-02`, `21-03`
+Status: Ready to execute
+Last activity: 2026-04-01 -- Phase 21 planning completed and execution plans are ready
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-01 -- Phase 20 execution completed and verification passe
 
 - v2.3 phases completed: 4 of 5
 - v2.3 plans completed: 12
-- Next phase plan count: TBD
+- Next phase plan count: 3
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Latest completed plan: `20-03` in `17 min` across `2` tasks and `7` modified files
 
@@ -83,10 +83,13 @@ Last activity: 2026-04-01 -- Phase 20 execution completed and verification passe
 - [Phase 20-dominant-bucket-recovery-gains]: Attack the dominant buckets with bounded rule/data changes first: module alias recovery and explicit bucket exits, then compatibility replacements and Python floors.
 - [Phase 20-dominant-bucket-recovery-gains]: Keep Phase 20 proof like-for-like by requiring identical `slice_id`, `validation_backend: llm`, and `model_name: qwen3.5:9b` across baseline and candidate artifacts.
 - [Phase 20]: Keep the dominant-bucket proof contract deterministic in-repo and defer the full live replay evidence package to Phase 21.
+- [Phase 21-live-evidence-and-closeout-pack]: Reuse the fixed Phase 20 nine-case dominant-bucket slice and delta contract rather than widening the evidence surface for closeout.
+- [Phase 21-live-evidence-and-closeout-pack]: Do not treat synthetic candidate samples or pre-Phase-20 saved runs as v2.3 live closeout evidence.
+- [Phase 21-live-evidence-and-closeout-pack]: `EVD-08` only closes when the live artifact pair, representative case pack, and final closeout checker all pass together.
 
 ### Pending Todos
 
-- Next step is `$gsd-discuss-phase 21` or `$gsd-plan-phase 21`.
+- Next step is `$gsd-execute-phase 21`.
 
 ### Blockers/Concerns
 
@@ -94,15 +97,16 @@ Last activity: 2026-04-01 -- Phase 20 execution completed and verification passe
 - Benchmark reporting changes must improve truthfulness without breaking comparability against the March 30 2026 baseline.
 - The fixed-slice Phase 18 proof is deterministic and green, but a real replay of that slice is still useful milestone evidence for later closeout.
 - Phase 21 must turn the deterministic Phase 20 proof package into reviewer-facing live evidence without changing the locked March 30 comparison contract.
+- The newest saved run on disk predates the 2026-04-01 Phase 20 completion, so a fresh live candidate replay is still required for final closeout evidence.
 
 ---
 
 ## Session Continuity
 
 Last session: 2026-04-01T19:36:12Z
-Stopped at: Phase 20 complete, Phase 21 ready to plan
+Stopped at: Phase 21 planned, ready to execute
 Resume file: None
 
 ---
 
-*State updated after Phase 20 completion on 2026-04-01*
+*State updated after Phase 21 planning on 2026-04-01*
