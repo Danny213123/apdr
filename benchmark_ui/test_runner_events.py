@@ -474,6 +474,27 @@ class TestReplayManifest(unittest.TestCase):
         self.assertIn("case-c", str(result[0]))
         self.assertIn("case-a", str(result[1]))
 
+    def test_filter_snippets_by_manifest_accepts_dataset_root_prefixed_paths(self):
+        """Test that manifest paths may include the dataset root directory name."""
+        dataset_dir = Path(self.temp_dir) / "hard-gists"
+        for name in ("case-a", "case-b"):
+            d = dataset_dir / name
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "snippet.py").touch()
+
+        snippets = sorted(dataset_dir.rglob("snippet.py"))
+        manifest = {
+            "slice_id": "test",
+            "cases": [
+                {"relative_path": "hard-gists/case-b/snippet.py"},
+                {"relative_path": "hard-gists/case-a/snippet.py"},
+            ],
+        }
+        result = filter_snippets_by_manifest(snippets, manifest, dataset_dir)
+        self.assertEqual(len(result), 2)
+        self.assertIn("case-b", str(result[0]))
+        self.assertIn("case-a", str(result[1]))
+
     def test_filter_snippets_by_manifest_missing_snippet_raises(self):
         """Test that referencing missing snippets raises ValueError."""
         dataset_dir = Path(self.temp_dir) / "dataset"

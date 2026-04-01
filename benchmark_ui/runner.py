@@ -70,17 +70,22 @@ def filter_snippets_by_manifest(
     """
     # Build a lookup from normalized relative path -> absolute snippet path.
     lookup: dict[str, Path] = {}
+    dataset_root_name = dataset_dir.name.strip()
     for snippet in snippets:
         try:
             rel = str(snippet.relative_to(dataset_dir)).replace("\\", "/")
         except ValueError:
             rel = str(snippet).replace("\\", "/")
         lookup[rel] = snippet
+        if dataset_root_name:
+            lookup.setdefault(f"{dataset_root_name}/{rel}", snippet)
         # Also index by parent-dir/snippet.py for flat layouts.
         parts = rel.split("/")
         if len(parts) >= 2:
             short_key = "/".join(parts[-2:])
             lookup.setdefault(short_key, snippet)
+            if dataset_root_name:
+                lookup.setdefault(f"{dataset_root_name}/{short_key}", snippet)
 
     ordered: list[Path] = []
     missing: list[str] = []
