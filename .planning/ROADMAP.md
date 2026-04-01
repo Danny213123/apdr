@@ -54,7 +54,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
   1. Per-case validation results distinguish framework or host-runtime failures from dependency-resolution failures so environment-specific cases are not counted as generic mapping misses.
   2. Resumed-run summaries do not mark skipped host-runtime cases as successes.
   3. Baseline-versus-candidate comparisons for v2.3 can be produced without mixing stale historical case metadata into current-run conclusions.
-**Plans**: TBD
+**Plans**: `19-01`, `19-02`, and `19-03` pending
 
 ### Phase 20: Dominant Bucket Recovery Gains
 **Goal**: The selected v2.3 tier3 benchmark slice shows real recovery improvements on the dominant live failure buckets after the fallback, routing, and accounting fixes land
@@ -81,7 +81,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 |-------|----------------|--------|-----------|
 | 17. LLM Fallback Stability and Outcome Tracing | 3/3 | Complete    | 2026-03-31 |
 | 18. Backend Escalation and Path Truth | 3/3 | Complete    | 2026-03-31 |
-| 19. Failure Classification and Run-Accounting Integrity | 0/TBD | Not started | - |
+| 19. Failure Classification and Run-Accounting Integrity | 0/3 | Planned | - |
 | 20. Dominant Bucket Recovery Gains | 0/TBD | Not started | - |
 | 21. Live Evidence and Closeout Pack | 0/TBD | Not started | - |
 
@@ -90,4 +90,4 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-03-31 (Phase 18 completed and Phase 19 is next)*
+*Last updated: 2026-04-01 (Phase 19 planned and ready to execute)*
