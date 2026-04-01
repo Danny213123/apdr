@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
 status: planning
-stopped_at: Phase 21.1 planned, ready to execute
-last_updated: "2026-04-01T23:13:08Z"
+stopped_at: Phase 21.1 re-researched and replanned, ready to execute
+last_updated: "2026-04-01T23:36:58Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
@@ -20,7 +20,7 @@ progress:
 **Status:** Ready to execute
 **Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 21.1 planned and ready for execution
+**Last Activity Description:** Phase 21.1 re-researched and replanned with stronger footprint evidence
 **Resume File:** None
 
 ---
@@ -38,7 +38,7 @@ progress:
 Phase: 21.1
 Plan: `21.1-01`, `21.1-02`, `21.1-03`
 Status: Ready to execute
-Last activity: 2026-04-01 -- Phase 21.1 planning completed and execution plans are ready
+Last activity: 2026-04-01 -- Phase 21.1 re-research completed and execution plans refreshed
 
 ---
 
@@ -81,6 +81,7 @@ Last activity: 2026-04-01 -- Phase 21.1 planning completed and execution plans a
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: Prefer structural/default reduction and supported cleanup flows over docs-only advice to manually delete gigabytes.
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: Phase 21.1 is planned as a three-step execution flow: source-distributed artifact cleanup, local cache/build default and cleanup improvements, then a deterministic footprint proof package.
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: The proof contract must distinguish tracked source bloat from local cache/build bloat rather than collapsing all reclaimed bytes into one number.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: Cache-default work must update every direct repo-local fallback, including `ResolveConfig`, cache commands, classify-log, and learned family knowledge, and should reuse `tools/apdr/tests/test_cache.rs` for regression coverage.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Make docker-first the standard `llm` policy now, but preserve env-first as an explicit comparison control.
 - [Phase 22-docker-first-policy-and-safe-degradation]: If Docker is unavailable or unsupported, fall back to env with an explicit bypass reason instead of failing or skipping the case.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Apply docker-first broadly to `llm` cases except host-runtime or clearly unsuitable cases, and gate support by runtime checks rather than by platform carve-outs.
@@ -105,10 +106,10 @@ Last activity: 2026-04-01 -- Phase 21.1 planning completed and execution plans a
 
 ## Session Continuity
 
-Last session: 2026-04-01T23:13:08Z
-Stopped at: Phase 21.1 planned, ready to execute
+Last session: 2026-04-01T23:36:58Z
+Stopped at: Phase 21.1 re-researched and replanned, ready to execute
 Resume file: None
 
 ---
 
-*State updated after Phase 21.1 planning on 2026-04-01*
+*State updated after Phase 21.1 research refresh on 2026-04-01*
