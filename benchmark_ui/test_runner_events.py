@@ -116,6 +116,24 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertEqual(event["caseId"], "test-001")
         self.assertEqual(event["status"], "pass")
 
+    def test_case_complete_event_marks_live_result_origin(self):
+        from datetime import datetime
+        event_queue = Queue()
+
+        def emit_event(event_type, **kwargs):
+            event = {
+                "type": event_type,
+                "timestamp": datetime.now().isoformat(),
+                **kwargs,
+            }
+            event_queue.put_nowait(event)
+
+        emit_event("case_complete", caseId="test-001", status="pass", resultOrigin="live")
+
+        event = event_queue.get_nowait()
+        self.assertEqual(event["resultOrigin"], "live")
+        self.assertNotEqual(event["resultOrigin"], "historical")
+
     def test_runner_emits_progress_after_each_case(self):
         """Test runner emits progress event with completion stats."""
         from datetime import datetime

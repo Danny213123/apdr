@@ -935,6 +935,10 @@ class BenchmarkService:
             "validationBackend": self._result_validation_backend(result),
             "validationPath": self._result_validation_path(result),
             "escalatedBackend": self._result_escalated_backend(result),
+            "failureFamily": self._result_failure_family(result),
+            "failureBucket": self._result_failure_bucket(result),
+            "skipCandidate": self._result_skip_candidate(result),
+            "resultOrigin": self._result_origin(result),
         }
 
     def _append_activity(self, text: str) -> None:
@@ -984,11 +988,18 @@ class BenchmarkService:
         config = self._run_config_from_summary(summary)
         run_contract = contract_from_sources(summary, config)
         results = self._summary_results(summary)
+        historical_results = self._historical_summary_results(summary)
+        live_results = self._live_summary_results(summary)
         completed = len(results)
         total = self._estimate_total_from_summary(summary, config, completed)
         successes = sum(1 for item in results if self._result_succeeded(item))
         skipped = sum(1 for item in results if self._result_skipped(item))
         failures = completed - successes - skipped
+        live_completed = len(live_results)
+        historical_completed = len(historical_results)
+        live_successes = sum(1 for item in live_results if self._result_succeeded(item))
+        live_skipped = sum(1 for item in live_results if self._result_skipped(item))
+        live_failures = live_completed - live_successes - live_skipped
         # Split by deterministic (tier1/tier2) vs LLM (tier3) cases
         # Use tier instead of llm_calls to match frontend categorization logic
         llm_results = [r for r in results if r.get("tier") == "tier3"]
@@ -1047,6 +1058,13 @@ class BenchmarkService:
                 "successes": successes,
                 "failures": failures,
                 "skipped": skipped,
+                "historicalCompleted": historical_completed,
+                "liveCompleted": live_completed,
+                "liveSuccesses": live_successes,
+                "liveFailures": live_failures,
+                "liveSkipped": live_skipped,
+                "liveOnlyAvailable": self._summary_has_separated_history(summary)
+                or not bool(summary.get("resume_from_run_id")),
                 "regularSuccesses": regular_successes,
                 "regularFailures": regular_failures,
                 "regularSkipped": regular_skipped,
@@ -1162,7 +1180,11 @@ class BenchmarkService:
         finished_at = self._parse_timestamp(summary.get("finished_at"))
         if started_at and finished_at:
             return max((finished_at - started_at).total_seconds(), 0.0)
-        return sum(float(item.get("duration_seconds", 0.0)) for item in summary.get("results", []) if isinstance(item, dict))
+        return sum(
+            float(item.get("duration_seconds", 0.0))
+            for item in self._summary_results(summary)
+            if isinstance(item, dict)
+        )
 
     def _historical_title(self, status: str) -> str:
         if status == "completed":
@@ -1630,16 +1652,9 @@ class BenchmarkService:
             return False
         if self._result_has_failure_markers(result):
             return False
-        # Don't trust the stored "succeeded" flag for host-runtime skips that
-        # were reclassified as passes (old runs stored succeeded=False).
-        validation_status = self._result_validation_status(result)
-        is_reclassified_skip = (
-            validation_status.startswith("skipped") or validation_status == "host-runtime-required"
-        )
-        if not is_reclassified_skip:
-            explicit = result.get("succeeded")
-            if explicit is not None:
-                return bool(explicit)
+        explicit = result.get("succeeded")
+        if explicit is not None:
+            return bool(explicit)
         if self._result_requirements(str(result.get("snippet", "")), result):
             return True
         output_files = [str(item) for item in result.get("output_files", []) if str(item).strip()]
@@ -1647,13 +1662,7 @@ class BenchmarkService:
 
     def _result_skipped(self, result: dict[str, Any]) -> bool:
         validation_status = self._result_validation_status(result)
-        is_host_skip = validation_status.startswith("skipped") or validation_status == "host-runtime-required"
-        # Host-runtime skips with valid requirements count as passes —
-        # the dependencies were correctly resolved but can't validate on this host.
-        if is_host_skip:
-            has_requirements = bool(self._result_requirements(str(result.get("snippet", "")), result))
-            if has_requirements and int(result.get("returncode", 1)) == 0:
-                return False
+        if validation_status.startswith("skipped") or validation_status == "host-runtime-required":
             return True
         explicit = result.get("skipped")
         if explicit is not None:
@@ -1722,6 +1731,39 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("validation_reason") or "").strip()
+
+    def _result_failure_family(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("failureFamily") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("failure_family") or "").strip()
+
+    def _result_failure_bucket(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("failureBucket") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("failure_bucket") or "").strip()
+
+    def _result_skip_candidate(self, result: dict[str, Any]) -> bool:
+        direct = result.get("skipCandidate")
+        if direct is not None:
+            return self._as_bool(direct)
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return False
+        return self._as_bool(metadata.get("skip_candidate"))
+
+    def _result_origin(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("resultOrigin") or "").strip()
+        if direct:
+            return direct
+        return "live"
 
     def _result_fallback_invoked(self, result: dict[str, Any]) -> bool:
         direct = result.get("fallbackInvoked")
@@ -1870,19 +1912,48 @@ class BenchmarkService:
         except OSError:
             return []
 
-    def _summary_results(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+    def _summary_has_separated_history(self, summary: dict[str, Any]) -> bool:
+        return isinstance(summary.get("historical_results"), list)
+
+    def _normalize_summary_result_rows(
+        self,
+        items: Any,
+        default_origin: str,
+    ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for item in summary.get("results", []):
+        for item in items or []:
             if not isinstance(item, dict):
                 continue
             result = dict(item)
             snippet = str(result.get("snippet") or "").strip()
             if self._is_artifact_snippet(snippet):
                 continue
+            result["resultOrigin"] = str(result.get("resultOrigin") or default_origin).strip() or default_origin
             result["succeeded"] = self._result_succeeded(result)
             result["skipped"] = self._result_skipped(result)
             results.append(result)
         return results
+
+    def _historical_summary_results(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self._summary_has_separated_history(summary):
+            return []
+        return self._normalize_summary_result_rows(summary.get("historical_results", []), "historical")
+
+    def _live_summary_results(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+        if summary.get("resume_from_run_id") and not self._summary_has_separated_history(summary):
+            return []
+        return self._normalize_summary_result_rows(summary.get("results", []), "live")
+
+    def _summary_results(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+        results = self._historical_summary_results(summary)
+        live_rows = self._live_summary_results(summary)
+        if live_rows:
+            results.extend(live_rows)
+            return results
+        if self._summary_has_separated_history(summary):
+            return results
+        default_origin = "unknown" if summary.get("resume_from_run_id") else "live"
+        return self._normalize_summary_result_rows(summary.get("results", []), default_origin)
 
     def _pass_rate_value(self, successes: int, failures: int) -> float:
         scored = max(successes + failures, 0)

@@ -353,7 +353,10 @@ class BenchmarkWorker(threading.Thread):
                 if snippet_limit:
                     snippets = snippets[:snippet_limit]
 
-            resume_results = [dict(item) for item in (self.run_config.get("_resume_results") or [])]
+            resume_results = [
+                {**dict(item), "resultOrigin": str(dict(item).get("resultOrigin") or "historical")}
+                for item in (self.run_config.get("_resume_results") or [])
+            ]
             resume_lookup = {
                 str(item.get("snippet")).strip()
                 for item in resume_results
@@ -415,7 +418,8 @@ class BenchmarkWorker(threading.Thread):
                 "preflight_warnings": list(preflight_warnings),
                 "started_at": self.state.now_iso(),
                 "status": "running",
-                "results": resume_results,
+                "historical_results": resume_results,
+                "results": [],
                 "benchmark_context_log": self.state.relative_path(context_log),
                 "run_contract": run_contract,
             }
@@ -546,7 +550,10 @@ class BenchmarkWorker(threading.Thread):
                         summary["results"].append(result)
                         self._write_summary(summary)
                         # Emit tier_stats event after case completion
-                        self._emit_tier_stats_event(summary["results"])
+                        self._emit_tier_stats_event([
+                            *summary.get("historical_results", []),
+                            *summary["results"],
+                        ])
                     self._append_context_log(
                         context_log,
                         "case-finished",
@@ -614,7 +621,10 @@ class BenchmarkWorker(threading.Thread):
                             summary["results"].append(result)
                             self._write_summary(summary)
                             # Emit tier_stats event after case completion
-                            self._emit_tier_stats_event(summary["results"])
+                            self._emit_tier_stats_event([
+                                *summary.get("historical_results", []),
+                                *summary["results"],
+                            ])
 
                         with completed_lock:
                             completed_count[0] += 1
@@ -653,7 +663,7 @@ class BenchmarkWorker(threading.Thread):
                     {
                         "status": summary["status"],
                         "finished_at": summary["finished_at"],
-                        "completed": len(summary["results"]),
+                        "completed": len(summary.get("historical_results", [])) + len(summary["results"]),
                     },
                     indent=2,
                     sort_keys=True,
@@ -755,10 +765,6 @@ class BenchmarkWorker(threading.Thread):
         requirements = self._read_requirements_if_updated(requirements_path, existing_requirements_mtime, started_at)
         output_metadata = self._read_output_metadata(output_paths[0]) if output_paths else {}
         skipped = self._output_metadata_skipped(output_metadata)
-        # Host-runtime skips with valid requirements count as passes —
-        # the dependencies were correctly resolved but can't validate on this host.
-        if skipped and bool(requirements) and returncode == 0:
-            skipped = False
         succeeded = not skipped and returncode == 0 and not self._has_failure_markers(captured_tail) and (
             bool(requirements) or bool(outputs)
         )
@@ -777,6 +783,9 @@ class BenchmarkWorker(threading.Thread):
         validation_backend = self._metadata_text(output_metadata.get("validation_backend"))
         validation_path = self._metadata_text(output_metadata.get("validation_path"))
         escalated_backend = self._metadata_text(output_metadata.get("escalated_backend"))
+        failure_family = self._metadata_text(output_metadata.get("failure_family"))
+        failure_bucket = self._metadata_text(output_metadata.get("failure_bucket"))
+        skip_candidate = self._metadata_bool(output_metadata.get("skip_candidate"))
 
         result = {
             "snippet": self.state.relative_path(snippet),
@@ -805,6 +814,10 @@ class BenchmarkWorker(threading.Thread):
             "validationBackend": validation_backend,
             "validationPath": validation_path,
             "escalatedBackend": escalated_backend,
+            "failureFamily": failure_family,
+            "failureBucket": failure_bucket,
+            "skipCandidate": skip_candidate,
+            "resultOrigin": "live",
         }
         if artifact_dir is not None:
             result["artifact_dir"] = self.state.relative_path(artifact_dir)
@@ -837,6 +850,9 @@ class BenchmarkWorker(threading.Thread):
             event_data["validationPath"] = validation_path
         if escalated_backend:
             event_data["escalatedBackend"] = escalated_backend
+        if failure_family:
+            event_data["failureFamily"] = failure_family
+        event_data["resultOrigin"] = "live"
         emit_event("case_complete", **event_data)
 
         # Store tier in result for tier_stats calculation
