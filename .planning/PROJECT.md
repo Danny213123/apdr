@@ -2,7 +2,7 @@
 
 ## What This Is
 
-APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. After the v2.2 measurement and agent-seam work exposed live tier3 reliability gaps, the next milestone focuses on making LLM fallback, backend escalation, and benchmark reporting trustworthy on real benchmark runs.
+APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. The latest shipped milestone, v2.3, hardened live tier3 recovery by fixing the `llm` fallback seam, making backend routing and accounting truthful, and publishing reviewer-readable live evidence on a fixed benchmark slice.
 
 ## Core Value
 
@@ -10,6 +10,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 ## Current State
 
+- v2.3 shipped on 2026-04-01 after 5 phases, 15 plans, and 30 tasks.
+- The fixed live slice used for closeout moved from `0/9` baseline passes to `2/9` candidate passes, with `module-not-found`, `version-not-found`, and `environment-build-failed` each reduced by 3 on that slice.
+- `llm` validation now preserves truthful `fallback_*`, `validation_path`, `escalated_backend`, `failure_family`, and `resultOrigin` surfaces through APDR artifacts and benchmark readers.
+- The final live candidate evidence comes from `runs/20260401-173232-apdr`; one tail case, `hard-gists/1239373/snippet.py`, remains explicitly interrupted and visible in the evidence pack rather than being hidden.
 - v2.0 shipped with 6 completed phases and 17 completed plans.
 - The Rust modernization milestone closed its benchmark and review gates, including BENCH-03 through direct APDR private-memory comparison and BENCH-05 through the inherited five-command Rust review loop.
 - v2.1 delivered data-driven family knowledge migration, targeted recovery context, and verification backfill, but it was superseded before live-proof closeout.
@@ -26,15 +30,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Phase 20 completed on 2026-04-01: dominant-bucket module and compatibility recovery rules now target the selected March 30 failure families directly, and the repo now ships a deterministic nine-case proof package showing a positive pass delta with lower `module-not-found`, `version-not-found`, and `environment-build-failed` counts on a like-for-like llm-mode slice.
 - Phase 21 completed on 2026-04-01: the repo now carries a live fixed-slice evidence pack with before/after counts, representative case artifacts, a final evidence checker, and a milestone closeout note anchored to the April 1 resumed candidate run.
 
-## Current Milestone: v2.3 Tier3 Validation Recovery and Reliability
+## Next Milestone Goals
 
-**Goal:** Improve real tier3 benchmark yield by making LLM fallback, backend escalation, and benchmark reporting trustworthy on live runs.
-
-**Target features:**
-- Fix LangGraph fallback stability so `llm` validation mode can recover after env failure instead of crashing.
-- Add Docker-aware recovery and accurate backend accounting in live `llm` validation runs.
-- Improve tier3 handling for the dominant `module-not-found`, `environment-build-failed`, and `version-not-found` buckets without turning the milestone into another broad rule-table expansion.
-- Produce benchmark evidence that clearly shows before/after recovery deltas and trustworthy per-case status reporting.
+- Expand recovery gains beyond the fixed nine-case slice without regressing the truthful fallback, backend-path, failure-family, and provenance surfaces shipped in v2.3.
+- Decide whether the next milestone should focus on broader tier3 reliability gains, renewed benchmark performance work, or explicit cleanup of unfinished historical debt from superseded milestones.
+- Keep future benchmark claims evidence-backed and bounded; the current v2.3 closeout is a fixed-slice live proof, not a full-corpus victory lap.
 
 ## Requirements
 
@@ -57,10 +57,12 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] `--validation-backend llm` fallback no longer collapses non-pass agent outcomes into unlabeled env-only results, and saved artifacts expose `fallback_invoked`, `fallback_outcome`, and `fallback_reason` - validated in Phase 17: llm-fallback-stability-and-outcome-tracing
 - [x] Eligible tier3 validation failures can escalate through Docker and record the actual backend path taken per attempt - validated in Phase 18: backend-escalation-and-path-truth
 - [x] Resumed-run summaries and per-case artifacts now preserve trustworthy failure classification and live-versus-historical accounting - validated in Phase 19: failure-classification-and-run-accounting-integrity
+- [x] Dominant-bucket recovery rules now improve the fixed March 30 slice while preserving like-for-like backend and model contracts - validated in Phase 20: dominant-bucket-recovery-gains
+- [x] Reviewer-ready live evidence now shows the fixed-slice before/after delta, representative case artifacts, and explicit interrupted-tail truth - validated in Phase 21: live-evidence-and-closeout-pack
 
 ### Active
 
-- [x] Publish reviewer-ready live before/after evidence and representative case artifacts for the fixed v2.3 dominant-bucket slice
+None yet. Define the next active requirement set with `$gsd-new-milestone`.
 
 ### Out of Scope
 
@@ -83,6 +85,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - v2.2 already created useful run-contract, replay, and agent-seam infrastructure, so v2.3 should reuse that groundwork instead of reopening broad measurement or UI work.
 - Benchmark case rows, runtime guidance, and proof artifacts now keep requested backend mode separate from actual routed backend path, which gives Phase 19 a trustworthy routing surface to build on.
 - The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
+- The shipped v2.3 closeout is intentionally fixed-slice scoped; future work must not overstate it as a full-corpus benchmark claim.
 
 ## Constraints
 
@@ -97,28 +100,28 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Start a fresh v2.0 roadmap and ignore remaining v1.0 roadmap items | The previous milestone was a Rust modernization effort, not a continuation of prior feature work | Good |
-| Reset phase numbering to Phase 1 for v2.0 | The previous milestone needed clean sequencing and avoided mixing old phase intent with the modernization roadmap | Good |
-| Skip optional external domain research for v2.0 | The local codebase map and benchmark evidence were the relevant inputs for the brownfield modernization work | Good |
-| Measure before optimizing | Benchmark speed and memory work needed baselines and regression checks, not intuition | Good |
-| Keep the Phase 5 five-command Rust review loop as the Phase 6 closeout contract | Final signoff needed to reuse the same reviewer gate instead of inventing a new one | Good |
-| Close BENCH-03 with direct APDR private-memory comparison instead of wrapper-level RSS | The targeted Rust workflow needed a direct process-level signal when wrapper RSS stayed noisy on Windows | Good |
-| Use `runs\20260327-150339-apdr` as the v2.1 accuracy baseline | The new milestone needs one concrete stopped-run reference before changing family knowledge and LLM recovery behavior | Good |
-| Skip external research for v2.1 by default | This milestone is driven by a local benchmark failure surface and the existing codebase, not by a new external product domain | Pending |
-| Lock the first v2.1 migration boundary to the Phase 7 canonical slice and touched-family fixtures | Phase 8 needs a stable baseline so data-driven family work can be measured instead of guessed | Good |
-| Close Phase 8 with curated touched-family data, bounded Phase 7 fixture regressions, and `check_phase8_family_runtime.py` | Phase 9 recovery work needs a locked runtime boundary and deterministic checker before accuracy changes begin | Good |
-| Open Phase 11 and Phase 12 after the v2.1 milestone audit | The repo had real shipped work, but the audit showed missing verification/state artifacts and no live proof for the recovery-improvement claims | Good |
-| Start v2.2 before closing v2.1 | The next milestone should prioritize stronger agent intelligence and macOS benchmark performance instead of spending more time on the old deterministic recovery path | Pending |
-| Start v2.3 before closing v2.2 live-proof signoff | The latest live run exposed urgent reliability gaps in fallback and backend routing that matter more than extending sample-proof packaging | Pending |
-| Use `runs/20260330-020943-apdr` plus its resumed predecessor `runs/20260330-004502-apdr` as the v2.3 live baseline | The new milestone needs one concrete live failure surface before changing fallback and reporting behavior | Pending |
-| Skip optional external research for v2.3 | This milestone is driven by fresh local benchmark evidence and the existing codebase, not a new external domain | Good |
-| Prioritize fallback stability and backend truth before wider recovery intelligence changes | Agent reasoning improvements are hard to trust while the live fallback path crashes and backend reporting is misleading | Good |
-| Keep `llm` routing env-first in Phase 17 and defer Docker escalation policy to Phase 18 | The immediate need was to restore fallback stability and truthful artifact output without widening the routing surface mid-phase | Good |
-| Keep requested `validation_backend` semantics stable and surface actual route truth in dedicated backend-path fields | Benchmark readers and saved artifacts need to show what really happened without breaking prior configured-backend contracts | Good |
-| Treat Docker as targeted-but-optional for APDR `llm` mode in runtime guidance while keeping pure Docker mode strict | `llm` mode still starts in env validation, but operators need clear warnings about the lost Docker middle hop when Docker is unavailable | Good |
-| Preserve environment-specific validation truth and result provenance before chasing new recovery gains | Bucket-improvement work would be hard to trust while benchmark accounting still mixed host-runtime skips and historical resume rows into live conclusions | Good |
+| Measure before optimizing or claiming wins | APDR milestones rely on benchmark evidence and proof contracts, not intuition | Good |
+| Start v2.3 from the March 30 live baseline instead of the older v2.2 sample-proof package | The active problem was live fallback and routing reliability on real tier3 runs | Good |
+| Keep `llm` routing env-first, then Docker, then `llm-agent` | That preserves existing semantics while still adding targeted recovery for eligible env failures | Good |
+| Keep requested `validation_backend` semantics stable and surface actual route truth separately | Operators need to see what happened without breaking legacy configured-backend meaning | Good |
+| Preserve environment-specific failure truth and live-versus-historical provenance before chasing bucket gains | Recovery deltas are only meaningful if accounting is trustworthy | Good |
+| Close v2.3 only with live fixed-slice evidence and explicit scope limits | The shipped claim should stay honest and reviewer-auditable instead of drifting into full-corpus marketing | Good |
 
 ## Shipped Milestone Snapshot
+
+<details>
+<summary>v2.3 Tier3 Validation Recovery and Reliability</summary>
+
+**Goal:** Improve real tier3 benchmark yield by making LLM fallback, backend escalation, and benchmark reporting trustworthy on live runs.
+
+**Delivered:**
+- Stable `llm` fallback outcomes with explicit fallback metadata.
+- Targeted `env -> docker -> llm-agent` routing and truthful backend-path artifacts.
+- Failure-family and resume-provenance fixes that keep reporting honest.
+- Dominant-bucket recovery gains on a fixed live slice.
+- A live evidence pack showing `0/9 -> 2/9` passes on the locked closeout slice.
+
+</details>
 
 <details>
 <summary>v2.0 Rust Codebase Modernization</summary>
@@ -150,4 +153,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-01 after completing Phase 21*
+*Last updated: 2026-04-01 after archiving v2.3*

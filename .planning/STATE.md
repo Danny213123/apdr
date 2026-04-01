@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Tier3 Validation Recovery and Reliability
-status: completed
-stopped_at: Phase 21 executed; milestone ready for closeout
-last_updated: "2026-04-01T22:15:00Z"
+milestone: null
+milestone_name: null
+status: ready_for_next_milestone
+stopped_at: v2.3 archived; create the next milestone when ready
+last_updated: "2026-04-01T23:30:00Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Milestone ready for closeout
-**Progress:** [██████████] 100%
+**Status:** Ready for next milestone
+**Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 21 completed with live fixed-slice evidence and closeout pack
+**Last Activity Description:** v2.3 archived after live fixed-slice evidence closeout
 **Resume File:** None
 
 ---
@@ -29,25 +29,26 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** v2.3 milestone closeout
+**Current Focus:** define the next milestone
 
 ---
 
 ## Current Position
 
-Phase: 21
-Plan: `21-01`, `21-02`, `21-03`
-Status: Complete
-Last activity: 2026-04-01 -- Phase 21 execution completed and the milestone is ready for closeout
+Phase: None
+Plan: None
+Status: No active milestone
+Last activity: 2026-04-01 -- v2.3 archived and the repo is ready for the next milestone definition
 
 ---
 
 ## Performance Metrics
 
-- v2.3 phases completed: 5 of 5
-- v2.3 plans completed: 15
-- Current milestone readiness: ready for milestone closeout
-- Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
+- Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
+- Shipped scope: 5 phases, 15 plans, 30 tasks
+- Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
+- Fixed-slice dominant bucket deltas: `module-not-found -3`, `version-not-found -3`, `environment-build-failed -3`
+- Active live baseline for the shipped evidence: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
 
 ---
@@ -69,10 +70,11 @@ Last activity: 2026-04-01 -- Phase 21 execution completed and the milestone is r
 - [Phase 21-live-evidence-and-closeout-pack]: Do not treat synthetic candidate samples or pre-Phase-20 saved runs as v2.3 live closeout evidence.
 - [Phase 21-live-evidence-and-closeout-pack]: `EVD-08` closes only when the live artifact pair, representative case pack, and final closeout checker pass together.
 - [Phase 21]: The final candidate evidence came from `runs/20260401-173232-apdr` after resuming `runs/20260401-162919-apdr`; one tail case is preserved explicitly as `validation_status: interrupted` rather than being silently dropped.
+- [Milestone closeout]: v2.3 is archived on the strength of the fixed-slice live evidence pack and should not be presented as a full-corpus rerun win.
 
 ### Pending Todos
 
-- Next step is milestone closeout: `$gsd-complete-milestone`
+- Start the next milestone: `$gsd-new-milestone`
 
 ### Blockers/Concerns
 
@@ -83,10 +85,10 @@ Last activity: 2026-04-01 -- Phase 21 execution completed and the milestone is r
 
 ## Session Continuity
 
-Last session: 2026-04-01T22:15:00Z
-Stopped at: Phase 21 executed; milestone ready for closeout
+Last session: 2026-04-01T23:30:00Z
+Stopped at: v2.3 archived; ready for next milestone
 Resume file: None
 
 ---
 
-*State updated after Phase 21 completion on 2026-04-01*
+*State updated after archiving v2.3 on 2026-04-01*
