@@ -22,6 +22,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
 - Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
+- Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
 
 ## Current Milestone: v2.3 Tier3 Validation Recovery and Reliability
 
@@ -53,11 +54,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Tier3 benchmark artifacts can record agent-mode and inference-policy metadata with an explicit runtime seam - validated in Phase 15: langchain-langgraph-tier3-intelligence-improvements
 - [x] `--validation-backend llm` fallback no longer collapses non-pass agent outcomes into unlabeled env-only results, and saved artifacts expose `fallback_invoked`, `fallback_outcome`, and `fallback_reason` - validated in Phase 17: llm-fallback-stability-and-outcome-tracing
 - [x] Eligible tier3 validation failures can escalate through Docker and record the actual backend path taken per attempt - validated in Phase 18: backend-escalation-and-path-truth
+- [x] Resumed-run summaries and per-case artifacts now preserve trustworthy failure classification and live-versus-historical accounting - validated in Phase 19: failure-classification-and-run-accounting-integrity
 
 ### Active
 
 - [ ] Reduce the dominant `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 failure buckets on the live benchmark baseline from 2026-03-30
-- [ ] Make resumed-run summaries and per-case artifacts trustworthy enough to compare live recovery changes without accounting confusion
 
 ### Out of Scope
 
@@ -113,6 +114,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Keep `llm` routing env-first in Phase 17 and defer Docker escalation policy to Phase 18 | The immediate need was to restore fallback stability and truthful artifact output without widening the routing surface mid-phase | Good |
 | Keep requested `validation_backend` semantics stable and surface actual route truth in dedicated backend-path fields | Benchmark readers and saved artifacts need to show what really happened without breaking prior configured-backend contracts | Good |
 | Treat Docker as targeted-but-optional for APDR `llm` mode in runtime guidance while keeping pure Docker mode strict | `llm` mode still starts in env validation, but operators need clear warnings about the lost Docker middle hop when Docker is unavailable | Good |
+| Preserve environment-specific validation truth and result provenance before chasing new recovery gains | Bucket-improvement work would be hard to trust while benchmark accounting still mixed host-runtime skips and historical resume rows into live conclusions | Good |
 
 ## Shipped Milestone Snapshot
 
@@ -146,4 +148,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after completing Phase 18*
+*Last updated: 2026-04-01 after completing Phase 19*
