@@ -937,6 +937,15 @@ fn skipped_validation_summary(
         status: status.to_string(),
         reason: Some(reason.to_string()),
         failure_bucket: status.to_string(),
+        failure_family: classify_failure_family(&ValidationSummary {
+            succeeded: false,
+            status: status.to_string(),
+            reason: Some(reason.to_string()),
+            failure_bucket: status.to_string(),
+            root_cause: Some(reason.to_string()),
+            skip_candidate: true,
+            ..Default::default()
+        }),
         root_cause: Some(reason.to_string()),
         skip_candidate: true,
         validation_backend: config.validation_backend().to_string(),

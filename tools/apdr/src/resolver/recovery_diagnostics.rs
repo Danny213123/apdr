@@ -4,6 +4,9 @@ use super::retry_loop::{
 use super::*;
 use std::collections::BTreeSet;
 
+const FAILURE_FAMILY_ENVIRONMENT_SPECIFIC: &str = "environment-specific";
+const FAILURE_FAMILY_DEPENDENCY_RESOLUTION: &str = "dependency-resolution";
+
 pub(super) fn normalize_package_key(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace(['_', '.'], "-")
 }
@@ -256,6 +259,93 @@ pub(super) fn update_failure_metadata(
         validation.failing_package = resolved.iter().last().map(|dep| dep.package_name.clone());
     }
     update_fallback_metadata(validation);
+    if validation.failure_family.is_none() {
+        validation.failure_family = classify_failure_family(validation);
+    }
+}
+
+pub(super) fn classify_failure_family(validation: &ValidationSummary) -> Option<String> {
+    if validation.succeeded {
+        return None;
+    }
+
+    let status = validation.status.trim().to_ascii_lowercase();
+    let bucket = validation.failure_bucket.trim().to_ascii_lowercase();
+    if is_environment_specific_status(&status) || is_environment_specific_status(&bucket) {
+        return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
+    }
+
+    if validation
+        .attempts
+        .iter()
+        .any(|attempt| {
+            attempt
+                .error_type
+                .as_deref()
+                .is_some_and(is_environment_specific_error_type)
+                || text_suggests_environment_specific(&attempt.log_excerpt)
+        })
+    {
+        return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
+    }
+
+    if validation
+        .reason
+        .iter()
+        .chain(validation.root_cause.iter())
+        .chain(validation.fallback_reason.iter())
+        .any(|text| text_suggests_environment_specific(text))
+    {
+        return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
+    }
+
+    Some(FAILURE_FAMILY_DEPENDENCY_RESOLUTION.to_string())
+}
+
+fn is_environment_specific_status(value: &str) -> bool {
+    matches!(
+        value,
+        "skipped-host-runtime"
+            | "host-runtime-required"
+            | "docker-permission-denied"
+            | "docker-daemon-unavailable"
+            | "network-unavailable"
+            | "disk-full"
+            | "python-interpreter-unavailable"
+    )
+}
+
+fn is_environment_specific_error_type(value: &str) -> bool {
+    matches!(
+        value,
+        "DockerPermissionDenied"
+            | "DockerDaemonUnavailable"
+            | "NetworkUnavailable"
+            | "DiskFull"
+            | "PythonInterpreterUnavailable"
+    )
+}
+
+fn text_suggests_environment_specific(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "cannot validate this snippet without",
+        "host-application",
+        "host runtime",
+        "framework runtime",
+        "framework dependency",
+        "raspberry pi",
+        "sublime text",
+        "pythonista",
+        "autodesk maya",
+        "docker daemon",
+        "docker api socket",
+        "package index while preparing the local validation environment",
+        "out of local disk space while creating or seeding the validation environment",
+        "could not find a matching local python interpreter",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 pub(super) fn fallback_outcome_from_status(status: &str) -> Option<&'static str> {
@@ -1367,5 +1457,75 @@ mod tests {
             Some("low confidence after env failure")
         );
         assert_eq!(validation.status, "environment-build-failed");
+    }
+
+    #[test]
+    fn phase19_classification_host_runtime_skip_is_environment_specific() {
+        let validation = ValidationSummary {
+            status: "skipped-host-runtime".to_string(),
+            reason: Some(
+                "Detected Raspberry Pi hardware dependency. APDR cannot validate this snippet without Raspberry Pi GPIO/camera access."
+                    .to_string(),
+            ),
+            failure_bucket: "skipped-host-runtime".to_string(),
+            skip_candidate: true,
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
+            Some("environment-specific")
+        );
+    }
+
+    #[test]
+    fn phase19_classification_module_not_found_stays_dependency_resolution() {
+        let validation = ValidationSummary {
+            status: "module-not-found".to_string(),
+            reason: Some(
+                "Missing module `numpy` persisted across multiple dependency sets.".to_string(),
+            ),
+            failure_bucket: "module-not-found".to_string(),
+            missing_module: Some("numpy".to_string()),
+            failing_package: Some("numpy".to_string()),
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "runtime-failed".to_string(),
+                log_excerpt: "ModuleNotFoundError: No module named 'numpy'".to_string(),
+                ..ValidationAttempt::default()
+            }],
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
+            Some("dependency-resolution")
+        );
+    }
+
+    #[test]
+    fn phase19_classification_update_failure_metadata_populates_failure_family() {
+        let mut validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            reason: Some("env build failed".to_string()),
+            failure_bucket: "environment-build-failed".to_string(),
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+                status: "build-failed".to_string(),
+                log_excerpt: "pip install failed".to_string(),
+                ..ValidationAttempt::default()
+            }],
+            ..ValidationSummary::default()
+        };
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        update_failure_metadata(&mut validation, &config, &[], None);
+
+        assert_eq!(
+            validation.failure_family.as_deref(),
+            Some("dependency-resolution")
+        );
     }
 }

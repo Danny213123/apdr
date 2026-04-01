@@ -674,6 +674,7 @@ pub(super) fn validate_with_retries(
             validation.status = "skipped-host-runtime".to_string();
             validation.reason = Some(note.clone());
             validation.failure_bucket = "skipped-host-runtime".to_string();
+            validation.failure_family = Some("environment-specific".to_string());
             validation.root_cause = Some(note.clone());
             validation.skip_candidate = true;
             if let Some(last_attempt) = validation.attempts.last_mut() {
