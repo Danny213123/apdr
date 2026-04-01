@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
-status: ready-to-execute
-stopped_at: Phase 19 planned
-last_updated: "2026-04-01T18:06:33Z"
+status: planning
+stopped_at: Phase 19 complete, Phase 20 ready to plan
+last_updated: "2026-04-01T18:48:29.804Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 9
   percent: 67
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready to execute
+**Status:** Ready to plan
 **Progress:** [███████░░░] 67%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Planned Phase 19 with research, validation strategy, and three execution-ready plans
-**Resume File:** .planning/phases/19-failure-classification-and-run-accounting-integrity/19-01-PLAN.md
+**Last Activity Description:** Phase 19 complete, transitioned to Phase 20
+**Resume File:** None
 
 ---
 
@@ -29,26 +29,26 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Execute Phase 19, `Failure Classification and Run-Accounting Integrity`.
+**Current Focus:** Phase 20 — dominant-bucket-recovery-gains
 
 ---
 
 ## Current Position
 
-Phase: 19 of 21 (Failure Classification and Run-Accounting Integrity)
-Plan: 01-03 queued
-Status: Ready to execute
-Last activity: 2026-04-01 -- Phase 19 planned with research, validation, and execution-ready plan files
+Phase: 20
+Plan: Not started
+Status: Ready to discuss or plan
+Last activity: 2026-04-01 -- Phase 19 execution completed and verification passed
 
 ---
 
 ## Performance Metrics
 
-- v2.3 phases completed: 2 of 5
-- v2.3 plans completed: 6
-- Active phase plan count: 3
+- v2.3 phases completed: 3 of 5
+- v2.3 plans completed: 9
+- Next phase plan count: TBD
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
-- Latest completed plan: `18-03` in `8 min` across `2` tasks and `7` modified files
+- Latest completed plan: `19-03` in `9 min` across `2` tasks and `5` modified files
 
 ---
 
@@ -78,26 +78,27 @@ Last activity: 2026-04-01 -- Phase 19 planned with research, validation, and exe
 - [Phase 19-failure-classification-and-run-accounting-integrity]: Host-runtime and framework-runtime skips must remain skips, never benchmark passes.
 - [Phase 19-failure-classification-and-run-accounting-integrity]: Resumed historical rows must stay separable from live rows so proof and comparison logic can compute live-only conclusions.
 - [Phase 19-failure-classification-and-run-accounting-integrity]: Prove Phase 19 on a fixed March 30 live-derived slice plus a deterministic mixed-provenance fixture.
+- [Phase 19]: Keep benchmark-proof accounting anchored to the March 30 wrapper summary and validate provenance through the real `BenchmarkService` snapshot path.
 
 ### Pending Todos
 
-- Next step is `$gsd-execute-phase 19`.
+- Next step is `$gsd-discuss-phase 20` or `$gsd-plan-phase 20`.
 
 ### Blockers/Concerns
 
 - Do not treat v2.2 sample-backed proof as live evidence for v2.3 closeout.
 - Benchmark reporting changes must improve truthfulness without breaking comparability against the March 30 2026 baseline.
 - The fixed-slice Phase 18 proof is deterministic and green, but a real replay of that slice is still useful milestone evidence for later closeout.
-- Phase 19 accounting changes must preserve the operator-friendly resumed-run view while removing stale historical contamination from live-only comparisons.
+- Phase 20 recovery work must improve dominant tier3 buckets without changing the March 30 baseline contract or muddying the new accounting truth.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:06:33Z
-Stopped at: Phase 19 planned
-Resume file: .planning/phases/19-failure-classification-and-run-accounting-integrity/19-01-PLAN.md
+Last session: 2026-04-01T18:47:39Z
+Stopped at: Phase 19 complete, Phase 20 ready to plan
+Resume file: None
 
 ---
 
-*State updated after Phase 19 planning on 2026-04-01*
+*State updated after Phase 19 completion on 2026-04-01*

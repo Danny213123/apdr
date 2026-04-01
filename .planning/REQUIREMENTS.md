@@ -15,20 +15,20 @@ Requirements for the v2.3 milestone. Each will map to exactly one roadmap phase.
 
 ### Validation Recovery
 
-- [ ] **VAL-01**: Benchmark operator can rerun eligible `environment-build-failed` and `version-not-found` tier3 cases in `llm` mode and have APDR attempt Docker-backed validation before final failure
-- [ ] **VAL-02**: Benchmark operator can inspect each validation attempt to see the actual backend path taken (`env`, `docker`, or `llm-agent`) instead of only the configured run mode
+- [x] **VAL-01**: Benchmark operator can rerun eligible `environment-build-failed` and `version-not-found` tier3 cases in `llm` mode and have APDR attempt Docker-backed validation before final failure
+- [x] **VAL-02**: Benchmark operator can inspect each validation attempt to see the actual backend path taken (`env`, `docker`, or `llm-agent`) instead of only the configured run mode
 - [ ] **VAL-03**: APDR reduces failures in the `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 buckets on the selected v2.3 benchmark slice compared with the March 30 2026 baseline
-- [ ] **VAL-04**: Benchmark operator can distinguish framework or host-runtime failures from dependency-resolution failures in per-case validation results so environment-specific cases are not counted as generic mapping misses
+- [x] **VAL-04**: Benchmark operator can distinguish framework or host-runtime failures from dependency-resolution failures in per-case validation results so environment-specific cases are not counted as generic mapping misses
 
 ### Benchmark Evidence
 
-- [ ] **EVD-07**: Benchmark operator can trust resumed-run summaries not to mark skipped host-runtime cases as successes
+- [x] **EVD-07**: Benchmark operator can trust resumed-run summaries not to mark skipped host-runtime cases as successes
 - [ ] **EVD-08**: Milestone evidence shows before-and-after tier3 bucket counts and representative case-level artifacts for the recovery changes shipped in v2.3
-- [ ] **EVD-09**: Milestone proof can compare live v2.3 tier3 recovery results against the March 30 2026 baseline without mixing stale historical case metadata into current-run conclusions
+- [x] **EVD-09**: Milestone proof can compare live v2.3 tier3 recovery results against the March 30 2026 baseline without mixing stale historical case metadata into current-run conclusions
 
 ### Compatibility Guardrails
 
-- [ ] **WIN-02**: Validation pipeline changes in v2.3 preserve Windows and Docker correctness paths instead of regressing support to env-only validation
+- [x] **WIN-02**: Validation pipeline changes in v2.3 preserve Windows and Docker correctness paths instead of regressing support to env-only validation
 
 ## v2 Requirements
 
@@ -60,14 +60,14 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 | AGT-07 | Phase 17 | Complete |
 | AGT-08 | Phase 17 | Complete |
 | AGT-09 | Phase 20 | Pending |
-| VAL-01 | Phase 18 | Pending |
-| VAL-02 | Phase 18 | Pending |
+| VAL-01 | Phase 18 | Complete |
+| VAL-02 | Phase 18 | Complete |
 | VAL-03 | Phase 20 | Pending |
-| VAL-04 | Phase 19 | Pending |
-| EVD-07 | Phase 19 | Pending |
+| VAL-04 | Phase 19 | Complete |
+| EVD-07 | Phase 19 | Complete |
 | EVD-08 | Phase 21 | Pending |
-| EVD-09 | Phase 19 | Pending |
-| WIN-02 | Phase 18 | Pending |
+| EVD-09 | Phase 19 | Complete |
+| WIN-02 | Phase 18 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
@@ -76,4 +76,4 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-31 after Phase 17 completion*
+*Last updated: 2026-04-01 after Phase 19 completion*
