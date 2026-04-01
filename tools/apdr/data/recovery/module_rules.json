@@ -21,6 +21,27 @@
       "provider_package": "djangorestframework",
       "canonical_case_ids": [],
       "notes": "rest_framework is the import path for djangorestframework; deterministic provider alias."
+    },
+    {
+      "id": "mod-request-requests",
+      "module_aliases": ["request"],
+      "provider_package": "requests",
+      "canonical_case_ids": [],
+      "notes": "Some snippets import the singular module name `request`; recover them deterministically to requests rather than leaving them in module-not-found."
+    },
+    {
+      "id": "mod-eyed3-eyed3",
+      "module_aliases": ["eyeD3"],
+      "provider_package": "eyed3",
+      "canonical_case_ids": [],
+      "notes": "eyeD3 is provided by the eyed3 package on PyPI."
+    },
+    {
+      "id": "mod-cython-distutils",
+      "module_aliases": ["Cython.Distutils"],
+      "provider_package": "Cython",
+      "canonical_case_ids": [],
+      "notes": "Legacy Cython.Distutils imports are provided by the Cython package."
     }
   ],
   "stop_reason_rules": [
@@ -86,6 +107,27 @@
       "reason": "project-local: gisutils is typically a project-local GIS helper module",
       "canonical_case_ids": [],
       "notes": "Not a published PyPI package; recovery retries cannot resolve it."
+    },
+    {
+      "id": "stop-simplegui-runtime",
+      "module_patterns": ["simplegui"],
+      "reason": "host-runtime: CodeSkulptor simplegui runtime is not pip-installable",
+      "canonical_case_ids": [],
+      "notes": "simplegui belongs to the CodeSkulptor host runtime and should not remain in module-not-found."
+    },
+    {
+      "id": "stop-canvas-runtime",
+      "module_patterns": ["canvas"],
+      "reason": "host-runtime: canvas imports require a browser or GUI runtime rather than a PyPI package",
+      "canonical_case_ids": [],
+      "notes": "canvas-backed imports depend on host GUI/browser runtimes rather than a standalone pip install."
+    },
+    {
+      "id": "stop-mosquitto-runtime",
+      "module_patterns": ["mosquitto"],
+      "reason": "system-runtime: mosquitto broker/runtime is not a pip-installable module",
+      "canonical_case_ids": [],
+      "notes": "mosquitto is a broker/runtime dependency and should terminate as a host-runtime style skip."
     }
   ]
 }
