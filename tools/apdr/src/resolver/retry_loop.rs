@@ -558,11 +558,18 @@ pub(super) fn validate_with_retries(
                 // instead of burning LLM retries.
                 if let Some(stop_reason) = targeted_stop_reason_for_module(&module) {
                     let note = format!("Phase 9 targeted stop: module `{module}` — {stop_reason}");
+                    let stop_status =
+                        targeted_recovery::unsolvable_status_for_reason(&stop_reason).to_string();
                     repeat_failure_signature = Some(current_signature.clone());
                     report.notes.push(note.clone());
                     validation.iteration_history.push(note.clone());
+                    validation.status = stop_status.clone();
                     validation.reason = Some(note.clone());
+                    validation.failure_bucket = stop_status.clone();
+                    validation.failure_family = Some("environment-specific".to_string())
+                        .filter(|_| stop_status == "skipped-host-runtime");
                     validation.root_cause = Some(note.clone());
+                    validation.skip_candidate = stop_status == "skipped-host-runtime";
                     if let Some(last_attempt) = validation.attempts.last_mut() {
                         last_attempt.fix_applied = Some(note);
                     }

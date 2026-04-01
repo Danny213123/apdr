@@ -12,10 +12,7 @@ pub(super) fn normalize_package_key(value: &str) -> String {
 }
 
 pub(super) fn unsolvable_status_for_category(category: &str) -> &'static str {
-    match category.trim().to_ascii_lowercase().as_str() {
-        "host-runtime" | "platform-specific" | "system-dependency" => "skipped-host-runtime",
-        _ => "skipped-unsolvable",
-    }
+    super::targeted_recovery::unsolvable_status_for_reason(category)
 }
 
 pub(super) fn set_repair_strategy(validation: &mut ValidationSummary, note: &str) {

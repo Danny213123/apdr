@@ -242,6 +242,21 @@ impl TargetedRecoveryPolicy {
     }
 }
 
+pub fn unsolvable_status_for_reason(reason: &str) -> &'static str {
+    let category = reason
+        .split_once(':')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(reason)
+        .trim()
+        .to_ascii_lowercase();
+    match category.as_str() {
+        "host-runtime" | "platform-specific" | "system-dependency" | "system-runtime" => {
+            "skipped-host-runtime"
+        }
+        _ => "skipped-unsolvable",
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Initialization and loading
 // ---------------------------------------------------------------------------

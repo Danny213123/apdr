@@ -2279,6 +2279,69 @@ fn phase9_targeted_module_marks_project_local_case() {
     );
 }
 
+#[test]
+fn phase20_module_request_alias_recovers_requests() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let rule = policy
+        .module_rule_for_alias("request")
+        .expect("should find a provider rule for request");
+    assert_eq!(rule.id, "mod-request-requests");
+    assert_eq!(rule.provider_package, "requests");
+}
+
+#[test]
+fn phase20_module_simplegui_leaves_module_not_found_bucket() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let stop = policy
+        .stop_reason_for_module("simplegui")
+        .expect("should find a stop-reason rule for simplegui");
+    assert_eq!(stop.id, "stop-simplegui-runtime");
+    assert!(
+        stop.reason.contains("host-runtime"),
+        "simplegui stop reason should contain 'host-runtime', got: {}",
+        stop.reason
+    );
+    assert_eq!(
+        apdr::resolver::targeted_recovery::unsolvable_status_for_reason(&stop.reason),
+        "skipped-host-runtime"
+    );
+
+    let mosquitto = policy
+        .stop_reason_for_module("mosquitto")
+        .expect("should find a stop-reason rule for mosquitto");
+    assert_eq!(mosquitto.id, "stop-mosquitto-runtime");
+    assert_eq!(
+        apdr::resolver::targeted_recovery::unsolvable_status_for_reason(&mosquitto.reason),
+        "skipped-host-runtime"
+    );
+}
+
+#[test]
+fn phase20_module_removed_runtime_becomes_skipped_unsolvable() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let policy = apdr::resolver::targeted_recovery::load_targeted_recovery_policy(&tool_root)
+        .expect("seed policy files should load and validate");
+
+    let stop = policy
+        .stop_reason_for_module("elementtree")
+        .expect("should find a stop-reason rule for elementtree");
+    assert!(
+        stop.reason.contains("removed-runtime"),
+        "elementtree stop reason should contain 'removed-runtime', got: {}",
+        stop.reason
+    );
+    assert_eq!(
+        apdr::resolver::targeted_recovery::unsolvable_status_for_reason(&stop.reason),
+        "skipped-unsolvable"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Phase 9 targeted compatibility recovery tests
 // ---------------------------------------------------------------------------
