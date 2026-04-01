@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: milestone_initialized
-stopped_at: Milestone v2.4 roadmap created; ready to discuss Phase 22
-last_updated: "2026-04-01T23:58:00Z"
+status: phase_context_gathered
+stopped_at: Phase 22 context gathered
+last_updated: "2026-04-01T23:20:00Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 4
@@ -17,11 +17,11 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Milestone initialized
+**Status:** Phase 22 context gathered
 **Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Milestone v2.4 roadmap created for the Docker-first `llm` validation decision
-**Resume File:** None
+**Last Activity Description:** Phase 22 context captured for docker-first `llm` policy and safe degradation
+**Resume File:** .planning/phases/22-docker-first-policy-and-safe-degradation/22-CONTEXT.md
 
 ---
 
@@ -29,7 +29,7 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 22 discussion and planning
+**Current Focus:** Phase 22 planning
 
 ---
 
@@ -37,8 +37,8 @@ progress:
 
 Phase: 22
 Plan: —
-Status: Ready to discuss Phase 22
-Last activity: 2026-04-01 -- Milestone v2.4 initialized with a four-phase roadmap
+Status: Ready to plan Phase 22
+Last activity: 2026-04-01 -- Phase 22 context gathered for docker-first routing policy
 
 ---
 
@@ -75,10 +75,14 @@ Last activity: 2026-04-01 -- Milestone v2.4 initialized with a four-phase roadma
 - [Milestone closeout]: v2.3 is archived on the strength of the fixed-slice live evidence pack and should not be presented as a full-corpus rerun win.
 - [Milestone start]: v2.4 begins by testing whether the repaired `llm` path still needs an env-first hop or should move to Docker-first on supported environments.
 - [Milestone structure]: v2.4 phase order is docker-first policy -> policy truth -> env-first-vs-docker-first comparison -> final decision closeout.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Make docker-first the standard `llm` policy now, but preserve env-first as an explicit comparison control.
+- [Phase 22-docker-first-policy-and-safe-degradation]: If Docker is unavailable or unsupported, fall back to env with an explicit bypass reason instead of failing or skipping the case.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Apply docker-first broadly to `llm` cases except host-runtime or clearly unsuitable cases, and gate support by runtime checks rather than by platform carve-outs.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Each `llm` case should leave Docker-oriented debug artifacts or an explicit Docker-bypass note in its debug folder.
 
 ### Pending Todos
 
-- Start Phase 22 with `$gsd-discuss-phase 22`
+- Plan Phase 22 with `$gsd-plan-phase 22`
 
 ### Blockers/Concerns
 
@@ -89,10 +93,10 @@ Last activity: 2026-04-01 -- Milestone v2.4 initialized with a four-phase roadma
 
 ## Session Continuity
 
-Last session: 2026-04-01T23:58:00Z
-Stopped at: Milestone v2.4 roadmap created; ready to discuss Phase 22
-Resume file: None
+Last session: 2026-04-01T23:20:00Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-docker-first-policy-and-safe-degradation/22-CONTEXT.md
 
 ---
 
-*State updated after initializing v2.4 on 2026-04-01*
+*State updated after Phase 22 context capture on 2026-04-01*
