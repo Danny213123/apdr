@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: ready_for_next_milestone
-stopped_at: v2.3 archived; create the next milestone when ready
-last_updated: "2026-04-01T23:30:00Z"
+milestone: v2.4
+milestone_name: Docker-First LLM Validation Decision and Proof
+status: defining_requirements
+stopped_at: Milestone v2.4 started; defining requirements
+last_updated: "2026-04-01T23:50:00Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 0
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready for next milestone
+**Status:** Defining requirements
 **Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** v2.3 archived after live fixed-slice evidence closeout
+**Last Activity Description:** Milestone v2.4 started to evaluate Docker-first `llm` validation
 **Resume File:** None
 
 ---
@@ -29,7 +29,7 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** define the next milestone
+**Current Focus:** v2.4 Docker-First LLM Validation Decision and Proof
 
 ---
 
@@ -37,13 +37,14 @@ progress:
 
 Phase: None
 Plan: None
-Status: No active milestone
-Last activity: 2026-04-01 -- v2.3 archived and the repo is ready for the next milestone definition
+Status: Defining requirements
+Last activity: 2026-04-01 -- Milestone v2.4 started to evaluate Docker-first `llm` validation
 
 ---
 
 ## Performance Metrics
 
+- Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -71,10 +72,11 @@ Last activity: 2026-04-01 -- v2.3 archived and the repo is ready for the next mi
 - [Phase 21-live-evidence-and-closeout-pack]: `EVD-08` closes only when the live artifact pair, representative case pack, and final closeout checker pass together.
 - [Phase 21]: The final candidate evidence came from `runs/20260401-173232-apdr` after resuming `runs/20260401-162919-apdr`; one tail case is preserved explicitly as `validation_status: interrupted` rather than being silently dropped.
 - [Milestone closeout]: v2.3 is archived on the strength of the fixed-slice live evidence pack and should not be presented as a full-corpus rerun win.
+- [Milestone start]: v2.4 begins by testing whether the repaired `llm` path still needs an env-first hop or should move to Docker-first on supported environments.
 
 ### Pending Todos
 
-- Start the next milestone: `$gsd-new-milestone`
+- Define v2.4 requirements and roadmap
 
 ### Blockers/Concerns
 
@@ -85,10 +87,10 @@ Last activity: 2026-04-01 -- v2.3 archived and the repo is ready for the next mi
 
 ## Session Continuity
 
-Last session: 2026-04-01T23:30:00Z
-Stopped at: v2.3 archived; ready for next milestone
+Last session: 2026-04-01T23:50:00Z
+Stopped at: Milestone v2.4 started; defining requirements
 Resume file: None
 
 ---
 
-*State updated after archiving v2.3 on 2026-04-01*
+*State updated after starting v2.4 on 2026-04-01*
