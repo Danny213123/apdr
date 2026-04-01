@@ -73,7 +73,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 **Success Criteria** (what must be TRUE):
   1. Milestone evidence includes before-and-after tier3 bucket counts for the selected v2.3 slice and clearly labels the March 30 2026 baseline versus the v2.3 candidate run.
   2. Milestone evidence includes representative case-level artifacts that show the shipped recovery-path behavior on real tier3 cases.
-**Plans**: TBD
+**Plans**: `21-01`, `21-02`, and `21-03` planned
 
 ## Progress
 
@@ -83,11 +83,11 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 | 18. Backend Escalation and Path Truth | 3/3 | Complete    | 2026-03-31 |
 | 19. Failure Classification and Run-Accounting Integrity | 3/3 | Complete    | 2026-04-01 |
 | 20. Dominant Bucket Recovery Gains | 3/3 | Complete    | 2026-04-01 |
-| 21. Live Evidence and Closeout Pack | 0/TBD | Not started | - |
+| 21. Live Evidence and Closeout Pack | 0/3 | Planned | - |
 
 ## Dependencies
 
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-04-01 (Phase 20 complete; Phase 21 ready to plan)*
+*Last updated: 2026-04-01 (Phase 21 planned; ready to execute)*
