@@ -11,13 +11,13 @@ Requirements for the v2.3 milestone. Each will map to exactly one roadmap phase.
 
 - [x] **AGT-07**: Benchmark operator can run APDR with `--validation-backend llm` on tier3 cases without the LangGraph fallback crashing after env validation fails
 - [x] **AGT-08**: Benchmark operator can inspect per-case artifacts to see whether the LLM fallback was invoked, passed, abstained, or failed
-- [ ] **AGT-09**: APDR resolves more cases successfully on the selected v2.3 tier3 benchmark slice than the March 30 2026 baseline for the same run mode and model
+- [x] **AGT-09**: APDR resolves more cases successfully on the selected v2.3 tier3 benchmark slice than the March 30 2026 baseline for the same run mode and model
 
 ### Validation Recovery
 
 - [x] **VAL-01**: Benchmark operator can rerun eligible `environment-build-failed` and `version-not-found` tier3 cases in `llm` mode and have APDR attempt Docker-backed validation before final failure
 - [x] **VAL-02**: Benchmark operator can inspect each validation attempt to see the actual backend path taken (`env`, `docker`, or `llm-agent`) instead of only the configured run mode
-- [ ] **VAL-03**: APDR reduces failures in the `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 buckets on the selected v2.3 benchmark slice compared with the March 30 2026 baseline
+- [x] **VAL-03**: APDR reduces failures in the `module-not-found`, `environment-build-failed`, and `version-not-found` tier3 buckets on the selected v2.3 benchmark slice compared with the March 30 2026 baseline
 - [x] **VAL-04**: Benchmark operator can distinguish framework or host-runtime failures from dependency-resolution failures in per-case validation results so environment-specific cases are not counted as generic mapping misses
 
 ### Benchmark Evidence
@@ -59,10 +59,10 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 |-------------|-------|--------|
 | AGT-07 | Phase 17 | Complete |
 | AGT-08 | Phase 17 | Complete |
-| AGT-09 | Phase 20 | Pending |
+| AGT-09 | Phase 20 | Complete |
 | VAL-01 | Phase 18 | Complete |
 | VAL-02 | Phase 18 | Complete |
-| VAL-03 | Phase 20 | Pending |
+| VAL-03 | Phase 20 | Complete |
 | VAL-04 | Phase 19 | Complete |
 | EVD-07 | Phase 19 | Complete |
 | EVD-08 | Phase 21 | Pending |
@@ -76,4 +76,4 @@ Deferred until the live tier3 recovery path is stable and benchmark evidence is 
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-04-01 after Phase 19 completion*
+*Last updated: 2026-04-01 after Phase 20 completion*

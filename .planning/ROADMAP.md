@@ -21,7 +21,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 - [x] **Phase 17: LLM Fallback Stability and Outcome Tracing** - Make `llm` validation mode survive post-env failures and expose inspectable agent outcomes per case (completed 2026-03-31)
 - [x] **Phase 18: Backend Escalation and Path Truth** - Route eligible `llm`-mode failures through Docker and record the actual validation backend path (completed 2026-03-31)
 - [x] **Phase 19: Failure Classification and Run-Accounting Integrity** - Separate host or framework failures from dependency misses and make resumed-run reporting trustworthy (completed 2026-04-01)
-- [ ] **Phase 20: Dominant Bucket Recovery Gains** - Turn the repaired fallback and backend path into measurable tier3 improvements on the live baseline buckets
+- [x] **Phase 20: Dominant Bucket Recovery Gains** - Turn the repaired fallback and backend path into measurable tier3 improvements on the live baseline buckets (completed 2026-04-01)
 - [ ] **Phase 21: Live Evidence and Closeout Pack** - Publish before-and-after recovery deltas and representative case artifacts for milestone review
 
 ## Phase Details
@@ -64,7 +64,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
   1. On the selected v2.3 tier3 slice with the same run mode and model, APDR resolves more cases successfully than the March 30 2026 baseline.
   2. Compared with the March 30 2026 baseline, failures in `module-not-found`, `environment-build-failed`, and `version-not-found` are reduced on that same slice.
   3. The improvement is measured on like-for-like baseline and candidate runs so the recovery delta is attributable to v2.3 changes rather than configuration drift.
-**Plans**: `20-01`, `20-02`, and `20-03` planned
+**Plans**: `20-01`, `20-02`, and `20-03` complete
 
 ### Phase 21: Live Evidence and Closeout Pack
 **Goal**: v2.3 closes with reviewer-readable live evidence that shows the shipped tier3 recovery changes and their benchmark effect
@@ -82,7 +82,7 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 | 17. LLM Fallback Stability and Outcome Tracing | 3/3 | Complete    | 2026-03-31 |
 | 18. Backend Escalation and Path Truth | 3/3 | Complete    | 2026-03-31 |
 | 19. Failure Classification and Run-Accounting Integrity | 3/3 | Complete    | 2026-04-01 |
-| 20. Dominant Bucket Recovery Gains | 0/3 | Planned     | - |
+| 20. Dominant Bucket Recovery Gains | 3/3 | Complete    | 2026-04-01 |
 | 21. Live Evidence and Closeout Pack | 0/TBD | Not started | - |
 
 ## Dependencies
@@ -90,4 +90,4 @@ This milestone starts from the March 30 2026 live tier3 baseline rather than the
 `Phase 17 -> Phase 18 -> Phase 19 -> Phase 20 -> Phase 21`
 
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-04-01 (Phase 20 planned; ready to execute)*
+*Last updated: 2026-04-01 (Phase 20 complete; Phase 21 ready to plan)*

@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tier3 Validation Recovery and Reliability
 status: planning
-stopped_at: Phase 20 planned, ready to execute
-last_updated: "2026-04-01T19:03:58Z"
+stopped_at: Phase 20 complete, Phase 21 ready to plan
+last_updated: "2026-04-01T19:36:12Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 12
-  completed_plans: 9
-  percent: 75
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Planned, ready to execute
-**Progress:** [████████░░] 75%
+**Status:** Ready to plan
+**Progress:** [████████░░] 80%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 20 planning completed and execution is next
+**Last Activity Description:** Phase 20 complete, transitioned to Phase 21
 **Resume File:** None
 
 ---
@@ -29,27 +29,26 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 20 — dominant-bucket-recovery-gains
+**Current Focus:** Phase 21 — live-evidence-and-closeout-pack
 
 ---
 
 ## Current Position
 
-Phase: 20
-Plan: Planned (`20-01`, `20-02`, `20-03`)
-Status: Ready to execute
-Last activity: 2026-04-01 -- Phase 20 planning completed with research and validation artifacts
+Phase: 21
+Plan: Not started
+Status: Ready to discuss or plan
+Last activity: 2026-04-01 -- Phase 20 execution completed and verification passed
 
 ---
 
 ## Performance Metrics
 
-- v2.3 phases completed: 3 of 5
-- v2.3 plans completed: 9
-- Next phase plan count: 3
+- v2.3 phases completed: 4 of 5
+- v2.3 plans completed: 12
+- Next phase plan count: TBD
 - Active live baseline: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
-- Latest completed plan: `19-03` in `9 min` across `2` tasks and `5` modified files
-- Planned next plan set: `20-01`, `20-02`, and `20-03` across `3` waves
+- Latest completed plan: `20-03` in `17 min` across `2` tasks and `7` modified files
 
 ---
 
@@ -83,26 +82,27 @@ Last activity: 2026-04-01 -- Phase 20 planning completed with research and valid
 - [Phase 20-dominant-bucket-recovery-gains]: Prove gains on a fixed nine-case dominant-bucket slice derived from the March 30 live baseline rather than a full-corpus rerun.
 - [Phase 20-dominant-bucket-recovery-gains]: Attack the dominant buckets with bounded rule/data changes first: module alias recovery and explicit bucket exits, then compatibility replacements and Python floors.
 - [Phase 20-dominant-bucket-recovery-gains]: Keep Phase 20 proof like-for-like by requiring identical `slice_id`, `validation_backend: llm`, and `model_name: qwen3.5:9b` across baseline and candidate artifacts.
+- [Phase 20]: Keep the dominant-bucket proof contract deterministic in-repo and defer the full live replay evidence package to Phase 21.
 
 ### Pending Todos
 
-- Next step is `$gsd-execute-phase 20`.
+- Next step is `$gsd-discuss-phase 21` or `$gsd-plan-phase 21`.
 
 ### Blockers/Concerns
 
 - Do not treat v2.2 sample-backed proof as live evidence for v2.3 closeout.
 - Benchmark reporting changes must improve truthfulness without breaking comparability against the March 30 2026 baseline.
 - The fixed-slice Phase 18 proof is deterministic and green, but a real replay of that slice is still useful milestone evidence for later closeout.
-- Phase 20 recovery work must improve dominant tier3 buckets without changing the March 30 baseline contract or muddying the new accounting truth.
+- Phase 21 must turn the deterministic Phase 20 proof package into reviewer-facing live evidence without changing the locked March 30 comparison contract.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-01T19:03:58Z
-Stopped at: Phase 20 planned, ready to execute
+Last session: 2026-04-01T19:36:12Z
+Stopped at: Phase 20 complete, Phase 21 ready to plan
 Resume file: None
 
 ---
 
-*State updated after Phase 20 planning on 2026-04-01*
+*State updated after Phase 20 completion on 2026-04-01*
