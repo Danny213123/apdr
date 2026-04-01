@@ -1,4 +1,5 @@
 target/
+target*/
 .apdr-cache/
 out/
 tests/fixtures/.apdr-docker/
