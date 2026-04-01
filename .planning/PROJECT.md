@@ -2,7 +2,7 @@
 
 ## What This Is
 
-APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. The latest shipped milestone, v2.3, hardened live tier3 recovery by fixing the `llm` fallback seam, making backend routing and accounting truthful, and publishing reviewer-readable live evidence on a fixed benchmark slice. The current milestone, v2.4, is focused on answering whether `llm` validation should stay env-first or move to a Docker-first policy.
+APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. The latest shipped milestone, v2.3, hardened live tier3 recovery by fixing the `llm` fallback seam, making backend routing and accounting truthful, and publishing reviewer-readable live evidence on a fixed benchmark slice. The current milestone, v2.4, now begins by reducing repository and tool-artifact footprint before continuing the Docker-first `llm` policy decision work.
 
 ## Core Value
 
@@ -25,6 +25,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Benchmark summary and case-report accounting still have trust gaps, including resumed-run aggregation confusion and some host-runtime skip rows marked as successes, so reporting correctness is now part of the milestone surface instead of a side concern.
 - The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
 - The next open product question is whether eligible `llm` validation should skip the initial env attempt and go straight to Docker, or whether that would hide useful signal or regress correctness.
+- Current local footprint evidence on 2026-04-01 shows `tools` at about `29G`, with `tools/apdr/.apdr-cache` at about `15G` and `tools/apdr/target` at about `6.7G`.
+- The repo also contains tracked `tools/apdr/target-fix-*` and `tools/apdr/target-test-*` build-output trees, which materially inflate fresh source checkout and GitHub download size.
 - Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
 - Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
@@ -33,9 +35,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 
 ## Current Milestone: v2.4 Docker-First LLM Validation Decision and Proof
 
-**Goal:** Determine whether `llm` validation can skip initial env validation and go straight to Docker without losing correctness, compatibility, or truthful operator evidence.
+**Goal:** First reduce repository and tool-artifact footprint enough to keep local iteration practical, then determine whether `llm` validation can skip initial env validation and go straight to Docker without losing correctness, compatibility, or truthful operator evidence.
 
 **Target features:**
+- Remove or relocate heavyweight tool artifacts so fresh checkouts and local working trees are materially smaller, especially under `tools/apdr`.
 - Add a docker-first `llm` validation policy for explicitly supported environments while preserving safe fallbacks when Docker is unavailable or unsupported.
 - Surface requested validation policy, actual backend path, and bypass or fallback reasons clearly in APDR artifacts and benchmark readers.
 - Compare env-first versus docker-first `llm` behavior on a like-for-like benchmark slice with matching model and backend contracts.
@@ -68,6 +71,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 ### Active
 
 - [ ] Determine whether eligible `llm` validation should go Docker-first instead of env-first.
+- [ ] Reduce repository-distributed and local tool-generated disk footprint before continuing the rest of v2.4.
 - [ ] Preserve truthful artifact, backend-path, and provenance surfaces while evaluating a new routing policy.
 - [ ] Produce evidence-backed guidance on whether Docker-first improves or harms the current tier3 recovery workflow.
 
@@ -93,7 +97,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Benchmark case rows, runtime guidance, and proof artifacts now keep requested backend mode separate from actual routed backend path, which gives Phase 19 a trustworthy routing surface to build on.
 - The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
 - The shipped v2.3 closeout is intentionally fixed-slice scoped; future work must not overstate it as a full-corpus benchmark claim.
-- v2.4 starts from the v2.3 truth surfaces and asks whether the first hop in `llm` mode should still be env validation, or whether Docker should become the first validation backend when it is available.
+- v2.4 now starts with repo-footprint reduction because heavyweight tool artifacts are making local checkouts and GitHub downloads impractical, then returns to the Docker-first routing question from the repaired v2.3 truth surfaces.
 
 ## Constraints
 
@@ -115,6 +119,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Preserve environment-specific failure truth and live-versus-historical provenance before chasing bucket gains | Recovery deltas are only meaningful if accounting is trustworthy | Good |
 | Close v2.3 only with live fixed-slice evidence and explicit scope limits | The shipped claim should stay honest and reviewer-auditable instead of drifting into full-corpus marketing | Good |
 | Start v2.4 by explicitly testing the Docker-first `llm` question instead of assuming the Phase 18 env-first policy is final | The next valuable decision is whether the first validation hop is still paying for itself now that Docker routing and evidence surfaces are repaired | Pending |
+| Insert a pre-22 footprint phase before continuing Docker-first work | Repo-distributed build artifacts and local APDR caches are large enough to distort day-to-day development cost | Good |
 | Skip optional external research for v2.4 | This is a local runtime-policy and evidence question, not a new external product domain | Good |
 
 ## Shipped Milestone Snapshot
@@ -163,4 +168,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-01 after starting v2.4*
+*Last updated: 2026-04-01 after inserting the pre-22 footprint phase*

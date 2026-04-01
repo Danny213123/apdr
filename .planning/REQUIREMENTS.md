@@ -7,6 +7,11 @@
 
 Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 
+### Repository Footprint
+
+- [ ] **DSK-01**: Fresh source checkouts and GitHub downloads should not include avoidable heavyweight tool build outputs or other generated artifacts under `tools/`
+- [ ] **DSK-02**: Developers should be able to avoid or reclaim gigabyte-scale local tool build and cache directories through supported defaults or cleanup flows without breaking normal APDR rebuildability
+
 ### Docker-First Routing
 
 - [ ] **DFV-01**: Benchmark operator can run APDR with a docker-first `llm` validation policy that attempts Docker before env validation on supported hosts
@@ -42,6 +47,7 @@ Deferred until the docker-first policy question is answered.
 
 | Feature | Reason |
 |---------|--------|
+| Immediate Git history rewrite or force-cleaning every developer machine | Start by removing avoidable current-tree bytes and adding supported cleanup paths before attempting a riskier repo-history intervention |
 | Immediate global removal of env validation from every mode | The milestone must answer the policy question with evidence before hard-cutting existing behavior |
 | Full LLM agent or provider replacement | The current question is routing policy, not model-provider churn |
 | Broad deterministic recovery-table expansion unrelated to routing policy | Keep the scope on first-hop validation behavior and its evidence |
@@ -53,6 +59,8 @@ Deferred until the docker-first policy question is answered.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| DSK-01 | Phase 21.1 | Pending |
+| DSK-02 | Phase 21.1 | Pending |
 | DFV-01 | Phase 22 | Pending |
 | DFV-02 | Phase 23 | Pending |
 | DFV-03 | Phase 22 | Pending |
@@ -63,10 +71,10 @@ Deferred until the docker-first policy question is answered.
 | EVD-10 | Phase 25 | Pending |
 
 **Coverage:**
-- v1 requirements: 8 total
-- Mapped to phases: 8
+- v1 requirements: 10 total
+- Mapped to phases: 10
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-01 after initial definition*
+*Last updated: 2026-04-01 after urgent pre-22 footprint phase insertion*
