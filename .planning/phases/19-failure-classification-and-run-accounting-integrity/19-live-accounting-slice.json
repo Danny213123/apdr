@@ -1,0 +1,40 @@
+{
+  "slice_id": "phase19-live-accounting-proof-2026-03-30",
+  "source_run": "runs/20260330-020943-apdr",
+  "source_summary": "runs/20260330-020943-apdr/summary.json",
+  "source_note": "The wrapper summary resolves these frozen March 30 review cases to resumed predecessor artifacts under runs/20260329-165524-apdr.",
+  "cases": [
+    {
+      "relative_path": "hard-gists/0115e0ce312f26ff59f4fbf4f5821ca2/snippet.py",
+      "artifact_dir": "runs/20260329-165524-apdr/cases/0115e0ce312f26ff59f4fbf4f5821ca2",
+      "observed_validation_status": "skipped-host-runtime",
+      "observed_validation_reason": "Detected Raspberry Pi hardware dependency. APDR cannot validate this snippet without Raspberry Pi GPIO/camera access.",
+      "expected_display_status": "skip",
+      "expected_failure_family": "environment-specific"
+    },
+    {
+      "relative_path": "hard-gists/00135b0dfee0ae165ad2/snippet.py",
+      "artifact_dir": "runs/20260329-165524-apdr/cases/00135b0dfee0ae165ad2",
+      "observed_validation_status": "skipped-host-runtime",
+      "observed_validation_reason": "Detected host-application dependency (Maya/PyQt4). APDR cannot validate this snippet without the Autodesk Maya desktop runtime.",
+      "expected_display_status": "skip",
+      "expected_failure_family": "environment-specific"
+    },
+    {
+      "relative_path": "hard-gists/04ef258fa29e4e685287a30cf60462d0/snippet.py",
+      "artifact_dir": "runs/20260329-165524-apdr/cases/04ef258fa29e4e685287a30cf60462d0",
+      "observed_validation_status": "module-not-found",
+      "observed_validation_reason": "Missing module `numpy` persisted across multiple dependency sets; ending recovery as a mapping failure.",
+      "expected_display_status": "fail",
+      "expected_failure_family": "dependency-resolution"
+    },
+    {
+      "relative_path": "hard-gists/00e9638c0efad1adac878522cf172484/snippet.py",
+      "artifact_dir": "runs/20260329-165524-apdr/cases/00e9638c0efad1adac878522cf172484",
+      "observed_validation_status": "environment-build-failed",
+      "observed_validation_reason": "No automatic recovery fix found for BuildFailure. Error: hint: See above for details.",
+      "expected_display_status": "fail",
+      "expected_failure_family": "dependency-resolution"
+    }
+  ]
+}
