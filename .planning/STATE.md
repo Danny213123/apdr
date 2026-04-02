@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: verifying
-stopped_at: Awaiting human verification for Phase 23
-last_updated: "2026-04-02T04:10:47Z"
+status: ready_to_execute
+stopped_at: Phase 24 planned; Phase 23 human verification debt still open
+last_updated: "2026-04-02T06:25:00Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 10
+  completed_phases: 3
+  total_plans: 13
   completed_plans: 10
-  percent: 90
+  percent: 77
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Awaiting human verification
-**Progress:** [█████████░] 90%
+**Status:** Ready to execute
+**Progress:** [███████░░░] 77%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 23 automated verification passed; human browser verification required
+**Last Activity Description:** Phase 24 planning artifacts were created; execution is ready while Phase 23 human verification debt remains visible
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 23 — policy-truth-and-failure-semantics
+**Current Focus:** Phase 24 — env-first-vs-docker-first-comparison-harness
 
 ---
 
 ## Current Position
 
-Phase: 23 (policy-truth-and-failure-semantics) — HUMAN VERIFY
-Plan: 3 of 3
-Status: Awaiting human verification
-Last activity: 2026-04-02 -- Automated checks passed and browser verification items were persisted
+Phase: 24 (env-first-vs-docker-first-comparison-harness) — PLANNED
+Plan: 0 of 3
+Status: Ready to execute
+Last activity: 2026-04-02 -- Research, validation, and three execution plans were created for the paired-policy comparison harness
 
 ---
 
@@ -62,7 +62,8 @@ Last activity: 2026-04-02 -- Automated checks passed and browser verification it
 - Phase 23 plan 01 execution: `7min`, `2 tasks`, `5 files`, commits `9250d48` and `290993a`
 - Phase 23 plan 02 execution: `14min`, `2 tasks`, `6 files`, commits `22f9b40` and `fc4623c`
 - Phase 23 plan 03 execution: `8min`, `2 tasks`, `4 files`, commits `a4a3545` and `7bf568f`
-- Next phase plan count: pending human verification
+- Current phase plan count: 3
+- Pending upstream verification debt: Phase 23 browser UAT still has 2 unresolved items
 
 ---
 
@@ -122,7 +123,8 @@ Last activity: 2026-04-02 -- Automated checks passed and browser verification it
 
 ### Pending Todos
 
-- Next step is human verification from `23-HUMAN-UAT.md`, then respond `approved` or report issues
+- Execute Phase 24 to build the paired env-first versus docker-first comparison harness
+- Clear the remaining Phase 23 human verification items in `23-HUMAN-UAT.md` before milestone closeout
 
 ### Blockers/Concerns
 
@@ -130,15 +132,17 @@ Last activity: 2026-04-02 -- Automated checks passed and browser verification it
 - Do not overstate the Phase 21.1 footprint proof as a Git history rewrite; it improves the current tree and future defaults.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
 - Phase 23 must add case-level truth fields without breaking saved-run compatibility or widening into a broader UI redesign.
+- Phase 24 must compare matched env-first and docker-first `llm` artifacts on the same slice and should not be mistaken for the final Phase 25 keep/optional/reject verdict.
+- Phase 23 browser UAT debt is still open and must remain visible in downstream proof notes.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-02T04:10:47Z
-Stopped at: Awaiting human verification for Phase 23
+Last session: 2026-04-02T06:25:00Z
+Stopped at: Phase 24 planned; ready to execute with Phase 23 human verification debt still open
 Resume file: None
 
 ---
 
-*State updated after Phase 23 automated execution and human-verification gate on 2026-04-02*
+*State updated after Phase 24 planning on 2026-04-02*
