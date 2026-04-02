@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: executing
-stopped_at: Completed 22-docker-first-policy-and-safe-degradation-02-PLAN.md
-last_updated: "2026-04-02T01:08:48.937Z"
+status: verifying
+stopped_at: Completed 22-docker-first-policy-and-safe-degradation-03-PLAN.md
+last_updated: "2026-04-02T01:25:47.285Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready to execute
-**Progress:** [████████░░] 83%
+**Status:** Phase complete — ready for verification
+**Progress:** [██████████] 100%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Completed Phase 22 plan 02 and advanced to plan 03
+**Last Activity Description:** Completed Phase 22 plan 03 and moved Phase 22 to ready for verification
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 22 — docker-first-policy-and-safe-degradation
+**Current Focus:** Phase 22 closeout verification and Phase 23 handoff
 
 ---
 
 ## Current Position
 
-Phase: 22 (docker-first-policy-and-safe-degradation) — EXECUTING
+Phase: 22 (docker-first-policy-and-safe-degradation) — COMPLETE
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-04-02 -- Completed plan 22-02 and advanced to plan 22-03
+Status: Phase complete — ready for verification
+Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy proof contract
 
 ---
 
@@ -57,6 +57,7 @@ Last activity: 2026-04-02 -- Completed plan 22-02 and advanced to plan 22-03
 - Current local footprint candidate: `tools ~2.9G`, `tools/apdr/.apdr-cache ~1.3G`, `tools/apdr/target` removed
 - Phase 22 plan 01 execution: `9min`, `2 tasks`, `5 files`, commits `ebd3810` and `e787cff`
 - Phase 22 plan 02 execution: `4min`, `2 tasks`, `8 files`, commits `211f55e` and `454f416`
+- Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
 
 ---
 
@@ -95,6 +96,8 @@ Last activity: 2026-04-02 -- Completed plan 22-02 and advanced to plan 22-03
 - [Phase 22-docker-first-policy-and-safe-degradation]: Keep llm_validation_policy normalized as docker-first or env-first while validation_backend remains llm.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Surface the selected llm policy in preview and saved-run info fields instead of widening the backend name.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Rewrite Doctor copy around docker-first degradation to env validation instead of targeted Docker escalation.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Persisted requested llm policy, route category, and bypass details in top-level APDR outputs instead of relying on debug-folder inspection alone.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Used a contract-shaped Phase 22 proof slice with archetype identifiers rather than implying a live comparison harness before Phase 24.
 
 ### Roadmap Evolution
 
@@ -102,8 +105,8 @@ Last activity: 2026-04-02 -- Completed plan 22-02 and advanced to plan 22-03
 
 ### Pending Todos
 
-- Next step is execute plan `22-03`
-- Keep Phase 22 execution within policy, degradation, and debug-artifact scope; detailed case-row Docker build visibility remains deferred to Phase 23
+- Next step is verify the completed Phase 22 artifacts and begin Phase 23 planning.
+- Keep detailed case-row Docker build visibility deferred to Phase 23; Phase 22 only locked the routing/degradation contract.
 
 ### Blockers/Concerns
 
@@ -115,10 +118,10 @@ Last activity: 2026-04-02 -- Completed plan 22-02 and advanced to plan 22-03
 
 ## Session Continuity
 
-Last session: 2026-04-02T01:08:48.921Z
-Stopped at: Completed 22-docker-first-policy-and-safe-degradation-02-PLAN.md
+Last session: 2026-04-02T01:25:47.281Z
+Stopped at: Completed 22-docker-first-policy-and-safe-degradation-03-PLAN.md
 Resume file: None
 
 ---
 
-*State updated after Phase 22 plan 02 completion on 2026-04-02*
+*State updated after Phase 22 plan 03 completion on 2026-04-02*
