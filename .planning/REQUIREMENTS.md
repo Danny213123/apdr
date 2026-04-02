@@ -15,7 +15,7 @@ Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 ### Docker-First Routing
 
 - [x] **DFV-01**: Benchmark operator can run APDR with a docker-first `llm` validation policy that attempts Docker before env validation on supported hosts
-- [ ] **DFV-02**: Benchmark operator can inspect each case to see whether docker-first policy was honored, bypassed, or fell back, including the requested policy, actual backend path, and bypass reason
+- [x] **DFV-02**: Benchmark operator can inspect each case to see whether docker-first policy was honored, bypassed, or fell back, including the requested policy, actual backend path, and bypass reason
 - [x] **DFV-03**: Benchmark operator can still run the existing env-first `llm` policy as a comparison control while docker-first is being evaluated
 
 ### Comparison Evidence
@@ -62,7 +62,7 @@ Deferred until the docker-first policy question is answered.
 | DSK-01 | Phase 21.1 | Completed |
 | DSK-02 | Phase 21.1 | Completed |
 | DFV-01 | Phase 22 | Completed |
-| DFV-02 | Phase 23 | Pending |
+| DFV-02 | Phase 23 | Complete |
 | DFV-03 | Phase 22 | Completed |
 | CMP-01 | Phase 24 | Pending |
 | CMP-02 | Phase 24 | Pending |
@@ -77,4 +77,4 @@ Deferred until the docker-first policy question is answered.
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-02 after Phase 22 gap closure completed and GDR-01 was marked complete*
+*Last updated: 2026-04-02 after Phase 23 plan 01 completed and DFV-02 was marked complete*

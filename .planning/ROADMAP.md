@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 is planned, and Phases 24-25 remain upcoming after the 2026-04-02 policy-truth planning pass
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 is in progress after plan 23-01, and Phases 24-25 remain upcoming
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
@@ -81,7 +81,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 |-------|----------------|--------|-----------|
 | 21.1. Repository Footprint and Download Size Reduction | 3/3 | Completed | 2026-04-01 |
 | 22. Docker-First Policy and Safe Degradation | 4/4 | Complete   | 2026-04-02 |
-| 23. Policy Truth and Failure Semantics | 0/3 | Planned | — |
+| 23. Policy Truth and Failure Semantics | 1/3 | In Progress | — |
 | 24. Env-First vs Docker-First Comparison Harness | 0/0 | Not Started | — |
 | 25. Docker-First Decision Closeout | 0/0 | Not Started | — |
 
@@ -90,4 +90,4 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 `Phase 21.1 -> Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
 
 *Roadmap created: 2026-04-01*
-*Last updated: 2026-04-02 (Phase 23 planned)*
+*Last updated: 2026-04-02 (Phase 23 plan 01 completed)*

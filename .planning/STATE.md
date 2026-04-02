@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: planning
-stopped_at: Phase 23 planned, ready to execute
-last_updated: "2026-04-02T02:31:37Z"
+status: executing
+stopped_at: Completed 23-policy-truth-and-failure-semantics-01-PLAN.md
+last_updated: "2026-04-02T03:22:33.698Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
-  percent: 40
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready to execute
-**Progress:** [████░░░░░░] 40%
+**Status:** Executing Phase 23
+**Progress:** [████████░░] 80%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 23 planned and ready for execution
+**Last Activity Description:** Phase 23 plan 01 completed
 **Resume File:** None
 
 ---
@@ -35,10 +35,10 @@ progress:
 
 ## Current Position
 
-Phase: 23
-Plan: `23-01`, `23-02`, `23-03`
+Phase: 23 (policy-truth-and-failure-semantics) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-04-02 -- Phase 23 planning completed and execution plans are ready
+Last activity: 2026-04-02
 
 ---
 
@@ -59,6 +59,7 @@ Last activity: 2026-04-02 -- Phase 23 planning completed and execution plans are
 - Phase 22 plan 02 execution: `4min`, `2 tasks`, `8 files`, commits `211f55e` and `454f416`
 - Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
 - Phase 22 plan 04 execution: `6min`, `2 tasks`, `10 files`, commits `447502d`, `ff779a1`, and `883495b`
+- Phase 23 plan 01 execution: `7min`, `2 tasks`, `5 files`, commits `9250d48` and `290993a`
 - Next phase plan count: 3
 
 ---
@@ -106,6 +107,8 @@ Last activity: 2026-04-02 -- Phase 23 planning completed and execution plans are
 - [Phase 23-policy-truth-and-failure-semantics]: Surface requested policy, route label, Docker bypass reason, bypass note, and debug artifact pointers through benchmark rows and live events instead of relying on raw metadata inspection.
 - [Phase 23-policy-truth-and-failure-semantics]: Keep the UI change additive by extending expanded LLM case details with a `Validation truth` section rather than redesigning the benchmark tables.
 - [Phase 23-policy-truth-and-failure-semantics]: Freeze GDR-02 with a deterministic policy-truth slice that includes Docker attempt, env-first control, Docker CLI bypass, Docker daemon bypass, host-runtime pre-skip, and framework/runtime environment-specific archetypes.
+- [Phase 23-policy-truth-and-failure-semantics]: Keep requested policy and route metadata additive so validationBackend and validationPath remain the actual execution truth.
+- [Phase 23-policy-truth-and-failure-semantics]: Use the same camelCase policy-truth keys for saved rows and live events to avoid another inspection-schema fork.
 
 ### Roadmap Evolution
 
@@ -126,10 +129,10 @@ Last activity: 2026-04-02 -- Phase 23 planning completed and execution plans are
 
 ## Session Continuity
 
-Last session: 2026-04-02T02:31:37Z
-Stopped at: Phase 23 planned, ready to execute
+Last session: 2026-04-02T03:22:33.693Z
+Stopped at: Completed 23-policy-truth-and-failure-semantics-01-PLAN.md
 Resume file: None
 
 ---
 
-*State updated after Phase 23 planning on 2026-04-02*
+*State updated after Phase 23 plan 01 completion on 2026-04-02*
