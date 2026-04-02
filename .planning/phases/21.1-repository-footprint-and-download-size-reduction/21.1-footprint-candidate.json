@@ -1,0 +1,14 @@
+{
+  "local_cache_bytes": 1381915956,
+  "local_target_bytes": 0,
+  "notes": [
+    "cache_paths=/Users/dannyguan/Documents/fse-aiware-python-dependencies/tools/apdr/.apdr-cache",
+    "target_paths=(none)"
+  ],
+  "repo_git_bytes": 488317977,
+  "repo_root": "/Users/dannyguan/Documents/fse-aiware-python-dependencies",
+  "tool_tree_bytes": 3014979553,
+  "tracked_cache_paths": [],
+  "tracked_target_bytes": 0,
+  "tracked_target_paths": []
+}
