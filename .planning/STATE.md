@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: planning
-stopped_at: Phase 22 planned and ready to execute
-last_updated: "2026-04-02T00:34:10Z"
-last_activity: 2026-04-01
+status: executing
+stopped_at: Completed 22-docker-first-policy-and-safe-degradation-01-PLAN.md
+last_updated: "2026-04-02T00:53:58.302Z"
+last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 3
-  percent: 20
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State: APDR
 
-**Last Updated:** 2026-04-01
-**Status:** Ready for Phase 22 execution
-**Progress:** [██░░░░░░░░] 20%
-**Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 22 planned with research, validation, and 3 execution waves
+**Last Updated:** 2026-04-02
+**Status:** Executing Phase 22
+**Progress:** [███████░░░] 67%
+**Last Activity:** 2026-04-02
+**Last Activity Description:** Completed Phase 22 plan 01 and advanced to plan 02
 **Resume File:** None
 
 ---
@@ -35,10 +35,10 @@ progress:
 
 ## Current Position
 
-Phase: 22
-Plan: 3 plans created
-Status: Ready to execute
-Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint work
+Phase: 22 (docker-first-policy-and-safe-degradation) — EXECUTING
+Plan: 2 of 3
+Status: Executing Phase 22
+Last activity: 2026-04-02 -- Completed plan 22-01 and advanced to plan 22-02
 
 ---
 
@@ -55,6 +55,7 @@ Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint wor
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
 - Phase 21.1 footprint proof: `source_delta -5.55GB`, `cache_delta -15.04GB`, `target_delta -20.45GB`
 - Current local footprint candidate: `tools ~2.9G`, `tools/apdr/.apdr-cache ~1.3G`, `tools/apdr/target` removed
+- Phase 22 plan 01 execution: `9min`, `2 tasks`, `5 files`, commits `ebd3810` and `e787cff`
 
 ---
 
@@ -88,6 +89,8 @@ Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint wor
 - [Phase 22-docker-first-policy-and-safe-degradation]: If Docker is unavailable or unsupported, fall back to env with an explicit bypass reason instead of failing or skipping the case.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Apply docker-first broadly to `llm` cases except host-runtime or clearly unsuitable cases, and gate support by runtime checks rather than by platform carve-outs.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Each `llm` case should leave Docker-oriented debug artifacts or an explicit Docker-bypass note in its debug folder.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Kept docker-first versus env-first as a normalized llm_validation_policy field instead of widening validation_backend.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Modeled llm first-hop selection as explicit route categories so env-first control, host-runtime pre-skip, and Docker-bypass fallback stay distinct.
 
 ### Roadmap Evolution
 
@@ -95,7 +98,7 @@ Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint wor
 
 ### Pending Todos
 
-- Next step is `$gsd-execute-phase 22`
+- Next step is execute plan `22-02`
 - Keep Phase 22 execution within policy, degradation, and debug-artifact scope; detailed case-row Docker build visibility remains deferred to Phase 23
 
 ### Blockers/Concerns
@@ -108,10 +111,10 @@ Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint wor
 
 ## Session Continuity
 
-Last session: 2026-04-02T00:24:11Z
-Stopped at: Phase 22 planned and ready to execute
+Last session: 2026-04-02T00:53:58.297Z
+Stopped at: Completed 22-docker-first-policy-and-safe-degradation-01-PLAN.md
 Resume file: None
 
 ---
 
-*State updated after Phase 22 planning on 2026-04-02*
+*State updated after Phase 22 plan 01 completion on 2026-04-02*
