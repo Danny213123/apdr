@@ -2,7 +2,7 @@
 
 ## What This Is
 
-APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. The latest shipped milestone, v2.3, hardened live tier3 recovery by fixing the `llm` fallback seam, making backend routing and accounting truthful, and publishing reviewer-readable live evidence on a fixed benchmark slice. The current milestone, v2.4, now begins by reducing repository and tool-artifact footprint before continuing the Docker-first `llm` policy decision work.
+APDR is a Python dependency resolution and validation tool built around a Rust core, with Python-based LLM assistance and a benchmark UI for evaluating real-world snippets. The latest shipped milestone, v2.3, hardened live tier3 recovery by fixing the `llm` fallback seam, making backend routing and accounting truthful, and publishing reviewer-readable live evidence on a fixed benchmark slice. The current milestone, v2.4, opened by reducing repository and tool-artifact footprint, and it now continues the Docker-first `llm` policy decision work from that lighter baseline.
 
 ## Core Value
 
@@ -25,8 +25,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Benchmark summary and case-report accounting still have trust gaps, including resumed-run aggregation confusion and some host-runtime skip rows marked as successes, so reporting correctness is now part of the milestone surface instead of a side concern.
 - The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
 - The next open product question is whether eligible `llm` validation should skip the initial env attempt and go straight to Docker, or whether that would hide useful signal or regress correctness.
-- Current local footprint evidence on 2026-04-01 shows `tools` at about `29G`, with `tools/apdr/.apdr-cache` at about `15G` and `tools/apdr/target` at about `6.7G`.
-- The repo also contains tracked `tools/apdr/target-fix-*` and `tools/apdr/target-test-*` build-output trees, which materially inflate fresh source checkout and GitHub download size.
+- Phase 21.1 completed on 2026-04-01: the repo no longer tracks APDR `target-*` build trees, APDR now prefers external cache/build defaults, the repo ships a supported cleanup helper, and the proof package records `source_delta_bytes=-5551066900`, `cache_delta_bytes=-15041748090`, and `target_delta_bytes=-20451258961`.
+- The post-cleanup local footprint now shows `tools` at about `2.9G`, `tools/apdr/.apdr-cache` at about `1.3G`, and no remaining repo-local `tools/apdr/target` directory.
 - Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
 - Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
@@ -67,11 +67,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Resumed-run summaries and per-case artifacts now preserve trustworthy failure classification and live-versus-historical accounting - validated in Phase 19: failure-classification-and-run-accounting-integrity
 - [x] Dominant-bucket recovery rules now improve the fixed March 30 slice while preserving like-for-like backend and model contracts - validated in Phase 20: dominant-bucket-recovery-gains
 - [x] Reviewer-ready live evidence now shows the fixed-slice before/after delta, representative case artifacts, and explicit interrupted-tail truth - validated in Phase 21: live-evidence-and-closeout-pack
+- [x] Repository-distributed and local APDR footprint is materially reduced with source-cleanup, safer defaults, supported cleanup tooling, and a deterministic proof package - validated in Phase 21.1: repository-footprint-and-download-size-reduction
 
 ### Active
 
 - [ ] Determine whether eligible `llm` validation should go Docker-first instead of env-first.
-- [ ] Reduce repository-distributed and local tool-generated disk footprint before continuing the rest of v2.4.
 - [ ] Preserve truthful artifact, backend-path, and provenance surfaces while evaluating a new routing policy.
 - [ ] Produce evidence-backed guidance on whether Docker-first improves or harms the current tier3 recovery workflow.
 
@@ -97,7 +97,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Benchmark case rows, runtime guidance, and proof artifacts now keep requested backend mode separate from actual routed backend path, which gives Phase 19 a trustworthy routing surface to build on.
 - The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
 - The shipped v2.3 closeout is intentionally fixed-slice scoped; future work must not overstate it as a full-corpus benchmark claim.
-- v2.4 now starts with repo-footprint reduction because heavyweight tool artifacts are making local checkouts and GitHub downloads impractical, then returns to the Docker-first routing question from the repaired v2.3 truth surfaces.
+- Phase 21.1 finished the repo-footprint reduction pass first, so the remaining v2.4 work can evaluate docker-first routing from a materially smaller checkout and a supported cleanup baseline.
 
 ## Constraints
 
@@ -168,4 +168,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-01 after inserting the pre-22 footprint phase*
+*Last updated: 2026-04-02 after Phase 21.1 completion*
