@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
 status: planning
-stopped_at: Phase 21.1 completed and verified, ready to continue with Phase 22
-last_updated: "2026-04-02T00:24:11Z"
+stopped_at: Phase 22 planned and ready to execute
+last_updated: "2026-04-02T00:34:10Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
+  total_plans: 6
   completed_plans: 3
   percent: 20
 ---
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready for Phase 22 planning
+**Status:** Ready for Phase 22 execution
 **Progress:** [██░░░░░░░░] 20%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 21.1 completed with verified source and local footprint reductions
+**Last Activity Description:** Phase 22 planned with research, validation, and 3 execution waves
 **Resume File:** None
 
 ---
@@ -36,9 +36,9 @@ progress:
 ## Current Position
 
 Phase: 22
-Plan: Context captured; planning next
-Status: Ready to plan
-Last activity: 2026-04-01 -- Phase 21.1 completed and Phase 22 is next
+Plan: 3 plans created
+Status: Ready to execute
+Last activity: 2026-04-01 -- Phase 22 planned after the Phase 21.1 footprint work
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-01 -- Phase 21.1 completed and Phase 22 is next
 
 - Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
 - Planned phases: 5
-- Active phase plan count: 0
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -95,8 +95,8 @@ Last activity: 2026-04-01 -- Phase 21.1 completed and Phase 22 is next
 
 ### Pending Todos
 
-- Next step is `$gsd-plan-phase 22`
-- Revisit Phase 22 planning assumptions in light of the lighter repo baseline and preserved Docker/debug requirements
+- Next step is `$gsd-execute-phase 22`
+- Keep Phase 22 execution within policy, degradation, and debug-artifact scope; detailed case-row Docker build visibility remains deferred to Phase 23
 
 ### Blockers/Concerns
 
@@ -109,9 +109,9 @@ Last activity: 2026-04-01 -- Phase 21.1 completed and Phase 22 is next
 ## Session Continuity
 
 Last session: 2026-04-02T00:24:11Z
-Stopped at: Phase 21.1 completed and verified, ready to continue with Phase 22
+Stopped at: Phase 22 planned and ready to execute
 Resume file: None
 
 ---
 
-*State updated after Phase 21.1 completion on 2026-04-02*
+*State updated after Phase 22 planning on 2026-04-02*
