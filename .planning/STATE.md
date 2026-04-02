@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
 status: Ready for execution
-stopped_at: Phase 26 context gathered
-last_updated: "2026-04-02T23:28:45.073Z"
+stopped_at: Phase 26 planned
+last_updated: "2026-04-02T23:52:11Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -20,8 +20,8 @@ progress:
 **Status:** Ready for execution
 **Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Milestone v2.5 started, requirements were recreated, and the roadmap was reset around end-to-end LLM case execution
-**Resume File:** .planning/phases/26-llm-case-intake-and-plan-authoring/26-CONTEXT.md
+**Last Activity Description:** Phase 26 was researched and split into three execution waves around authored intake plans, artifact truth, and deterministic proof
+**Resume File:** .planning/phases/26-llm-case-intake-and-plan-authoring/26-01-PLAN.md
 
 ---
 
@@ -35,10 +35,10 @@ progress:
 
 ## Current Position
 
-Phase: Not started (Phase 26 next)
-Plan: —
-Status: Defining and planning end-to-end LLM execution work
-Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
+Phase: Phase 26 planned
+Plan: 26-01 next
+Status: Ready for Phase 26 execution
+Last activity: 2026-04-02 -- Phase 26 planning completed with research, validation, and 3 execution plans
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 0
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -57,7 +57,7 @@ Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Known Docker regression example: case `005bbad123ef309a5bef` built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces empty `requirements.txt` and generic failure labels instead of a usable start-to-finish case plan
-- Current phase plan count: 0
+- Current phase plan count: 3
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
 ---
@@ -116,6 +116,10 @@ Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
 - [Milestone start]: v2.5 replaces the conditional v2.4 closeout as the active milestone on 2026-04-02 because the user wants end-to-end LLM execution quality, not more policy-verdict work.
 - [Milestone start]: v2.5 should make the LLM the primary case author for both `llm` and `llm-only`, covering module extraction, dependency planning, Docker authoring, and recovery.
 - [Milestone start]: Fresh April 2 runs are the baseline for v2.5, especially the failure modes around LLM no-output and Docker build-to-run image handoff.
+- [Phase 26-llm-case-intake-and-plan-authoring]: Intake is plan-first: the LLM authors a structured case plan, and APDR deterministically renders later files and artifacts from it.
+- [Phase 26-llm-case-intake-and-plan-authoring]: The authored case plan must include extracted modules or imports, package mappings, unresolved imports, system-dependency hints, runtime assumptions, section-level confidence, and an authored smoke strategy.
+- [Phase 26-llm-case-intake-and-plan-authoring]: `llm-only` shares the authored-plan pipeline with `llm`, but it fails truthfully when no usable intake plan exists instead of silently dropping into heuristic reconstruction.
+- [Phase 26-llm-case-intake-and-plan-authoring]: No-output paths must persist a structured intake-failure record that distinguishes empty output, invalid JSON, schema failure, timeout or transport failure, and provider or tooling incompatibility.
 
 ### Roadmap Evolution
 
@@ -139,9 +143,9 @@ Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
 ## Session Continuity
 
 Last session: 2026-04-02T23:28:45.067Z
-Stopped at: Phase 26 context gathered
-Resume file: .planning/phases/26-llm-case-intake-and-plan-authoring/26-CONTEXT.md
+Stopped at: Phase 26 planned
+Resume file: .planning/phases/26-llm-case-intake-and-plan-authoring/26-01-PLAN.md
 
 ---
 
-*State updated after starting milestone v2.5 on 2026-04-02*
+*State updated after planning Phase 26 on 2026-04-02*
