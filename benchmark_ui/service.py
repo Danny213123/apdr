@@ -941,6 +941,11 @@ class BenchmarkService:
             "fallbackReason": self._result_fallback_reason(result),
             "validationBackend": self._result_validation_backend(result),
             "validationPath": self._result_validation_path(result),
+            "requestedLlmValidationPolicy": self._result_requested_llm_validation_policy(result),
+            "llmValidationRoute": self._result_llm_validation_route(result),
+            "dockerBypassReason": self._result_docker_bypass_reason(result),
+            "dockerBypassNote": self._result_docker_bypass_note(result),
+            "debugDir": self._result_debug_dir(result),
             "escalatedBackend": self._result_escalated_backend(result),
             "failureFamily": self._result_failure_family(result),
             "failureBucket": self._result_failure_bucket(result),
@@ -1845,6 +1850,51 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("validation_path") or "").strip()
+
+    def _result_requested_llm_validation_policy(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("requestedLlmValidationPolicy") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("requested_llm_validation_policy") or "").strip()
+
+    def _result_llm_validation_route(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("llmValidationRoute") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("llm_validation_route") or "").strip()
+
+    def _result_docker_bypass_reason(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerBypassReason") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_bypass_reason") or "").strip()
+
+    def _result_docker_bypass_note(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerBypassNote") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_bypass_note") or metadata.get("docker_bypass_note_path") or "").strip()
+
+    def _result_debug_dir(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("debugDir") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("debug_dir") or "").strip()
 
     def _result_escalated_backend(self, result: dict[str, Any]) -> str:
         direct = str(result.get("escalatedBackend") or "").strip()

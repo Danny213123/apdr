@@ -406,6 +406,11 @@ class TestRunContract(unittest.TestCase):
                     "output_metadata": {
                         "validation_backend": "llm",
                         "validation_path": "env->docker",
+                        "requested_llm_validation_policy": "docker-first",
+                        "llm_validation_route": "env-first-docker-bypass",
+                        "docker_bypass_reason": "docker cli unavailable",
+                        "docker_bypass_note": "cases/routed/.apdr-debug/docker-bypass.txt",
+                        "debug_dir": "cases/routed/.apdr-debug",
                         "escalated_backend": "docker",
                         "validation_status": "environment-build-failed",
                         "validation_reason": "env build failed",
@@ -422,7 +427,17 @@ class TestRunContract(unittest.TestCase):
 
             self.assertEqual(row["validationBackend"], "llm")
             self.assertEqual(row["validationPath"], "env->docker")
+            self.assertEqual(row["requestedLlmValidationPolicy"], "docker-first")
+            self.assertEqual(row["llmValidationRoute"], "env-first-docker-bypass")
+            self.assertEqual(row["dockerBypassReason"], "docker cli unavailable")
+            self.assertEqual(
+                row["dockerBypassNote"],
+                "cases/routed/.apdr-debug/docker-bypass.txt",
+            )
+            self.assertEqual(row["debugDir"], "cases/routed/.apdr-debug")
             self.assertEqual(row["escalatedBackend"], "docker")
+            self.assertNotEqual(row["requestedLlmValidationPolicy"], row["validationBackend"])
+            self.assertNotEqual(row["llmValidationRoute"], row["validationPath"])
 
 
 if __name__ == "__main__":
