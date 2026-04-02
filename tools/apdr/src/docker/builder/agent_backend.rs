@@ -1,12 +1,12 @@
 use super::docker_backend::{
     env_has_build_timeout, env_has_interpreter_failure, validate_requirements_docker_deterministic,
 };
-use super::process::{run_command_with_timeout, truncate_log};
+use super::process::{command_on_path, run_command_with_timeout, truncate_log};
 use super::*;
 use crate::docker::system_deps;
 use crate::{
-    ResolveConfig, ValidationAttempt, ValidationSummary, VALIDATION_BACKEND_DOCKER,
-    VALIDATION_BACKEND_LLM,
+    ResolveConfig, ValidationAttempt, ValidationSummary, LLM_VALIDATION_POLICY_ENV_FIRST,
+    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_LLM,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,14 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 static DOCKER_AGENT_IMPORTABLE: OnceLock<bool> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LlmValidationRoute {
+    DockerFirst,
+    EnvFirstControl,
+    EnvFirstHostRuntime,
+    EnvFirstDockerBypass,
+}
 
 pub(super) fn validate_requirements_llm(
     snippet_path: &Path,
@@ -23,6 +31,70 @@ pub(super) fn validate_requirements_llm(
     attempt_offset: usize,
     config: &ResolveConfig,
     store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    let route = llm_validation_route(config, imports, requirements_txt, command_on_path("docker"));
+    match route {
+        LlmValidationRoute::DockerFirst => validate_requirements_llm_docker_first(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            attempt_offset,
+            config,
+            store,
+        ),
+        LlmValidationRoute::EnvFirstControl => validate_requirements_llm_env_first(
+            snippet_path,
+            requirements_txt,
+            imports,
+            candidate_versions,
+            attempt_offset,
+            config,
+            store,
+            true,
+        ),
+        LlmValidationRoute::EnvFirstHostRuntime => {
+            eprintln!(
+                "[llm-resolver] host-runtime markers detected, keeping env validation ahead of Docker"
+            );
+            validate_requirements_llm_env_first(
+                snippet_path,
+                requirements_txt,
+                imports,
+                candidate_versions,
+                attempt_offset,
+                config,
+                store,
+                false,
+            )
+        }
+        LlmValidationRoute::EnvFirstDockerBypass => {
+            eprintln!(
+                "[llm-resolver] docker-first requested but Docker is unavailable, falling back to env validation before LangGraph agent"
+            );
+            validate_requirements_llm_env_first(
+                snippet_path,
+                requirements_txt,
+                imports,
+                candidate_versions,
+                attempt_offset,
+                config,
+                store,
+                false,
+            )
+        }
+    }
+}
+
+fn validate_requirements_llm_env_first(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+    allow_docker_retry: bool,
 ) -> io::Result<ValidationSummary> {
     // Phase 1: Try the traditional env-based validation first
     let mut summary = validate_requirements_env(
@@ -42,7 +114,8 @@ pub(super) fn validate_requirements_llm(
 
     // Phase 2: Route backend-recoverable env failures through a deterministic
     // Docker stage before falling back to the LangGraph multi-agent pipeline.
-    let docker_escalated = llm_env_failure_requires_docker_escalation(&summary, requirements_txt);
+    let docker_escalated =
+        allow_docker_retry && llm_env_failure_requires_docker_escalation(&summary, requirements_txt);
     if docker_escalated {
         let reason = llm_env_failure_reason_for_docker_escalation(&summary, requirements_txt);
         eprintln!(
@@ -94,6 +167,131 @@ pub(super) fn validate_requirements_llm(
     // Agent unavailable or also failed — return the pre-agent result
     eprintln!("[llm-resolver] LangGraph agent unavailable or failed, returning pre-agent result");
     Ok(summary)
+}
+
+fn validate_requirements_llm_docker_first(
+    snippet_path: &Path,
+    requirements_txt: &str,
+    imports: &[String],
+    candidate_versions: &[String],
+    attempt_offset: usize,
+    config: &ResolveConfig,
+    store: &mut CacheStore,
+) -> io::Result<ValidationSummary> {
+    eprintln!(
+        "[llm-resolver] docker-first policy selected, trying Docker before LangGraph agent..."
+    );
+    let mut summary = validate_requirements_docker_deterministic(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        attempt_offset,
+        config,
+        store,
+    )?;
+    summary.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+    summary.escalated_backend = Some(VALIDATION_BACKEND_DOCKER.to_string());
+    if summary.succeeded {
+        return Ok(summary);
+    }
+
+    eprintln!(
+        "[llm-resolver] docker-first validation failed ({} attempt(s)), trying LangGraph agent...",
+        summary.attempts.len()
+    );
+    summary.agent_invocations += 1;
+    if let Some(mut agent_summary) = attempt_langgraph_agent(
+        snippet_path,
+        requirements_txt,
+        imports,
+        candidate_versions,
+        config,
+    ) {
+        inherit_prior_validation_context(&summary, &mut agent_summary);
+        if agent_summary.escalated_backend.is_none() {
+            agent_summary.escalated_backend = Some(VALIDATION_BACKEND_DOCKER.to_string());
+        }
+        merge_llm_retry_history(&mut summary, &mut agent_summary);
+        agent_summary.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+        return Ok(agent_summary);
+    }
+
+    eprintln!("[llm-resolver] LangGraph agent unavailable or failed, returning pre-agent result");
+    Ok(summary)
+}
+
+pub(super) fn llm_validation_route(
+    config: &ResolveConfig,
+    imports: &[String],
+    requirements_txt: &str,
+    docker_available: bool,
+) -> LlmValidationRoute {
+    if config.llm_validation_policy() == LLM_VALIDATION_POLICY_ENV_FIRST {
+        return LlmValidationRoute::EnvFirstControl;
+    }
+    if llm_case_requires_host_runtime(imports, requirements_txt) {
+        return LlmValidationRoute::EnvFirstHostRuntime;
+    }
+    if !docker_available {
+        return LlmValidationRoute::EnvFirstDockerBypass;
+    }
+    LlmValidationRoute::DockerFirst
+}
+
+pub(super) fn llm_case_requires_host_runtime(
+    imports: &[String],
+    requirements_txt: &str,
+) -> bool {
+    let normalized_imports = imports
+        .iter()
+        .map(|item| item.trim().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let normalized_requirements = requirements_txt.to_ascii_lowercase();
+    let apple_framework_markers = [
+        "foundation",
+        "appkit",
+        "quartz",
+        "systemconfiguration",
+        "corefoundation",
+        "cfnetwork",
+        "security",
+        "coreservices",
+        "launchservices",
+    ];
+    let pyobjc_markers = [
+        "pyobjc",
+        "pyobjc-core",
+        "pyobjc-framework-cocoa",
+        "pyobjc-framework-systemconfiguration",
+        "pyobjc-framework-quartz",
+        "pyobjc-framework-security",
+        "pyobjc-framework-coreservices",
+    ];
+
+    let has_apple_bridge = normalized_imports
+        .iter()
+        .any(|item| item == "objc" || item.starts_with("objc."));
+    let has_apple_framework_import = apple_framework_markers.iter().any(|marker| {
+        normalized_imports
+            .iter()
+            .any(|item| item == marker || item.starts_with(&format!("{marker}.")))
+    });
+    let has_pyobjc_requirement = pyobjc_markers
+        .iter()
+        .any(|marker| normalized_requirements.contains(marker));
+
+    if has_apple_bridge && (has_apple_framework_import || has_pyobjc_requirement) {
+        return true;
+    }
+
+    normalized_imports
+        .iter()
+        .any(|item| item == "opendirectory" || item.starts_with("opendirectory."))
+        || normalized_imports
+            .iter()
+            .any(|item| item == "systemconfiguration" || item.starts_with("systemconfiguration."))
+        || normalized_requirements.contains("pyobjc-framework-systemconfiguration")
 }
 
 pub(super) fn merge_llm_retry_history(

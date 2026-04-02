@@ -117,7 +117,8 @@ pub(super) fn merge_backend_retry_history(
 use self::agent_backend::docker_agent_importable_with_probe;
 #[cfg(test)]
 use self::agent_backend::{
-    llm_env_failure_requires_docker_escalation, merge_llm_retry_history, parse_agent_result,
+    llm_case_requires_host_runtime, llm_env_failure_requires_docker_escalation,
+    llm_validation_route, merge_llm_retry_history, parse_agent_result, LlmValidationRoute,
 };
 #[cfg(test)]
 use self::env_backend::prepare_env_validation_attempt;
@@ -577,5 +578,56 @@ mod tests {
             VALIDATION_BACKEND_DOCKER
         );
         assert_eq!(agent_summary.attempts[3].validation_backend, VALIDATION_BACKEND_LLM);
+    }
+
+    #[test]
+    fn phase22_policy_llm_defaults_to_docker_first() {
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        assert_eq!(
+            llm_validation_route(&config, &[], "requests==2.31.0", true),
+            LlmValidationRoute::DockerFirst
+        );
+    }
+
+    #[test]
+    fn phase22_policy_llm_env_first_control_preserved() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.llm_validation_policy = "env-first".to_string();
+
+        assert_eq!(
+            llm_validation_route(&config, &[], "requests==2.31.0", true),
+            LlmValidationRoute::EnvFirstControl
+        );
+    }
+
+    #[test]
+    fn phase22_policy_host_runtime_skips_before_docker() {
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+        let imports = vec!["objc".to_string(), "SystemConfiguration".to_string()];
+
+        assert!(llm_case_requires_host_runtime(
+            &imports,
+            "pyobjc-framework-SystemConfiguration==10.0"
+        ));
+        assert_eq!(
+            llm_validation_route(
+                &config,
+                &imports,
+                "pyobjc-framework-SystemConfiguration==10.0",
+                true
+            ),
+            LlmValidationRoute::EnvFirstHostRuntime
+        );
+    }
+
+    #[test]
+    fn phase22_policy_docker_bypass_falls_back_to_env() {
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        assert_eq!(
+            llm_validation_route(&config, &[], "requests==2.31.0", false),
+            LlmValidationRoute::EnvFirstDockerBypass
+        );
     }
 }
