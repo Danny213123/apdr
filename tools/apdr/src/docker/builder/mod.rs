@@ -653,6 +653,39 @@ mod tests {
     }
 
     #[test]
+    fn phase23_truth_host_runtime_route_metadata_marks_preskip() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().expect("tempdir");
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("out");
+        let imports = vec!["objc".to_string(), "SystemConfiguration".to_string()];
+        let route = llm_validation_route(
+            &config,
+            &imports,
+            "pyobjc-framework-SystemConfiguration==10.0",
+            DockerValidationAvailability::Available,
+        );
+        let mut summary = ValidationSummary::default();
+
+        apply_llm_route_metadata(&mut summary, &config, route).expect("route metadata");
+
+        assert_eq!(route, LlmValidationRoute::EnvFirstHostRuntime);
+        assert_eq!(
+            summary.requested_llm_validation_policy.as_deref(),
+            Some("docker-first")
+        );
+        assert_eq!(
+            summary.llm_validation_route.as_deref(),
+            Some("env-first-host-runtime")
+        );
+        assert_eq!(
+            summary.docker_bypass_reason.as_deref(),
+            Some("host-runtime pre-skip")
+        );
+    }
+
+    #[test]
     fn phase22_policy_docker_bypass_falls_back_to_env() {
         let config = ResolveConfig::for_tool_root(Path::new("."));
 
@@ -685,6 +718,38 @@ mod tests {
             LlmValidationRoute::EnvFirstDockerBypass(
                 DockerUnavailabilityReason::DaemonUnavailable
             )
+        );
+    }
+
+    #[test]
+    fn phase23_truth_daemon_unavailable_route_writes_bypass_metadata() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().expect("tempdir");
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("out");
+        let mut summary = ValidationSummary::default();
+
+        apply_llm_route_metadata(
+            &mut summary,
+            &config,
+            LlmValidationRoute::EnvFirstDockerBypass(
+                DockerUnavailabilityReason::DaemonUnavailable,
+            ),
+        )
+        .expect("route metadata");
+
+        assert_eq!(
+            summary.requested_llm_validation_policy.as_deref(),
+            Some("docker-first")
+        );
+        assert_eq!(
+            summary.llm_validation_route.as_deref(),
+            Some("env-first-docker-bypass")
+        );
+        assert_eq!(
+            summary.docker_bypass_reason.as_deref(),
+            Some("docker daemon unavailable")
         );
     }
 

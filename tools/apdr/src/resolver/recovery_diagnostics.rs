@@ -273,6 +273,18 @@ pub(super) fn classify_failure_family(validation: &ValidationSummary) -> Option<
     }
 
     if validation
+        .llm_validation_route
+        .as_deref()
+        .is_some_and(is_environment_specific_llm_route)
+        || validation
+            .docker_bypass_reason
+            .as_deref()
+            .is_some_and(is_environment_specific_docker_bypass_reason)
+    {
+        return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
+    }
+
+    if validation
         .attempts
         .iter()
         .any(|attempt| {
@@ -323,6 +335,17 @@ fn is_environment_specific_error_type(value: &str) -> bool {
     )
 }
 
+fn is_environment_specific_llm_route(value: &str) -> bool {
+    matches!(value.trim().to_ascii_lowercase().as_str(), "env-first-host-runtime")
+}
+
+fn is_environment_specific_docker_bypass_reason(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "host-runtime pre-skip" | "docker cli unavailable" | "docker daemon unavailable"
+    )
+}
+
 fn text_suggests_environment_specific(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     [
@@ -335,6 +358,7 @@ fn text_suggests_environment_specific(text: &str) -> bool {
         "sublime text",
         "pythonista",
         "autodesk maya",
+        "docker cli unavailable",
         "docker daemon",
         "docker api socket",
         "package index while preparing the local validation environment",
@@ -1522,6 +1546,87 @@ mod tests {
 
         assert_eq!(
             validation.failure_family.as_deref(),
+            Some("dependency-resolution")
+        );
+    }
+
+    #[test]
+    fn phase23_truth_host_runtime_preskip_route_is_environment_specific() {
+        let validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            failure_bucket: "environment-build-failed".to_string(),
+            requested_llm_validation_policy: Some("docker-first".to_string()),
+            llm_validation_route: Some("env-first-host-runtime".to_string()),
+            docker_bypass_reason: Some("host-runtime pre-skip".to_string()),
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
+            Some("environment-specific")
+        );
+    }
+
+    #[test]
+    fn phase23_truth_framework_runtime_marker_is_environment_specific() {
+        let validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            failure_bucket: "environment-build-failed".to_string(),
+            requested_llm_validation_policy: Some("docker-first".to_string()),
+            reason: Some(
+                "Detected macOS framework dependency. APDR cannot validate this snippet without the macOS host framework runtime."
+                    .to_string(),
+            ),
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
+            Some("environment-specific")
+        );
+    }
+
+    #[test]
+    fn phase23_truth_docker_bypass_reason_is_environment_specific() {
+        let validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            failure_bucket: "environment-build-failed".to_string(),
+            requested_llm_validation_policy: Some("docker-first".to_string()),
+            llm_validation_route: Some("env-first-docker-bypass".to_string()),
+            docker_bypass_reason: Some("docker daemon unavailable".to_string()),
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
+            Some("environment-specific")
+        );
+    }
+
+    #[test]
+    fn phase23_truth_module_not_found_under_docker_first_stays_dependency_resolution() {
+        let validation = ValidationSummary {
+            status: "module-not-found".to_string(),
+            reason: Some(
+                "Missing module `numpy` persisted across multiple dependency sets.".to_string(),
+            ),
+            failure_bucket: "module-not-found".to_string(),
+            requested_llm_validation_policy: Some("docker-first".to_string()),
+            llm_validation_route: Some("docker-first".to_string()),
+            missing_module: Some("numpy".to_string()),
+            failing_package: Some("numpy".to_string()),
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                validation_backend: crate::VALIDATION_BACKEND_DOCKER.to_string(),
+                status: "runtime-failed".to_string(),
+                log_excerpt: "ModuleNotFoundError: No module named 'numpy'".to_string(),
+                ..ValidationAttempt::default()
+            }],
+            ..ValidationSummary::default()
+        };
+
+        assert_eq!(
+            classify_failure_family(&validation).as_deref(),
             Some("dependency-resolution")
         );
     }
