@@ -13,8 +13,8 @@ use apdr::context;
 use apdr::recovery::classifier;
 use apdr::resolver;
 use apdr::{
-    ResolveConfig, RunContractMetadata, VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV,
-    VALIDATION_BACKEND_LLM,
+    default_apdr_cache_path, ResolveConfig, RunContractMetadata, VALIDATION_BACKEND_DOCKER,
+    VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
 };
 
 fn main() {
@@ -268,7 +268,7 @@ fn classify_log_command(tool_root: &Path, args: &[String]) -> Result<(), String>
         .first()
         .ok_or("classify-log expects a path to a log file")?;
     let contents = fs::read_to_string(log_path).map_err(|error| error.to_string())?;
-    let store = CacheStore::load(tool_root, tool_root.join(".apdr-cache"))
+    let store = CacheStore::load(tool_root, default_apdr_cache_path(tool_root))
         .map_err(|error| error.to_string())?;
     let result = classifier::classify_log(&contents, &store);
     println!("ERROR_TYPE={}", result.error_type);
@@ -501,7 +501,7 @@ fn cache_prune_command(tool_root: &Path, cache_path: &Path, args: &[String]) -> 
 }
 
 fn parse_cache_args(tool_root: &Path, args: &[String]) -> Result<(PathBuf, Vec<String>), String> {
-    let mut cache_path = tool_root.join(".apdr-cache");
+    let mut cache_path = default_apdr_cache_path(tool_root);
     let mut filtered = Vec::new();
     let mut index = 0usize;
     while index < args.len() {

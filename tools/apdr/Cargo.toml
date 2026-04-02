@@ -1,6 +1,6 @@
 [package]
 name = "apdr"
-version = "0.2.16"
+version = "0.2.17"
 edition = "2021"
 default-run = "apdr"
 
@@ -26,6 +26,7 @@ pubgrub = "0.3"
 version-ranges = "0.1"
 rustc-hash = "2"
 tempfile = "3.27.0"
+dirs = "6"
 
 [dev-dependencies]
 filetime = "0.2"

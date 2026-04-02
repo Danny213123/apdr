@@ -18,6 +18,19 @@ pub const VALIDATION_BACKEND_DOCKER: &str = "docker";
 pub const VALIDATION_BACKEND_LLM: &str = "llm";
 pub const RUN_CONTRACT_VERSION: &str = "1";
 
+pub fn default_apdr_cache_path(tool_root: &Path) -> PathBuf {
+    if let Ok(cache_dir) = env::var("APDR_CACHE_DIR") {
+        let trimmed = cache_dir.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Some(cache_root) = dirs::cache_dir() {
+        return cache_root.join("apdr");
+    }
+    tool_root.join(".apdr-cache")
+}
+
 #[derive(Clone, Debug)]
 pub struct ConfigDep {
     pub package: String,
@@ -292,7 +305,7 @@ impl ResolveConfig {
             python_version: None,
             python_version_range: 1,
             max_retries: 7, // Increased from 5 to give LLM more opportunities to learn and recover
-            cache_path: tool_root.join(".apdr-cache"),
+            cache_path: default_apdr_cache_path(tool_root),
             output_dir: tool_root.join("out"),
             pre_solve_timeout: Duration::from_secs(
                 env_usize("APDR_PRE_SOLVE_TIMEOUT_SECS", 10) as u64

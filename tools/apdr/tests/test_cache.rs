@@ -1,10 +1,41 @@
+use std::env;
+use std::ffi::OsString;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use filetime::{set_file_mtime, FileTime};
+use once_cell::sync::Lazy;
+
+static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+struct EnvVarGuard {
+    key: &'static str,
+    original: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn set_path(key: &'static str, value: Option<&Path>) -> Self {
+        let original = env::var_os(key);
+        match value {
+            Some(path) => env::set_var(key, path.as_os_str()),
+            None => env::remove_var(key),
+        }
+        Self { key, original }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.original {
+            Some(value) => env::set_var(self.key, value),
+            None => env::remove_var(self.key),
+        }
+    }
+}
 
 fn unique_cache_dir(tool_root: &Path, label: &str) -> PathBuf {
     let stamp = SystemTime::now()
@@ -343,4 +374,74 @@ fn disk_usage_counts_archive_entries() {
     assert_eq!(usage.validated_env_entries, 2);
 
     fs::remove_dir_all(cache_path).unwrap();
+}
+
+#[test]
+fn phase21_1_cache_prefers_apdr_cache_dir() {
+    let _env_lock = ENV_LOCK.lock().unwrap();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let env_root = unique_cache_dir(&tool_root, "phase21-cache-explicit");
+    let explicit_cache = env_root.join("explicit-cache");
+    fs::create_dir_all(&explicit_cache).unwrap();
+
+    {
+        let _cache_guard = EnvVarGuard::set_path("APDR_CACHE_DIR", Some(&explicit_cache));
+        assert_eq!(apdr::default_apdr_cache_path(&tool_root), explicit_cache);
+    }
+
+    fs::remove_dir_all(env_root).unwrap();
+}
+
+#[test]
+fn phase21_1_cache_uses_external_default_when_env_unset() {
+    let _env_lock = ENV_LOCK.lock().unwrap();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let env_root = unique_cache_dir(&tool_root, "phase21-cache-external");
+    let xdg_cache = env_root.join("xdg-cache");
+    let home_dir = env_root.join("home");
+    let local_app_data = env_root.join("local-appdata");
+    fs::create_dir_all(&xdg_cache).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+    fs::create_dir_all(&local_app_data).unwrap();
+
+    {
+        let _guards = [
+            EnvVarGuard::set_path("APDR_CACHE_DIR", None),
+            EnvVarGuard::set_path("XDG_CACHE_HOME", Some(&xdg_cache)),
+            EnvVarGuard::set_path("HOME", Some(&home_dir)),
+            EnvVarGuard::set_path("LOCALAPPDATA", Some(&local_app_data)),
+        ];
+        let expected = dirs::cache_dir()
+            .expect("dirs::cache_dir should resolve under the test environment")
+            .join("apdr");
+        assert_eq!(apdr::default_apdr_cache_path(&tool_root), expected);
+    }
+
+    fs::remove_dir_all(env_root).unwrap();
+}
+
+#[test]
+fn phase21_1_cache_learned_families_path_matches_default_cache_root() {
+    let _env_lock = ENV_LOCK.lock().unwrap();
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let env_root = unique_cache_dir(&tool_root, "phase21-cache-learned");
+    let xdg_cache = env_root.join("xdg-cache");
+    let home_dir = env_root.join("home");
+    let local_app_data = env_root.join("local-appdata");
+    fs::create_dir_all(&xdg_cache).unwrap();
+    fs::create_dir_all(&home_dir).unwrap();
+    fs::create_dir_all(&local_app_data).unwrap();
+
+    {
+        let _guards = [
+            EnvVarGuard::set_path("APDR_CACHE_DIR", None),
+            EnvVarGuard::set_path("XDG_CACHE_HOME", Some(&xdg_cache)),
+            EnvVarGuard::set_path("HOME", Some(&home_dir)),
+            EnvVarGuard::set_path("LOCALAPPDATA", Some(&local_app_data)),
+        ];
+        let expected = apdr::default_apdr_cache_path(&tool_root).join("learned_families.json");
+        assert_eq!(apdr::resolver::family_knowledge::learned_families_path(), expected);
+    }
+
+    fs::remove_dir_all(env_root).unwrap();
 }

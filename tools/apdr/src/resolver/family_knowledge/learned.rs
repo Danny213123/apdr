@@ -10,7 +10,7 @@ use super::normalize;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -39,11 +39,8 @@ static LEARNED_FAMILIES: Lazy<Mutex<Vec<LearnedFamily>>> = Lazy::new(|| Mutex::n
 
 /// Get the path to the learned families JSON file
 pub fn learned_families_path() -> PathBuf {
-    if let Ok(cache_dir) = std::env::var("APDR_CACHE_DIR") {
-        PathBuf::from(cache_dir).join("learned_families.json")
-    } else {
-        PathBuf::from(".apdr-cache").join("learned_families.json")
-    }
+    crate::default_apdr_cache_path(Path::new(env!("CARGO_MANIFEST_DIR")))
+        .join("learned_families.json")
 }
 
 /// Load learned families from disk
