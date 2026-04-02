@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: ready
-stopped_at: Completed 22-04-PLAN.md
-last_updated: "2026-04-02T02:16:35.819Z"
+status: planning
+stopped_at: Phase 23 planned, ready to execute
+last_updated: "2026-04-02T02:31:37Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 7
+  total_plans: 10
   completed_plans: 7
   percent: 40
 ---
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready for next phase
+**Status:** Ready to execute
 **Progress:** [████░░░░░░] 40%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 22 gap closure completed
+**Last Activity Description:** Phase 23 planned and ready for execution
 **Resume File:** None
 
 ---
@@ -35,10 +35,10 @@ progress:
 
 ## Current Position
 
-Phase: 23 (policy-truth-and-failure-semantics) — READY
-Plan: 0 of 0
-Status: Ready to plan Phase 23
-Last activity: 2026-04-02 -- Completed Phase 22 gap closure plan 22-04
+Phase: 23
+Plan: `23-01`, `23-02`, `23-03`
+Status: Ready to execute
+Last activity: 2026-04-02 -- Phase 23 planning completed and execution plans are ready
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-02 -- Completed Phase 22 gap closure plan 22-04
 
 - Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
 - Planned phases: 5
-- Active phase plan count: 4
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -59,6 +59,7 @@ Last activity: 2026-04-02 -- Completed Phase 22 gap closure plan 22-04
 - Phase 22 plan 02 execution: `4min`, `2 tasks`, `8 files`, commits `211f55e` and `454f416`
 - Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
 - Phase 22 plan 04 execution: `6min`, `2 tasks`, `10 files`, commits `447502d`, `ff779a1`, and `883495b`
+- Next phase plan count: 3
 
 ---
 
@@ -102,6 +103,9 @@ Last activity: 2026-04-02 -- Completed Phase 22 gap closure plan 22-04
 - [Phase 22-docker-first-policy-and-safe-degradation]: Verification reopened `GDR-01`; docker-first `llm` must also degrade to env when Docker is installed but unusable, not only when the CLI is missing.
 - [Phase 22]: Kept llm_validation_route stable as env-first-docker-bypass while splitting the bypass reason into exact CLI versus daemon-unavailable strings.
 - [Phase 22]: Extended the proof slice to five archetypes so installed-but-unusable Docker is frozen as a first-class contract case.
+- [Phase 23-policy-truth-and-failure-semantics]: Surface requested policy, route label, Docker bypass reason, bypass note, and debug artifact pointers through benchmark rows and live events instead of relying on raw metadata inspection.
+- [Phase 23-policy-truth-and-failure-semantics]: Keep the UI change additive by extending expanded LLM case details with a `Validation truth` section rather than redesigning the benchmark tables.
+- [Phase 23-policy-truth-and-failure-semantics]: Freeze GDR-02 with a deterministic policy-truth slice that includes Docker attempt, env-first control, Docker CLI bypass, Docker daemon bypass, host-runtime pre-skip, and framework/runtime environment-specific archetypes.
 
 ### Roadmap Evolution
 
@@ -109,23 +113,23 @@ Last activity: 2026-04-02 -- Completed Phase 22 gap closure plan 22-04
 
 ### Pending Todos
 
-- Next step is `$gsd-plan-phase 23`
-- Keep detailed case-row Docker build visibility deferred to Phase 23; the current gap closure only restores truthful unusable-Docker degradation for Phase 22.
+- Next step is `$gsd-execute-phase 23`
 
 ### Blockers/Concerns
 
 - Do not overstate the fixed-slice evidence as a full-corpus benchmark claim.
 - Do not overstate the Phase 21.1 footprint proof as a Git history rewrite; it improves the current tree and future defaults.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
+- Phase 23 must add case-level truth fields without breaking saved-run compatibility or widening into a broader UI redesign.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-02T02:16:35.816Z
-Stopped at: Completed 22-04-PLAN.md
+Last session: 2026-04-02T02:31:37Z
+Stopped at: Phase 23 planned, ready to execute
 Resume file: None
 
 ---
 
-*State updated after Phase 22 gap closure completion on 2026-04-02*
+*State updated after Phase 23 planning on 2026-04-02*
