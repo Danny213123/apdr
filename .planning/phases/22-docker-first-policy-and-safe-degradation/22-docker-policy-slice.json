@@ -1,0 +1,62 @@
+{
+  "slice_id": "phase22-docker-policy-proof-v1",
+  "description": "Deterministic Phase 22 policy contract for docker-first routing, env-first control, Docker bypass fallback, and host-runtime pre-skip behavior.",
+  "required_top_level_fields": [
+    "requested_llm_validation_policy",
+    "llm_validation_route",
+    "validation_path",
+    "docker_bypass_reason",
+    "docker_bypass_note"
+  ],
+  "cases": [
+    {
+      "case_id": "docker-first-default",
+      "relative_path": "contracts/docker-first-default/snippet.py",
+      "requested_llm_validation_policy": "docker-first",
+      "llm_validation_route": "docker-first",
+      "expected_first_hop": "docker",
+      "docker_bypass_reason": null,
+      "required_debug_artifacts": [
+        "Dockerfile",
+        "docker-build.command.txt",
+        "docker-run.command.txt",
+        "build.log",
+        "run.log",
+        "combined.log"
+      ]
+    },
+    {
+      "case_id": "env-first-control",
+      "relative_path": "contracts/env-first-control/snippet.py",
+      "requested_llm_validation_policy": "env-first",
+      "llm_validation_route": "env-first-control",
+      "expected_first_hop": "env",
+      "docker_bypass_reason": "explicit env-first control policy",
+      "required_debug_artifacts": [
+        "docker-bypass.txt"
+      ]
+    },
+    {
+      "case_id": "docker-bypass-fallback",
+      "relative_path": "contracts/docker-bypass-fallback/snippet.py",
+      "requested_llm_validation_policy": "docker-first",
+      "llm_validation_route": "env-first-docker-bypass",
+      "expected_first_hop": "env",
+      "docker_bypass_reason": "docker unavailable",
+      "required_debug_artifacts": [
+        "docker-bypass.txt"
+      ]
+    },
+    {
+      "case_id": "host-runtime-pre-skip",
+      "relative_path": "contracts/host-runtime-pre-skip/snippet.py",
+      "requested_llm_validation_policy": "docker-first",
+      "llm_validation_route": "env-first-host-runtime",
+      "expected_first_hop": "env",
+      "docker_bypass_reason": "host-runtime pre-skip",
+      "required_debug_artifacts": [
+        "docker-bypass.txt"
+      ]
+    }
+  ]
+}
