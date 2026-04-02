@@ -32,6 +32,8 @@ pub(super) enum DockerValidationAvailability {
     Unavailable(DockerUnavailabilityReason),
 }
 
+const DOCKER_VALIDATION_PROBE_COMMAND: &str = "docker info --format {{.ServerVersion}}";
+
 pub(super) fn catalog_package_repository(
     store: &mut CacheStore,
     python_version: &str,
@@ -217,8 +219,10 @@ pub(super) fn probe_docker_validation_availability() -> DockerValidationAvailabi
         return DockerValidationAvailability::Unavailable(DockerUnavailabilityReason::CliUnavailable);
     }
 
-    let mut command = Command::new("docker");
-    command.args(["info", "--format", "{{.ServerVersion}}"]);
+    let mut command_parts = DOCKER_VALIDATION_PROBE_COMMAND.split_whitespace();
+    let binary = command_parts.next().unwrap_or("docker");
+    let mut command = Command::new(binary);
+    command.args(command_parts);
     match run_command_with_timeout(&mut command, Duration::from_secs(8)) {
         Ok(result) if result.success => DockerValidationAvailability::Available,
         _ => DockerValidationAvailability::Unavailable(
