@@ -27,6 +27,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The next open product question is whether eligible `llm` validation should skip the initial env attempt and go straight to Docker, or whether that would hide useful signal or regress correctness.
 - Phase 21.1 completed on 2026-04-01: the repo no longer tracks APDR `target-*` build trees, APDR now prefers external cache/build defaults, the repo ships a supported cleanup helper, and the proof package records `source_delta_bytes=-5551066900`, `cache_delta_bytes=-15041748090`, and `target_delta_bytes=-20451258961`.
 - The post-cleanup local footprint now shows `tools` at about `2.9G`, `tools/apdr/.apdr-cache` at about `1.3G`, and no remaining repo-local `tools/apdr/target` directory.
+- Phase 22 completed on 2026-04-02: APDR now ships docker-first `llm` as the standard policy with env-first control, real Docker usability gating, exact `docker cli unavailable` versus `docker daemon unavailable` bypass reasons, and a fixed five-case proof contract.
 - Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
 - Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
@@ -68,6 +69,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Dominant-bucket recovery rules now improve the fixed March 30 slice while preserving like-for-like backend and model contracts - validated in Phase 20: dominant-bucket-recovery-gains
 - [x] Reviewer-ready live evidence now shows the fixed-slice before/after delta, representative case artifacts, and explicit interrupted-tail truth - validated in Phase 21: live-evidence-and-closeout-pack
 - [x] Repository-distributed and local APDR footprint is materially reduced with source-cleanup, safer defaults, supported cleanup tooling, and a deterministic proof package - validated in Phase 21.1: repository-footprint-and-download-size-reduction
+- [x] Docker-first `llm` policy now exists with env-first control, exact unusable-Docker fallback reasons, and a deterministic proof contract - validated in Phase 22: docker-first-policy-and-safe-degradation
 
 ### Active
 
@@ -168,4 +170,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after Phase 21.1 completion*
+*Last updated: 2026-04-02 after Phase 22 completion*
