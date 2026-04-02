@@ -20,8 +20,8 @@ Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 
 ### Comparison Evidence
 
-- [ ] **CMP-01**: Repo can compare env-first versus docker-first `llm` validation on the same fixed benchmark slice with matching model and backend contracts
-- [ ] **CMP-02**: Comparison artifacts report pass, dominant-bucket, and timing deltas so the first-hop policy can be judged on both correctness and cost
+- [x] **CMP-01**: Repo can compare env-first versus docker-first `llm` validation on the same fixed benchmark slice with matching model and backend contracts
+- [x] **CMP-02**: Comparison artifacts report pass, dominant-bucket, and timing deltas so the first-hop policy can be judged on both correctness and cost
 
 ### Compatibility Guardrails
 
@@ -64,8 +64,8 @@ Deferred until the docker-first policy question is answered.
 | DFV-01 | Phase 22 | Completed |
 | DFV-02 | Phase 23 | Complete |
 | DFV-03 | Phase 22 | Completed |
-| CMP-01 | Phase 24 | Pending |
-| CMP-02 | Phase 24 | Pending |
+| CMP-01 | Phase 24 | Completed |
+| CMP-02 | Phase 24 | Completed |
 | GDR-01 | Phase 22 | Completed |
 | GDR-02 | Phase 23 | Complete |
 | EVD-10 | Phase 25 | Pending |
@@ -77,4 +77,4 @@ Deferred until the docker-first policy question is answered.
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-02 after Phase 23 plan 02 completed and GDR-02 was marked complete*
+*Last updated: 2026-04-02 after Phase 24 completion and CMP-01/CMP-02 were marked complete*
