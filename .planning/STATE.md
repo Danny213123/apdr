@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: Docker-First LLM Validation Decision and Proof
-status: ready_to_archive
-stopped_at: Phase 25 complete; milestone closeout is conditionally ready with Phase 23 human verification debt still open
-last_updated: "2026-04-02T17:35:30Z"
+milestone: v2.5
+milestone_name: LLM End-to-End Resolver and Validation
+status: ready
+stopped_at: Milestone v2.5 started; requirements and roadmap created; Phase 26 is next
+last_updated: "2026-04-02T23:13:16Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
-  percent: 80
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready for milestone closeout
-**Progress:** [████████░░] 80%
+**Status:** Ready for execution
+**Progress:** [░░░░░░░░░░] 0%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 25 complete; milestone archival is conditionally ready while Phase 23 browser UAT remains open
+**Last Activity Description:** Milestone v2.5 started, requirements were recreated, and the roadmap was reset around end-to-end LLM case execution
 **Resume File:** None
 
 ---
@@ -29,22 +29,22 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone closeout — v2.4 conditional archive readiness
+**Current Focus:** Milestone v2.5 — Phase 26 is next
 
 ---
 
 ## Current Position
 
-Phase: 25 (docker-first-decision-closeout) — COMPLETE
-Plan: 3 of 3 complete
-Status: Ready for milestone closeout
-Last activity: 2026-04-02 -- Phase 25 completed with an `optional` verdict and a conditional archive handoff
+Phase: Not started (Phase 26 next)
+Plan: —
+Status: Defining and planning end-to-end LLM execution work
+Last activity: 2026-04-02 -- Milestone v2.5 started and roadmap created
 
 ---
 
 ## Performance Metrics
 
-- Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
+- Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
 - Active phase plan count: 0
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
@@ -53,17 +53,12 @@ Last activity: 2026-04-02 -- Phase 25 completed with an `optional` verdict and a
 - Fixed-slice dominant bucket deltas: `module-not-found -3`, `version-not-found -3`, `environment-build-failed -3`
 - Active live baseline for the shipped evidence: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
-- Phase 21.1 footprint proof: `source_delta -5.55GB`, `cache_delta -15.04GB`, `target_delta -20.45GB`
-- Current local footprint candidate: `tools ~2.9G`, `tools/apdr/.apdr-cache ~1.3G`, `tools/apdr/target` removed
-- Phase 22 plan 01 execution: `9min`, `2 tasks`, `5 files`, commits `ebd3810` and `e787cff`
-- Phase 22 plan 02 execution: `4min`, `2 tasks`, `8 files`, commits `211f55e` and `454f416`
-- Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
-- Phase 22 plan 04 execution: `6min`, `2 tasks`, `10 files`, commits `447502d`, `ff779a1`, and `883495b`
-- Phase 23 plan 01 execution: `7min`, `2 tasks`, `5 files`, commits `9250d48` and `290993a`
-- Phase 23 plan 02 execution: `14min`, `2 tasks`, `6 files`, commits `22f9b40` and `fc4623c`
-- Phase 23 plan 03 execution: `8min`, `2 tasks`, `4 files`, commits `a4a3545` and `7bf568f`
+- Most recent docker-backed `llm-only` run under active investigation: `runs/20260402-184821-apdr`
+- Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
+- Known Docker regression example: case `005bbad123ef309a5bef` built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
+- Known orchestration gap: `llm-only` still too often produces empty `requirements.txt` and generic failure labels instead of a usable start-to-finish case plan
 - Current phase plan count: 0
-- Pending upstream verification debt: Phase 23 browser UAT still has 2 unresolved items
+- Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
 ---
 
@@ -118,6 +113,9 @@ Last activity: 2026-04-02 -- Phase 25 completed with an `optional` verdict and a
 - [Phase 23]: Keep the proof slice scoped to inspectability and failure-family truth, explicitly excluding the Phase 24 comparison claim.
 - [Phase 24-env-first-vs-docker-first-comparison-harness]: Use a fixed matched slice and normalized artifact schema so env-first and docker-first can be compared without widening backend semantics or drifting from the existing `llm` contract.
 - [Phase 24-env-first-vs-docker-first-comparison-harness]: Keep Phase 24 scoped to proving the comparison harness and delta surfaces; leave the final keep/optional/reject verdict to Phase 25.
+- [Milestone start]: v2.5 replaces the conditional v2.4 closeout as the active milestone on 2026-04-02 because the user wants end-to-end LLM execution quality, not more policy-verdict work.
+- [Milestone start]: v2.5 should make the LLM the primary case author for both `llm` and `llm-only`, covering module extraction, dependency planning, Docker authoring, and recovery.
+- [Milestone start]: Fresh April 2 runs are the baseline for v2.5, especially the failure modes around LLM no-output and Docker build-to-run image handoff.
 
 ### Roadmap Evolution
 
@@ -125,26 +123,25 @@ Last activity: 2026-04-02 -- Phase 25 completed with an `optional` verdict and a
 
 ### Pending Todos
 
-- Decide whether to archive v2.4 now under the documented residual-debt posture or clear Phase 23 browser UAT first
-- If the residual-debt posture is acceptable, run `$gsd-complete-milestone`
+- None captured yet for v2.5
 
 ### Blockers/Concerns
 
 - Do not overstate the fixed-slice evidence as a full-corpus benchmark claim.
 - Do not overstate the Phase 21.1 footprint proof as a Git history rewrite; it improves the current tree and future defaults.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
-- Phase 23 must add case-level truth fields without breaking saved-run compatibility or widening into a broader UI redesign.
-- Phase 25 must not overstate the fixed-slice paired-policy evidence as a full-corpus result when publishing the final recommendation.
-- Phase 23 browser UAT debt is still open and must remain visible in downstream proof notes.
+- Phase 23 browser UAT debt from v2.4 is still open and should stay visible as historical context even though it no longer blocks active execution.
+- v2.5 must separate LLM no-output and Docker infrastructure failures from genuine dependency misses before claiming performance gains.
+- v2.5 should improve pass rate without hiding runtime cost explosions or provider instability.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-02T17:24:37Z
-Stopped at: Phase 25 complete; milestone closeout is conditionally ready with Phase 23 human verification debt still open
+Last session: 2026-04-02T23:13:16Z
+Stopped at: Milestone v2.5 started; requirements and roadmap created; Phase 26 is next
 Resume file: None
 
 ---
 
-*State updated after Phase 25 completion on 2026-04-02*
+*State updated after starting milestone v2.5 on 2026-04-02*
