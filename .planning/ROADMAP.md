@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 is in progress after plan 23-01, and Phases 24-25 remain upcoming
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 is awaiting human verification after automated execution, and Phases 24-25 remain upcoming
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
@@ -21,7 +21,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 
 - [x] **Phase 21.1 (INSERTED): Repository Footprint and Download Size Reduction** - Completed 2026-04-01 with tracked-source cleanup, safer APDR defaults, cleanup tooling, and a deterministic footprint proof
 - [x] **Phase 22: Docker-First Policy and Safe Degradation** - Completed 2026-04-02 with truthful installed-but-unusable Docker degradation, exact bypass reasons, and a five-case proof contract
-- [ ] **Phase 23: Policy Truth and Failure Semantics** - Make requested policy, actual validation path, bypass reasons, and failure-family truth inspectable end to end
+- [ ] **Phase 23: Policy Truth and Failure Semantics** - Automated execution is complete and human verification is pending for the browser-visible `Validation truth` surfaces
 - [ ] **Phase 24: Env-First vs Docker-First Comparison Harness** - Compare the two first-hop policies on a fixed slice with matched model, backend, bucket, and timing contracts
 - [ ] **Phase 25: Docker-First Decision Closeout** - Publish the final evidence-backed recommendation on whether docker-first should replace env-first, remain optional, or be rejected
 
@@ -81,7 +81,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 |-------|----------------|--------|-----------|
 | 21.1. Repository Footprint and Download Size Reduction | 3/3 | Completed | 2026-04-01 |
 | 22. Docker-First Policy and Safe Degradation | 4/4 | Complete   | 2026-04-02 |
-| 23. Policy Truth and Failure Semantics | 2/3 | In Progress | — |
+| 23. Policy Truth and Failure Semantics | 3/3 | Human Verify | — |
 | 24. Env-First vs Docker-First Comparison Harness | 0/0 | Not Started | — |
 | 25. Docker-First Decision Closeout | 0/0 | Not Started | — |
 
@@ -90,4 +90,4 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 `Phase 21.1 -> Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
 
 *Roadmap created: 2026-04-01*
-*Last updated: 2026-04-02 (Phase 23 plan 02 completed)*
+*Last updated: 2026-04-02 (Phase 23 awaiting human verification)*
