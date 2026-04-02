@@ -1,0 +1,31 @@
+{
+  "slice_id": "phase24-policy-comparison-fixed-slice-v1",
+  "source_note": "Real snippet paths selected from April 2 APDR runs; Phase 24 replays or extracts this fixed slice under paired env-first and docker-first llm policies.",
+  "cases": [
+    {
+      "case_id": "numpy-mapping-gap",
+      "relative_path": "hard-gists/000eccf3d66540d75def/snippet.py",
+      "comparison_focus": "module-not-found can convert into a pass under docker-first without changing the snippet set"
+    },
+    {
+      "case_id": "stable-control-pass",
+      "relative_path": "hard-gists/00135b0dfee0ae165ad2/snippet.py",
+      "comparison_focus": "a stable pass keeps the paired artifact contract honest"
+    },
+    {
+      "case_id": "build-sensitive-case",
+      "relative_path": "hard-gists/005ceac0483fc5a581cc/snippet.py",
+      "comparison_focus": "environment-build-failed remains visible when docker-first does not help"
+    },
+    {
+      "case_id": "version-floor-case",
+      "relative_path": "hard-gists/0115e0ce312f26ff59f4fbf4f5821ca2/snippet.py",
+      "comparison_focus": "version-not-found stays comparable across policies"
+    },
+    {
+      "case_id": "memcache-python27",
+      "relative_path": "hard-gists/005bbad123ef309a5bef/snippet.py",
+      "comparison_focus": "docker-first can recover a case that env-first leaves in an environment-build-failed bucket"
+    }
+  ]
+}
