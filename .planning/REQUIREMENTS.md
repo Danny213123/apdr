@@ -1,74 +1,73 @@
-# Requirements: APDR v2.4 Docker-First LLM Validation Decision and Proof
+# Requirements: APDR v2.5 LLM End-to-End Resolver and Validation
 
-**Defined:** 2026-04-01
+**Defined:** 2026-04-02
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
 ## v1 Requirements
 
-Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
+Requirements for the v2.5 milestone. Each will map to exactly one roadmap phase.
 
-### Repository Footprint
+### LLM Case Authoring
 
-- [x] **DSK-01**: Fresh source checkouts and GitHub downloads should not include avoidable heavyweight tool build outputs or other generated artifacts under `tools/`
-- [x] **DSK-02**: Developers should be able to avoid or reclaim gigabyte-scale local tool build and cache directories through supported defaults or cleanup flows without breaking normal APDR rebuildability
+- [ ] **LLM-01**: In both `llm` and `llm-only` modes, APDR can ask the LLM to extract snippet modules, runtime intent, and initial dependency candidates before validation starts
+- [ ] **LLM-02**: In both `llm` and `llm-only` modes, APDR can ask the LLM to author Docker-oriented validation inputs, including build/runtime guidance and reproducible per-case artifacts
+- [ ] **LLM-03**: After install, build, or runtime failures, APDR can ask the LLM to propose and apply bounded recovery changes using prior attempt logs and artifacts
 
-### Docker-First Routing
+### Docker Execution Reliability
 
-- [x] **DFV-01**: Benchmark operator can run APDR with a docker-first `llm` validation policy that attempts Docker before env validation on supported hosts
-- [x] **DFV-02**: Benchmark operator can inspect each case to see whether docker-first policy was honored, bypassed, or fell back, including the requested policy, actual backend path, and bypass reason
-- [x] **DFV-03**: Benchmark operator can still run the existing env-first `llm` policy as a comparison control while docker-first is being evaluated
+- [ ] **DKR-01**: Docker validation can reliably run the image it just built in `llm` and `llm-only` modes without image-handoff or tag-visibility regressions
+- [ ] **DKR-02**: Each LLM-driven case debug folder records the authored plan, Docker inputs, recovery prompts/responses, and final executed artifacts needed to explain the case path
 
-### Comparison Evidence
+### Failure Truth
 
-- [x] **CMP-01**: Repo can compare env-first versus docker-first `llm` validation on the same fixed benchmark slice with matching model and backend contracts
-- [x] **CMP-02**: Comparison artifacts report pass, dominant-bucket, and timing deltas so the first-hop policy can be judged on both correctness and cost
+- [ ] **TRU-01**: Case reports distinguish LLM no-output, provider/tooling failure, Docker infrastructure failure, and genuine dependency/runtime failure instead of collapsing them into `Unknown` or misleading `SystemDependency`
+- [ ] **TRU-02**: `llm` and `llm-only` keep truthful metadata about which parts of the pipeline were authored by the LLM versus deterministic fallbacks
 
-### Compatibility Guardrails
+### Benchmark Evidence
 
-- [x] **GDR-01**: When Docker is unavailable, unsupported, or explicitly bypassed, APDR degrades clearly without silently breaking `llm` validation
-- [x] **GDR-02**: Docker-first evaluation preserves truthful classification for host-runtime or framework blockers instead of flattening them into generic dependency-resolution failures
+- [ ] **BEN-01**: Fixed-slice comparison artifacts show whether the new LLM-led path improves pass rate for both `llm` and `llm-only` against the April 2, 2026 baseline runs
+- [ ] **BEN-02**: Comparison artifacts track solve or validate timing, LLM no-output rate, and Docker handoff failures so gains are not hidden behind new regressions
 
-### Decision Evidence
+### Closeout Evidence
 
-- [x] **EVD-10**: Milestone closes with a reviewer-readable recommendation on whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode
+- [ ] **EVD-11**: Milestone closes with reviewer-readable evidence and a go/no-go recommendation for the LLM-led end-to-end path in both `llm` and `llm-only`
 
 ## v2 Requirements
 
-Deferred until the docker-first policy question is answered.
+Deferred until the end-to-end LLM path is stable.
 
 ### Future Expansion
 
-- **CORP-01**: Expand the final env-first versus docker-first comparison beyond the fixed slice only after the first-hop policy is decided
-- **PERF-02**: Investigate Docker image and cache prewarming if docker-first proves correct but too expensive in runtime cost
-- **UI-02**: Rework operator-facing benchmark controls only after the backend policy and evidence surfaces stabilize
-- **HIST-03**: Revisit unfinished superseded-milestone closeout only if the docker-first evidence needs those historical comparisons
+- **PROV-01**: Replace or widen LLM providers only after the current end-to-end orchestration path is stable enough to compare fairly
+- **AGT-01**: Explore multi-step or multi-agent LLM orchestration only after the single-case start-to-finish contract is reliable
+- **PERF-03**: Add Docker image prewarming or cache seeding only after the new LLM-led path proves correct enough to optimize
+- **UI-03**: Rework operator-facing benchmark controls only after the authored-artifact and failure-truth surfaces stabilize
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Immediate Git history rewrite or force-cleaning every developer machine | Start by removing avoidable current-tree bytes and adding supported cleanup paths before attempting a riskier repo-history intervention |
-| Immediate global removal of env validation from every mode | The milestone must answer the policy question with evidence before hard-cutting existing behavior |
-| Full LLM agent or provider replacement | The current question is routing policy, not model-provider churn |
-| Broad deterministic recovery-table expansion unrelated to routing policy | Keep the scope on first-hop validation behavior and its evidence |
-| Full benchmark-corpus rerun as the first proof surface | Start with a fixed comparable slice before widening claims |
-| Benchmark UI redesign | This milestone is about backend policy and evidence truth, not interface expansion |
-| Replacing the Rust or Python architecture | The goal is to evaluate routing policy inside the existing system |
+| Full benchmark UI redesign | This milestone is about end-to-end LLM execution behavior and evidence, not interface expansion |
+| Replacing the Rust or Python architecture | The goal is to improve the existing APDR system, not rewrite it |
+| Broad deterministic recovery-table growth as the main strategy | The active objective is LLM-led planning and recovery, not another large static rules pass |
+| Full LLM provider swap before fixing the current path | The current issue is orchestration reliability, not picking a new vendor first |
+| Changing benchmark datasets or scoring rules | Evidence must remain comparable to the April 2, 2026 baseline runs |
+| Re-litigating the docker-first policy verdict as the main deliverable | The next milestone is about making the chosen path work well in practice |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DSK-01 | Phase 21.1 | Completed |
-| DSK-02 | Phase 21.1 | Completed |
-| DFV-01 | Phase 22 | Completed |
-| DFV-02 | Phase 23 | Complete |
-| DFV-03 | Phase 22 | Completed |
-| CMP-01 | Phase 24 | Completed |
-| CMP-02 | Phase 24 | Completed |
-| GDR-01 | Phase 22 | Completed |
-| GDR-02 | Phase 23 | Complete |
-| EVD-10 | Phase 25 | Completed |
+| LLM-01 | Phase 26 | Pending |
+| LLM-02 | Phase 27 | Pending |
+| LLM-03 | Phase 28 | Pending |
+| DKR-01 | Phase 27 | Pending |
+| DKR-02 | Phase 27 | Pending |
+| TRU-01 | Phase 28 | Pending |
+| TRU-02 | Phase 26 | Pending |
+| BEN-01 | Phase 29 | Pending |
+| BEN-02 | Phase 29 | Pending |
+| EVD-11 | Phase 30 | Pending |
 
 **Coverage:**
 - v1 requirements: 10 total
@@ -76,5 +75,5 @@ Deferred until the docker-first policy question is answered.
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-01*
-*Last updated: 2026-04-02 after Phase 25 completion and EVD-10 was marked complete*
+*Requirements defined: 2026-04-02*
+*Last updated: 2026-04-02 after starting milestone v2.5*
