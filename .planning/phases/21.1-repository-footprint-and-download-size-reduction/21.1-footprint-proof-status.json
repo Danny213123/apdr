@@ -1,0 +1,14 @@
+{
+  "cache_delta_bytes": -15041748090,
+  "messages": [
+    "candidate artifact has no tracked target paths",
+    "source distribution delta: -5551066900",
+    "tools tree delta: -35493007051",
+    "local cache delta: -15041748090",
+    "local target delta: -20451258961",
+    "probe-only mode validated the artifact contract without extra live requirements"
+  ],
+  "ok": true,
+  "source_delta_bytes": -5551066900,
+  "target_delta_bytes": -20451258961
+}
