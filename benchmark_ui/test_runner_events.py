@@ -44,6 +44,12 @@ class TestRunnerEventEmission(unittest.TestCase):
         """Clean up temp directory."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
+    def _drain_events(self, queue: Queue[dict[str, object]]) -> list[dict[str, object]]:
+        events: list[dict[str, object]] = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        return events
+
     def test_emit_event_helper_puts_events_to_queue(self):
         """Test that emit_event helper constructs and queues events."""
         # This test will fail until emit_event is implemented
@@ -395,6 +401,94 @@ class TestRunnerEventEmission(unittest.TestCase):
             passing_row["fallbackReason"],
             "first agent attempt crashed before retry recovery",
         )
+
+    def test_case_complete_event_and_live_row_include_policy_truth_fields(
+        self,
+    ) -> None:
+        repo_root = Path(self.temp_dir)
+        state = AppState(repo_root)
+        service = BenchmarkService(state)
+        worker = BenchmarkWorker(state, self.run_config, self.message_queue)
+        event_queue: Queue[dict[str, object]] = Queue()
+        worker._current_run_event_queue = event_queue
+
+        case_dir = repo_root / "cases" / "policy-truth"
+        case_dir.mkdir(parents=True, exist_ok=True)
+        snippet = case_dir / "snippet.py"
+        snippet.write_text("print('ok')\n", encoding="utf-8")
+        output_path = case_dir / "output_data_3.11.yml"
+        output_path.write_text(
+            "\n".join(
+                [
+                    "validation_backend: llm",
+                    "validation_path: env",
+                    "requested_llm_validation_policy: docker-first",
+                    "llm_validation_route: env-first-docker-bypass",
+                    "docker_bypass_reason: docker daemon unavailable",
+                    "docker_bypass_note: runs/example/.apdr-debug/docker-bypass.txt",
+                    "debug_dir: runs/example/.apdr-debug",
+                    "failure_family: environment-specific",
+                    "resolution_tier: tier3",
+                    "llm_calls: 1",
+                    "env_builds: 1",
+                    "retries: 0",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        fake_process = MagicMock()
+        fake_process.stdout = iter(["[apdr] validating\n"])
+        fake_process.wait.return_value = 0
+        fake_process.poll.return_value = None
+        fake_process.pid = 12345
+
+        with patch("benchmark_ui.runner.subprocess.Popen", return_value=fake_process):
+            result = worker._run_single(
+                "apdr",
+                repo_root,
+                ["python3", "test_executor.py"],
+                snippet,
+                1,
+                1,
+                None,
+            )
+
+        self.assertEqual(result["requestedLlmValidationPolicy"], "docker-first")
+        self.assertEqual(result["llmValidationRoute"], "env-first-docker-bypass")
+        self.assertEqual(result["dockerBypassReason"], "docker daemon unavailable")
+        self.assertEqual(
+            result["dockerBypassNote"],
+            "runs/example/.apdr-debug/docker-bypass.txt",
+        )
+        self.assertEqual(result["debugDir"], "runs/example/.apdr-debug")
+        self.assertEqual(result["validationBackend"], "llm")
+        self.assertEqual(result["validationPath"], "env")
+
+        row = service._build_case_row(result, {"tool": "apdr", "loop_count": 1})
+        self.assertEqual(
+            row["requestedLlmValidationPolicy"],
+            result["requestedLlmValidationPolicy"],
+        )
+        self.assertEqual(row["llmValidationRoute"], result["llmValidationRoute"])
+        self.assertEqual(row["dockerBypassReason"], result["dockerBypassReason"])
+        self.assertEqual(row["dockerBypassNote"], result["dockerBypassNote"])
+        self.assertEqual(row["debugDir"], result["debugDir"])
+
+        events = self._drain_events(event_queue)
+        case_complete = next(event for event in events if event["type"] == "case_complete")
+        self.assertEqual(case_complete["requestedLlmValidationPolicy"], "docker-first")
+        self.assertEqual(case_complete["llmValidationRoute"], "env-first-docker-bypass")
+        self.assertEqual(case_complete["dockerBypassReason"], "docker daemon unavailable")
+        self.assertEqual(
+            case_complete["dockerBypassNote"],
+            "runs/example/.apdr-debug/docker-bypass.txt",
+        )
+        self.assertEqual(case_complete["debugDir"], "runs/example/.apdr-debug")
+        self.assertEqual(case_complete["validationPath"], "env")
+        self.assertEqual(case_complete["failureFamily"], "environment-specific")
+        self.assertEqual(case_complete["resultOrigin"], "live")
 
 
 class TestReplayManifest(unittest.TestCase):

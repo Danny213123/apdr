@@ -800,6 +800,16 @@ class BenchmarkWorker(threading.Thread):
         fallback_reason = self._metadata_text(output_metadata.get("fallback_reason"))
         validation_backend = self._metadata_text(output_metadata.get("validation_backend"))
         validation_path = self._metadata_text(output_metadata.get("validation_path"))
+        requested_llm_validation_policy = self._metadata_text(
+            output_metadata.get("requested_llm_validation_policy")
+        )
+        llm_validation_route = self._metadata_text(output_metadata.get("llm_validation_route"))
+        docker_bypass_reason = self._metadata_text(output_metadata.get("docker_bypass_reason"))
+        docker_bypass_note = self._metadata_text(
+            output_metadata.get("docker_bypass_note")
+            or output_metadata.get("docker_bypass_note_path")
+        )
+        debug_dir = self._metadata_text(output_metadata.get("debug_dir"))
         escalated_backend = self._metadata_text(output_metadata.get("escalated_backend"))
         failure_family = self._metadata_text(output_metadata.get("failure_family"))
         failure_bucket = self._metadata_text(output_metadata.get("failure_bucket"))
@@ -831,6 +841,11 @@ class BenchmarkWorker(threading.Thread):
             "fallbackReason": fallback_reason,
             "validationBackend": validation_backend,
             "validationPath": validation_path,
+            "requestedLlmValidationPolicy": requested_llm_validation_policy,
+            "llmValidationRoute": llm_validation_route,
+            "dockerBypassReason": docker_bypass_reason,
+            "dockerBypassNote": docker_bypass_note,
+            "debugDir": debug_dir,
             "escalatedBackend": escalated_backend,
             "failureFamily": failure_family,
             "failureBucket": failure_bucket,
@@ -866,6 +881,16 @@ class BenchmarkWorker(threading.Thread):
             event_data["fallbackReason"] = fallback_reason
         if validation_path:
             event_data["validationPath"] = validation_path
+        if requested_llm_validation_policy:
+            event_data["requestedLlmValidationPolicy"] = requested_llm_validation_policy
+        if llm_validation_route:
+            event_data["llmValidationRoute"] = llm_validation_route
+        if docker_bypass_reason:
+            event_data["dockerBypassReason"] = docker_bypass_reason
+        if docker_bypass_note:
+            event_data["dockerBypassNote"] = docker_bypass_note
+        if debug_dir:
+            event_data["debugDir"] = debug_dir
         if escalated_backend:
             event_data["escalatedBackend"] = escalated_backend
         if failure_family:
