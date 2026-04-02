@@ -1,8 +1,8 @@
 ---
 phase: 22
 slug: docker-first-policy-and-safe-degradation
-status: draft
-nyquist_compliant: false
+status: ready
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-04-01
 ---
@@ -30,6 +30,7 @@ created: 2026-04-01
 - **After every task commit:** Run `/bin/zsh -lc "cargo test --manifest-path tools/apdr/Cargo.toml phase22_policy_ && python3 -m unittest benchmark_ui.test_run_contract benchmark_ui.test_state_backend_doctor"`
 - **After every plan wave:** Run `/bin/zsh -lc "cargo test --manifest-path tools/apdr/Cargo.toml phase22_policy_ && python3 -m unittest benchmark_ui.test_run_contract benchmark_ui.test_state_backend_doctor && npm run build --prefix web"`
 - **Before `$gsd-verify-work`:** Full suite plus the deterministic policy proof checker must be green
+- **Gap-closure wave requirement:** Wave 4 must rerun the proof checker after the Doctor wording test so the installed-but-unusable Docker path is sampled in both runtime copy and machine-readable artifacts.
 - **Max feedback latency:** 210 seconds
 
 ---
@@ -44,6 +45,8 @@ created: 2026-04-01
 | 22-02-02 | 02 | 2 | GDR-01 | integration | `python3 -m unittest benchmark_ui.test_state_backend_doctor && npm run build --prefix web` | ✅ | ⬜ pending |
 | 22-03-01 | 03 | 3 | GDR-01 | artifact-contract | `cargo test --manifest-path tools/apdr/Cargo.toml phase22_policy_` | ✅ | ⬜ pending |
 | 22-03-02 | 03 | 3 | DFV-01, GDR-01 | proof-contract | `python3 scripts/check_phase22_docker_policy.py --slice-json .planning/phases/22-docker-first-policy-and-safe-degradation/22-docker-policy-slice.json --status-json .planning/phases/22-docker-first-policy-and-safe-degradation/22-docker-policy-proof-status.json --probe-only` | ✅ | ⬜ pending |
+| 22-04-01 | 04 | 4 | GDR-01 | unit | `cargo test --manifest-path tools/apdr/Cargo.toml phase22_policy_` | ✅ | ⬜ pending |
+| 22-04-02 | 04 | 4 | GDR-01 | proof-contract/integration | `python3 -m unittest benchmark_ui.test_state_backend_doctor && python3 scripts/check_phase22_docker_policy.py --slice-json .planning/phases/22-docker-first-policy-and-safe-degradation/22-docker-policy-slice.json --status-json .planning/phases/22-docker-first-policy-and-safe-degradation/22-docker-policy-proof-status.json --probe-only` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -67,11 +70,11 @@ created: 2026-04-01
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 210s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 210s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** ready
