@@ -56,9 +56,18 @@ class _FakeDoctorState(AppState):
 
 
 class TestStateBackendDoctor(unittest.TestCase):
-    def _docker_aware_which(self, command: str) -> str | None:
+    def _docker_missing_which(self, command: str) -> str | None:
         if command == "docker":
             return None
+        if command == "ollama":
+            return "/usr/bin/ollama"
+        if command == "cargo":
+            return "/usr/bin/cargo"
+        return "/usr/bin/python3"
+
+    def _docker_present_which(self, command: str) -> str | None:
+        if command == "docker":
+            return "/usr/bin/docker"
         if command == "ollama":
             return "/usr/bin/ollama"
         if command == "cargo":
@@ -68,7 +77,7 @@ class TestStateBackendDoctor(unittest.TestCase):
     def test_llm_backend_warns_when_docker_is_missing_for_docker_first_degradation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
-            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_aware_which):
+            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_missing_which):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
 
             docker_row = next(
@@ -77,23 +86,41 @@ class TestStateBackendDoctor(unittest.TestCase):
             self.assertEqual(docker_row["status"], "WARN")
             self.assertIn("requested docker-first validation", docker_row["detail"])
             self.assertIn("degrade to env validation", docker_row["detail"])
+            self.assertIn("docker cli unavailable", docker_row["detail"])
+
+    def test_llm_backend_warns_when_docker_daemon_is_unavailable_for_docker_first_degradation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state = _FakeDoctorState(Path(temp_dir))
+            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_present_which):
+                rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
+
+            docker_row = next(
+                row
+                for row in rows
+                if row["label"] == "Docker daemon (preferred for APDR llm docker-first)"
+            )
+            self.assertEqual(docker_row["status"], "WARN")
+            self.assertIn("degrade to env validation", docker_row["detail"])
+            self.assertIn("docker daemon unavailable", docker_row["detail"])
 
     def test_llm_backend_still_checks_local_env_tooling(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
-            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_aware_which):
+            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_missing_which):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
 
             backend_row = next(row for row in rows if row["label"] == "apdr validation backend")
             tooling_row = next(row for row in rows if row["label"] == "apdr env tooling")
             self.assertIn("Docker-first validation with safe env fallback", backend_row["detail"])
+            self.assertIn("docker cli unavailable", backend_row["detail"])
+            self.assertIn("docker daemon unavailable", backend_row["detail"])
             self.assertEqual(tooling_row["status"], "PASS")
             self.assertEqual(tooling_row["detail"], "virtualenv tooling ready")
 
     def test_pure_docker_backend_still_fails_without_docker(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
-            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_aware_which):
+            with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_missing_which):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="docker")
 
             docker_cli_row = next(row for row in rows if row["label"] == "Docker CLI")
@@ -101,7 +128,7 @@ class TestStateBackendDoctor(unittest.TestCase):
             self.assertEqual(docker_cli_row["status"], "FAIL")
             self.assertEqual(docker_daemon_row["status"], "FAIL")
 
-    def test_service_doctor_copy_mentions_targeted_docker_escalation_for_llm(self) -> None:
+    def test_service_doctor_copy_mentions_docker_first_readiness_for_llm(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             service = BenchmarkService(_FakeDoctorState(Path(temp_dir)))
             summary = service._doctor_intro_summary("apdr", "llm")

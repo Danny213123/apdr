@@ -1,6 +1,6 @@
 {
   "slice_id": "phase22-docker-policy-proof-v1",
-  "description": "Deterministic Phase 22 policy contract for docker-first routing, env-first control, Docker bypass fallback, and host-runtime pre-skip behavior.",
+  "description": "Deterministic Phase 22 policy contract for docker-first routing, env-first control, docker cli unavailable fallback, docker daemon unavailable fallback, and host-runtime pre-skip behavior.",
   "required_top_level_fields": [
     "requested_llm_validation_policy",
     "llm_validation_route",
@@ -42,7 +42,18 @@
       "requested_llm_validation_policy": "docker-first",
       "llm_validation_route": "env-first-docker-bypass",
       "expected_first_hop": "env",
-      "docker_bypass_reason": "docker unavailable",
+      "docker_bypass_reason": "docker cli unavailable",
+      "required_debug_artifacts": [
+        "docker-bypass.txt"
+      ]
+    },
+    {
+      "case_id": "docker-daemon-unavailable",
+      "relative_path": "contracts/docker-daemon-unavailable/snippet.py",
+      "requested_llm_validation_policy": "docker-first",
+      "llm_validation_route": "env-first-docker-bypass",
+      "expected_first_hop": "env",
+      "docker_bypass_reason": "docker daemon unavailable",
       "required_debug_artifacts": [
         "docker-bypass.txt"
       ]

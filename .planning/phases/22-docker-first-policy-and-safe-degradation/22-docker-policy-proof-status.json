@@ -5,22 +5,23 @@
   "docker_bypass_cases": [
     "env-first-control",
     "docker-bypass-fallback",
+    "docker-daemon-unavailable",
     "host-runtime-pre-skip"
   ],
   "errors": [],
   "mode": "probe",
   "passed": true,
   "phase": "22",
-  "plan": "03",
+  "plan": "04",
   "probe_only": true,
   "route_counts": {
     "docker-first": 1,
     "env-first-control": 1,
-    "env-first-docker-bypass": 1,
+    "env-first-docker-bypass": 2,
     "env-first-host-runtime": 1
   },
   "slice_contract": {
-    "case_count": 4,
+    "case_count": 5,
     "cases": [
       {
         "case_id": "docker-first-default",
@@ -51,10 +52,21 @@
       },
       {
         "case_id": "docker-bypass-fallback",
-        "docker_bypass_reason": "docker unavailable",
+        "docker_bypass_reason": "docker cli unavailable",
         "expected_first_hop": "env",
         "llm_validation_route": "env-first-docker-bypass",
         "relative_path": "contracts/docker-bypass-fallback/snippet.py",
+        "requested_llm_validation_policy": "docker-first",
+        "required_debug_artifacts": [
+          "docker-bypass.txt"
+        ]
+      },
+      {
+        "case_id": "docker-daemon-unavailable",
+        "docker_bypass_reason": "docker daemon unavailable",
+        "expected_first_hop": "env",
+        "llm_validation_route": "env-first-docker-bypass",
+        "relative_path": "contracts/docker-daemon-unavailable/snippet.py",
         "requested_llm_validation_policy": "docker-first",
         "required_debug_artifacts": [
           "docker-bypass.txt"

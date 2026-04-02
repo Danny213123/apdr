@@ -49,7 +49,16 @@ EXPECTED_CASES = (
         "requested_llm_validation_policy": "docker-first",
         "llm_validation_route": "env-first-docker-bypass",
         "expected_first_hop": "env",
-        "docker_bypass_reason": "docker unavailable",
+        "docker_bypass_reason": "docker cli unavailable",
+        "required_debug_artifacts": ["docker-bypass.txt"],
+    },
+    {
+        "case_id": "docker-daemon-unavailable",
+        "relative_path": "contracts/docker-daemon-unavailable/snippet.py",
+        "requested_llm_validation_policy": "docker-first",
+        "llm_validation_route": "env-first-docker-bypass",
+        "expected_first_hop": "env",
+        "docker_bypass_reason": "docker daemon unavailable",
         "required_debug_artifacts": ["docker-bypass.txt"],
     },
     {
@@ -243,7 +252,7 @@ def main() -> int:
     args = parse_args()
     status: dict[str, Any] = {
         "phase": "22",
-        "plan": "03",
+        "plan": "04",
         "probe_only": bool(args.probe_only),
         "mode": "probe" if args.probe_only else "contract",
         "passed": False,

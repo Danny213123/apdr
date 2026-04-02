@@ -304,7 +304,8 @@ class AppState:
             return "Docker build + run validation"
         if resolved == "llm":
             return (
-                "Docker-first validation with safe env fallback + agent fallback; "
+                "Docker-first validation with safe env fallback when docker cli unavailable "
+                "or docker daemon unavailable + agent fallback; "
                 "env-first remains available as a control"
             )
         return "Isolated local Python env validation"
@@ -632,7 +633,8 @@ class AppState:
             elif code != 0 and docker_targeted_for_llm:
                 detail = (
                     f"{detail} APDR llm requested docker-first validation, so runs will "
-                    "degrade to env validation until Docker is available."
+                    "degrade to env validation with docker_bypass_reason: "
+                    "docker daemon unavailable until Docker is available."
                 )
             elif code != 0 and docker_optional:
                 detail = f"{detail} Docker is optional for the selected backend."
@@ -656,7 +658,9 @@ class AppState:
                     self._doctor_row(
                         "WARN",
                         "Docker (preferred for APDR llm docker-first)",
-                        "Docker is not installed. APDR llm requested docker-first validation, so runs will degrade to env validation until Docker is available.",
+                        "Docker is not installed. APDR llm requested docker-first validation, "
+                        "so runs will degrade to env validation with docker_bypass_reason: "
+                        "docker cli unavailable until Docker is available.",
                     )
                 )
             elif docker_optional:
