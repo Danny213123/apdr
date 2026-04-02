@@ -3,6 +3,7 @@ use super::docker_backend::{
 };
 use super::process::{command_on_path, run_command_with_timeout, truncate_log};
 use super::*;
+use crate::context;
 use crate::docker::system_deps;
 use crate::{
     ResolveConfig, ValidationAttempt, ValidationSummary, LLM_VALIDATION_POLICY_ENV_FIRST,
@@ -33,7 +34,7 @@ pub(super) fn validate_requirements_llm(
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
     let route = llm_validation_route(config, imports, requirements_txt, command_on_path("docker"));
-    match route {
+    let mut summary = match route {
         LlmValidationRoute::DockerFirst => validate_requirements_llm_docker_first(
             snippet_path,
             requirements_txt,
@@ -83,7 +84,9 @@ pub(super) fn validate_requirements_llm(
                 false,
             )
         }
-    }
+    }?;
+    apply_llm_route_metadata(&mut summary, config, route)?;
+    Ok(summary)
 }
 
 fn validate_requirements_llm_env_first(
@@ -114,8 +117,8 @@ fn validate_requirements_llm_env_first(
 
     // Phase 2: Route backend-recoverable env failures through a deterministic
     // Docker stage before falling back to the LangGraph multi-agent pipeline.
-    let docker_escalated =
-        allow_docker_retry && llm_env_failure_requires_docker_escalation(&summary, requirements_txt);
+    let docker_escalated = allow_docker_retry
+        && llm_env_failure_requires_docker_escalation(&summary, requirements_txt);
     if docker_escalated {
         let reason = llm_env_failure_reason_for_docker_escalation(&summary, requirements_txt);
         eprintln!(
@@ -239,10 +242,76 @@ pub(super) fn llm_validation_route(
     LlmValidationRoute::DockerFirst
 }
 
-pub(super) fn llm_case_requires_host_runtime(
-    imports: &[String],
-    requirements_txt: &str,
-) -> bool {
+fn llm_validation_route_label(route: LlmValidationRoute) -> &'static str {
+    match route {
+        LlmValidationRoute::DockerFirst => "docker-first",
+        LlmValidationRoute::EnvFirstControl => "env-first-control",
+        LlmValidationRoute::EnvFirstHostRuntime => "env-first-host-runtime",
+        LlmValidationRoute::EnvFirstDockerBypass => "env-first-docker-bypass",
+    }
+}
+
+fn llm_validation_first_hop(route: LlmValidationRoute) -> &'static str {
+    match route {
+        LlmValidationRoute::DockerFirst => VALIDATION_BACKEND_DOCKER,
+        LlmValidationRoute::EnvFirstControl
+        | LlmValidationRoute::EnvFirstHostRuntime
+        | LlmValidationRoute::EnvFirstDockerBypass => "env",
+    }
+}
+
+fn llm_docker_bypass_reason(route: LlmValidationRoute) -> Option<&'static str> {
+    match route {
+        LlmValidationRoute::DockerFirst => None,
+        LlmValidationRoute::EnvFirstControl => Some("explicit env-first control policy"),
+        LlmValidationRoute::EnvFirstHostRuntime => Some("host-runtime pre-skip"),
+        LlmValidationRoute::EnvFirstDockerBypass => Some("docker unavailable"),
+    }
+}
+
+fn write_llm_docker_bypass_note(
+    config: &ResolveConfig,
+    route: LlmValidationRoute,
+    reason: &str,
+) -> io::Result<PathBuf> {
+    context::ensure_debug_layout(&config.output_dir)?;
+    let note_path = context::debug_root(&config.output_dir).join("docker-bypass.txt");
+    context::write_text(
+        &note_path,
+        &format!(
+            "note_type: docker-bypass\nrequested_llm_validation_policy: {}\nllm_validation_route: {}\nfirst_hop: {}\ndocker_requested: {}\ndocker_bypass_reason: {}\n",
+            config.llm_validation_policy(),
+            llm_validation_route_label(route),
+            llm_validation_first_hop(route),
+            config.llm_validation_policy() != LLM_VALIDATION_POLICY_ENV_FIRST,
+            reason,
+        ),
+    )?;
+    Ok(note_path)
+}
+
+pub(super) fn apply_llm_route_metadata(
+    summary: &mut ValidationSummary,
+    config: &ResolveConfig,
+    route: LlmValidationRoute,
+) -> io::Result<()> {
+    summary.requested_llm_validation_policy = Some(config.llm_validation_policy().to_string());
+    summary.llm_validation_route = Some(llm_validation_route_label(route).to_string());
+    if let Some(reason) = llm_docker_bypass_reason(route) {
+        summary.docker_bypass_reason = Some(reason.to_string());
+        summary.docker_bypass_note_path = Some(
+            write_llm_docker_bypass_note(config, route, reason)?
+                .display()
+                .to_string(),
+        );
+    } else {
+        summary.docker_bypass_reason = None;
+        summary.docker_bypass_note_path = None;
+    }
+    Ok(())
+}
+
+pub(super) fn llm_case_requires_host_runtime(imports: &[String], requirements_txt: &str) -> bool {
     let normalized_imports = imports
         .iter()
         .map(|item| item.trim().to_ascii_lowercase())

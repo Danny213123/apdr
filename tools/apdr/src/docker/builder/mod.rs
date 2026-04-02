@@ -117,8 +117,9 @@ pub(super) fn merge_backend_retry_history(
 use self::agent_backend::docker_agent_importable_with_probe;
 #[cfg(test)]
 use self::agent_backend::{
-    llm_case_requires_host_runtime, llm_env_failure_requires_docker_escalation,
-    llm_validation_route, merge_llm_retry_history, parse_agent_result, LlmValidationRoute,
+    apply_llm_route_metadata, llm_case_requires_host_runtime,
+    llm_env_failure_requires_docker_escalation, llm_validation_route, merge_llm_retry_history,
+    parse_agent_result, LlmValidationRoute,
 };
 #[cfg(test)]
 use self::env_backend::prepare_env_validation_attempt;
@@ -423,9 +424,18 @@ mod tests {
         merge_llm_retry_history(&mut env_summary, &mut agent_summary);
 
         assert_eq!(agent_summary.attempts.len(), 3);
-        assert_eq!(agent_summary.attempts[0].validation_backend, VALIDATION_BACKEND_ENV);
-        assert_eq!(agent_summary.attempts[1].validation_backend, VALIDATION_BACKEND_ENV);
-        assert_eq!(agent_summary.attempts[2].validation_backend, VALIDATION_BACKEND_LLM);
+        assert_eq!(
+            agent_summary.attempts[0].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
+        assert_eq!(
+            agent_summary.attempts[1].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
+        assert_eq!(
+            agent_summary.attempts[2].validation_backend,
+            VALIDATION_BACKEND_LLM
+        );
         assert_eq!(agent_summary.attempts[2].attempt_index, 3);
     }
 
@@ -571,13 +581,22 @@ mod tests {
         merge_llm_retry_history(&mut docker_summary, &mut agent_summary);
 
         assert_eq!(agent_summary.attempts.len(), 4);
-        assert_eq!(agent_summary.attempts[0].validation_backend, VALIDATION_BACKEND_ENV);
-        assert_eq!(agent_summary.attempts[1].validation_backend, VALIDATION_BACKEND_ENV);
+        assert_eq!(
+            agent_summary.attempts[0].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
+        assert_eq!(
+            agent_summary.attempts[1].validation_backend,
+            VALIDATION_BACKEND_ENV
+        );
         assert_eq!(
             agent_summary.attempts[2].validation_backend,
             VALIDATION_BACKEND_DOCKER
         );
-        assert_eq!(agent_summary.attempts[3].validation_backend, VALIDATION_BACKEND_LLM);
+        assert_eq!(
+            agent_summary.attempts[3].validation_backend,
+            VALIDATION_BACKEND_LLM
+        );
     }
 
     #[test]
@@ -629,5 +648,74 @@ mod tests {
             llm_validation_route(&config, &[], "requests==2.31.0", false),
             LlmValidationRoute::EnvFirstDockerBypass
         );
+    }
+
+    #[test]
+    fn phase22_policy_non_docker_routes_write_bypass_note() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().expect("tempdir");
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("out");
+        let mut summary = ValidationSummary::default();
+
+        apply_llm_route_metadata(
+            &mut summary,
+            &config,
+            LlmValidationRoute::EnvFirstDockerBypass,
+        )
+        .expect("route metadata");
+
+        let note_path = temp.path().join("out/.apdr-debug/docker-bypass.txt");
+        let note_path_string = note_path.display().to_string();
+        let note = fs::read_to_string(&note_path).expect("docker bypass note");
+        assert_eq!(
+            summary.requested_llm_validation_policy.as_deref(),
+            Some("docker-first")
+        );
+        assert_eq!(
+            summary.llm_validation_route.as_deref(),
+            Some("env-first-docker-bypass")
+        );
+        assert_eq!(
+            summary.docker_bypass_reason.as_deref(),
+            Some("docker unavailable")
+        );
+        assert_eq!(
+            summary.docker_bypass_note_path.as_deref(),
+            Some(note_path_string.as_str())
+        );
+        assert!(note.contains("note_type: docker-bypass"));
+        assert!(note.contains("requested_llm_validation_policy: docker-first"));
+        assert!(note.contains("llm_validation_route: env-first-docker-bypass"));
+        assert!(note.contains("docker_bypass_reason: docker unavailable"));
+    }
+
+    #[test]
+    fn phase22_policy_docker_first_route_skips_bypass_note() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().expect("tempdir");
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("out");
+        let mut summary = ValidationSummary::default();
+
+        apply_llm_route_metadata(&mut summary, &config, LlmValidationRoute::DockerFirst)
+            .expect("route metadata");
+
+        assert_eq!(
+            summary.requested_llm_validation_policy.as_deref(),
+            Some("docker-first")
+        );
+        assert_eq!(
+            summary.llm_validation_route.as_deref(),
+            Some("docker-first")
+        );
+        assert!(summary.docker_bypass_reason.is_none());
+        assert!(summary.docker_bypass_note_path.is_none());
+        assert!(!temp
+            .path()
+            .join("out/.apdr-debug/docker-bypass.txt")
+            .exists());
     }
 }
