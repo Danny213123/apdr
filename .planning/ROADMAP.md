@@ -36,7 +36,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. APDR preserves a structured per-case plan showing what modules/imports the LLM found, which packages it mapped, which items remain unresolved, and what runtime assumptions it made.
   2. `llm` and `llm-only` both use that authored plan as their first-class input rather than collapsing directly to empty `requirements.txt` on no-output paths.
   3. Saved artifacts and debug folders make it clear which plan elements came from the LLM versus deterministic fallbacks.
-**Plans**: Not started
+**Plans**: 3 planned
 
 ### Phase 27: LLM-Authored Docker Validation and Artifact Truth
 **Goal**: The LLM can author Docker-oriented validation inputs that APDR can actually execute, while the Docker path itself becomes reliable enough to stop losing freshly built images before runtime
@@ -82,7 +82,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 26. LLM Case Intake and Plan Authoring | 0/0 | Pending | — |
+| 26. LLM Case Intake and Plan Authoring | 0/3 | Planned | — |
 | 27. LLM-Authored Docker Validation and Artifact Truth | 0/0 | Pending | — |
 | 28. LLM Recovery Loop and Failure Semantics | 0/0 | Pending | — |
 | 29. LLM Benchmark Gains and Regression Harness | 0/0 | Pending | — |
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-02 (started milestone v2.5)*
+*Last updated: 2026-04-02 (Phase 26 planned)*
