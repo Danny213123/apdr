@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1, 22, and 24 are completed, Phase 23 still carries human-verification debt, and Phase 25 remains the final closeout phase
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1, 22, and 24 are completed, Phase 23 still carries human-verification debt, and Phase 25 is now planned for the final closeout recommendation
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
@@ -75,6 +75,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
   1. Closeout artifacts state whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode.
   2. The recommendation cites the comparison evidence and calls out the main correctness, compatibility, and runtime tradeoffs.
   3. The final verdict updates requirements, roadmap, and state truth without overstating fixed-slice evidence as a full-corpus result.
+**Plans**: `25-01`, `25-02`, and `25-03`
 
 ## Progress
 
@@ -84,11 +85,11 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 | 22. Docker-First Policy and Safe Degradation | 4/4 | Complete   | 2026-04-02 |
 | 23. Policy Truth and Failure Semantics | 3/3 | Human Verify | — |
 | 24. Env-First vs Docker-First Comparison Harness | 3/3 | Complete | 2026-04-02 |
-| 25. Docker-First Decision Closeout | 0/0 | Not Started | — |
+| 25. Docker-First Decision Closeout | 0/3 | Planned | — |
 
 ## Dependencies
 
 `Phase 21.1 -> Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
 
 *Roadmap created: 2026-04-01*
-*Last updated: 2026-04-02 (Phase 24 complete; Phase 23 human verification still pending)*
+*Last updated: 2026-04-02 (Phase 25 planned; Phase 23 human verification still pending)*
