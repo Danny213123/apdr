@@ -26,6 +26,7 @@ from .run_contract import (
     missing_required_keys,
     normalize_build_profile,
     normalize_cache_state,
+    normalize_llm_validation_policy,
     normalize_run_intent,
 )
 
@@ -415,6 +416,9 @@ class BenchmarkWorker(threading.Thread):
                 "snippet_limit": (snippet_limit if not replay_manifest_path else "") or "",
                 "python_command": str(self.run_config.get("python_command", "")),
                 "validation_backend": str(self.run_config.get("validation_backend", "")),
+                "llm_validation_policy": normalize_llm_validation_policy(
+                    self.run_config.get("llm_validation_policy")
+                ),
                 "run_intent": run_contract["run_intent"],
                 "cache_state": run_contract["cache_state"],
                 "build_profile": run_contract["build_profile"],
@@ -506,6 +510,15 @@ class BenchmarkWorker(threading.Thread):
                             "env" if is_llm_only else vb,
                         ]
                     )
+                    if vb == "llm":
+                        command.extend(
+                            [
+                                "--llm-validation-policy",
+                                normalize_llm_validation_policy(
+                                    self.run_config.get("llm_validation_policy")
+                                ),
+                            ]
+                        )
                     command.extend(["--build-profile", build_profile])
                     if is_llm_only:
                         command.append("--llm-only")

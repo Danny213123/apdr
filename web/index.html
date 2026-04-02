@@ -76,6 +76,17 @@
               <span class="toolbar-label">Resolved</span>
               <span class="toolbar-value toolbar-break" id="resolved-model">-</span>
             </div>
+            <div class="toolbar-line" id="llm-policy-row" hidden>
+              <span class="toolbar-label">LLM policy</span>
+              <div class="custom-select" id="llm-validation-policy-select" data-placeholder="Select llm policy">
+                <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="LLM validation policy">
+                  <span class="custom-select-label">Select llm policy</span>
+                  <span class="custom-select-arrow" aria-hidden="true">▾</span>
+                </button>
+                <div class="custom-select-menu" role="listbox" aria-label="LLM validation policy options"></div>
+              </div>
+              <span class="toolbar-value toolbar-break" id="llm-policy-note">docker-first is the default llm route; env-first stays available as the comparison control.</span>
+            </div>
             <div class="toolbar-line">
               <label class="toolbar-check" for="rag-checkbox">
                 <input id="rag-checkbox" type="checkbox" />

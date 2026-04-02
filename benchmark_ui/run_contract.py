@@ -9,12 +9,15 @@ import subprocess
 
 
 RUN_CONTRACT_VERSION = 1
+LLM_VALIDATION_POLICY_DOCKER_FIRST = "docker-first"
+LLM_VALIDATION_POLICY_ENV_FIRST = "env-first"
 REQUIRED_RUN_CONTRACT_KEYS = (
     "run_contract_version",
     "tool",
     "model_name",
     "base_url",
     "validation_backend",
+    "llm_validation_policy",
     "run_intent",
     "execution_mode",
     "cache_state",
@@ -71,6 +74,13 @@ def normalize_inference_policy(value: Any, temperature: float | None = None) -> 
     if temperature is None:
         return "temperature=inherited"
     return f"temperature={temperature}"
+
+
+def normalize_llm_validation_policy(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if text == LLM_VALIDATION_POLICY_ENV_FIRST:
+        return LLM_VALIDATION_POLICY_ENV_FIRST
+    return LLM_VALIDATION_POLICY_DOCKER_FIRST
 
 
 def determine_execution_mode(tool: str, validation_backend: str) -> str:
@@ -198,6 +208,9 @@ def build_run_contract(
         "model_name": str(model_name or "").strip() or "unknown",
         "base_url": str(base_url or "").strip(),
         "validation_backend": str(validation_backend or "").strip().lower() or "env",
+        "llm_validation_policy": normalize_llm_validation_policy(
+            run_config.get("llm_validation_policy")
+        ),
         "run_intent": normalize_run_intent(run_config.get("run_intent")),
         "execution_mode": determine_execution_mode(tool, validation_backend),
         "cache_state": normalize_cache_state(run_config.get("cache_state")),

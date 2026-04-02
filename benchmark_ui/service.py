@@ -26,6 +26,7 @@ from .run_contract import (
     normalize_cache_state,
     normalize_context_window,
     normalize_inference_policy,
+    normalize_llm_validation_policy,
     normalize_run_intent,
 )
 from .state import APDR_PYTHON_VERSIONS, AppState, ModelConfig
@@ -531,6 +532,12 @@ class BenchmarkService:
                 tool,
                 str(payload.get("validation_backend") or payload.get("validationBackend") or defaults["validation_backend"]).strip(),
             ),
+            "llm_validation_policy": normalize_llm_validation_policy(
+                payload.get("llm_validation_policy")
+                or payload.get("llmValidationPolicy")
+                or run_contract.get("llm_validation_policy")
+                or defaults.get("llm_validation_policy")
+            ),
             "loadout_name": str(payload.get("loadout_name") or payload.get("loadoutName") or "").strip(),
             "run_intent": normalize_run_intent(
                 payload.get("run_intent")
@@ -959,6 +966,7 @@ class BenchmarkService:
             "snippet_limit": config["snippet_limit"],
             "python_command": config["python_command"],
             "validation_backend": config["validation_backend"],
+            "llm_validation_policy": config["llm_validation_policy"],
             "loadout_name": config["loadout_name"],
             "run_intent": config["run_intent"],
             "cache_state": config["cache_state"],
@@ -1240,6 +1248,11 @@ class BenchmarkService:
             "run_intent": str(run_contract.get("run_intent") or config.get("run_intent") or "baseline"),
             "execution_mode": str(run_contract.get("execution_mode") or determine_execution_mode(tool, validation_backend)),
             "cache_state": str(run_contract.get("cache_state") or config.get("cache_state") or "unknown"),
+            "llm_validation_policy": str(
+                run_contract.get("llm_validation_policy")
+                or config.get("llm_validation_policy")
+                or normalize_llm_validation_policy("")
+            ),
             "llm_context_window": str(
                 run_contract.get("llm_context_window") or config.get("llm_context_window") or "--"
             ),
@@ -1325,9 +1338,23 @@ class BenchmarkService:
                     "value": "Docker build + run" if validation_backend == "docker" else "LLM resolver (env + targeted Docker escalation + agent fallback)" if validation_backend == "llm" else "local Python environments",
                 },
             )
+            if validation_backend == "llm":
+                fields.insert(
+                    15,
+                    {
+                        "label": "LLM policy",
+                        "value": contract_view["llm_validation_policy"],
+                    },
+                )
             if validation_backend in ("env", "llm"):
                 available, missing = self.state.apdr_local_interpreters()
-                fields.insert(15, {"label": "Py envs", "value": self._compact_apdr_interpreter_label(available, missing)})
+                fields.insert(
+                    16 if validation_backend == "llm" else 15,
+                    {
+                        "label": "Py envs",
+                        "value": self._compact_apdr_interpreter_label(available, missing),
+                    },
+                )
         elif tool == "pllm":
             fields.insert(14, {"label": "Validation", "value": "Docker build + run"})
         return fields

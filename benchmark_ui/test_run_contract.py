@@ -2,15 +2,72 @@ from __future__ import annotations
 
 import json
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 from queue import Queue
 
-from .run_contract import REQUIRED_RUN_CONTRACT_KEYS, build_run_contract, missing_required_keys
+from .run_contract import (
+    REQUIRED_RUN_CONTRACT_KEYS,
+    build_run_contract,
+    missing_required_keys,
+)
 from .runner import BenchmarkWorker
 from .service import BenchmarkService
-from .state import AppState
+from .state import AppState, ModelConfig
+
+
+class _FakeBenchmarkState(AppState):
+    def __init__(self, repo_root: Path) -> None:
+        super().__init__(repo_root)
+        tool_dir = self.tools_dir / "apdr"
+        tool_dir.mkdir(parents=True, exist_ok=True)
+        (tool_dir / "test_executor.py").write_text("print('stub')\n", encoding="utf-8")
+
+    def load_model_config(self, tool: str) -> ModelConfig:
+        return ModelConfig(tool=tool, model="qwen3.5:9b", base_url="http://localhost:11434")
+
+    def validate_tool_runtime(
+        self, tool: str, python_command: str = "", validation_backend: str = ""
+    ) -> tuple[bool, str, list[str]]:
+        return True, "runtime ok", [sys.executable]
+
+    def discover_ollama_models(self, base_url: str) -> tuple[list[str], str, str]:
+        return (["qwen3.5:9b"], "api", "")
+
+
+class _CommandCapturingWorker(BenchmarkWorker):
+    def __init__(self, state: AppState, run_config: dict[str, object], message_queue: Queue[dict[str, object]]) -> None:
+        super().__init__(state, run_config, message_queue)
+        self.commands: list[list[str]] = []
+
+    def _run_single(
+        self,
+        tool: str,
+        tool_dir: Path,
+        command: list[str],
+        snippet: Path,
+        overall_index: int,
+        total_snippets: int,
+        artifact_dir: Path | None,
+    ) -> dict[str, object]:
+        self.commands.append(command)
+        return {
+            "snippet": str(snippet),
+            "returncode": 0,
+            "succeeded": True,
+            "skipped": False,
+            "requirements": [],
+            "output_files": [],
+            "log_tail": [],
+            "duration_seconds": 0.1,
+            "output_metadata": {
+                "validation_backend": "llm",
+                "validation_path": "docker",
+                "llm_calls": "1",
+            },
+        }
 
 
 class TestRunContract(unittest.TestCase):
@@ -27,6 +84,18 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(config["run_intent"], "macos-replay")
             self.assertEqual(config["build_profile"], "release")
 
+    def test_service_defaults_llm_policy_to_docker_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            config = service._normalize_run_config(
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(Path(temp_dir) / "hard-gists.tar.gz"),
+                    "validation_backend": "llm",
+                }
+            )
+            self.assertEqual(config["llm_validation_policy"], "docker-first")
+
     def test_build_run_contract_includes_required_keys(self) -> None:
         contract = build_run_contract(
             repo_root=Path.cwd(),
@@ -36,6 +105,7 @@ class TestRunContract(unittest.TestCase):
             temperature=0.7,
             validation_backend="env",
             run_config={
+                "llm_validation_policy": "env-first",
                 "run_intent": "comparison",
                 "cache_state": "warm",
                 "llm_context_window": "32768",
@@ -51,6 +121,7 @@ class TestRunContract(unittest.TestCase):
         self.assertEqual(missing_required_keys(contract), [])
         self.assertEqual(set(REQUIRED_RUN_CONTRACT_KEYS), set(contract.keys()))
         self.assertEqual(contract["model_name"], "qwen3.5:9b")
+        self.assertEqual(contract["llm_validation_policy"], "env-first")
         self.assertEqual(contract["run_intent"], "comparison")
         self.assertEqual(contract["execution_mode"], "env-fast")
         self.assertEqual(contract["cache_state"], "warm")
@@ -85,6 +156,7 @@ class TestRunContract(unittest.TestCase):
                 "model_name": "qwen3.5:9b",
                 "base_url": "http://localhost:11434",
                 "validation_backend": "env",
+                "llm_validation_policy": "docker-first",
                 "run_intent": "baseline",
                 "execution_mode": "env-fast",
                 "cache_state": "unknown",
@@ -135,6 +207,7 @@ class TestRunContract(unittest.TestCase):
                         "model_name": "qwen3.5:9b",
                         "base_url": "http://localhost:11434",
                         "validation_backend": "docker",
+                        "llm_validation_policy": "docker-first",
                         "run_intent": "comparison",
                         "execution_mode": "docker-proof",
                         "cache_state": "warm",
@@ -197,6 +270,7 @@ class TestRunContract(unittest.TestCase):
                         "model_name": "qwen3.5:9b",
                         "base_url": "http://localhost:11434",
                         "validation_backend": "env",
+                        "llm_validation_policy": "docker-first",
                         "run_intent": "macos-replay",
                         "execution_mode": "env-fast",
                         "cache_state": "cold",
@@ -219,6 +293,45 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(info_fields["Build profile"], "release")
             self.assertEqual(info_fields["Workers"], "1")
             self.assertIn("Rosetta 2", info_fields["Replay warnings"])
+
+    def test_runner_passes_llm_validation_policy_flag_for_llm_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = _FakeBenchmarkState(repo_root)
+            dataset_root = repo_root / "hard-gists"
+            snippet_dir = dataset_root / "case-001"
+            snippet_dir.mkdir(parents=True, exist_ok=True)
+            (snippet_dir / "snippet.py").write_text("print('ok')\n", encoding="utf-8")
+            dataset_tar = repo_root / "hard-gists.tar.gz"
+            with tarfile.open(dataset_tar, "w:gz"):
+                pass
+
+            worker = _CommandCapturingWorker(
+                state,
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(dataset_tar),
+                    "loop_count": 1,
+                    "search_range": 1,
+                    "rag": False,
+                    "verbose": False,
+                    "snippet_limit": "",
+                    "python_command": "",
+                    "validation_backend": "llm",
+                    "llm_validation_policy": "env-first",
+                },
+                Queue(),
+            )
+
+            worker.run()
+
+            self.assertEqual(len(worker.commands), 1)
+            command = worker.commands[0]
+            self.assertIn("--validation-backend", command)
+            self.assertIn("llm", command)
+            self.assertIn("--llm-validation-policy", command)
+            policy_index = command.index("--llm-validation-policy")
+            self.assertEqual(command[policy_index + 1], "env-first")
 
     def test_case_row_keeps_requested_backend_distinct_from_validation_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

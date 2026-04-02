@@ -62,6 +62,9 @@ const ui = {
   toolSelect: document.querySelector("#tool-select"),
   validationBackendSelect: document.querySelector("#validation-backend-select"),
   homeLoadoutSelect: document.querySelector("#home-loadout-select"),
+  llmPolicyRow: document.querySelector("#llm-policy-row"),
+  llmValidationPolicySelect: document.querySelector("#llm-validation-policy-select"),
+  llmPolicyNote: document.querySelector("#llm-policy-note"),
   datasetInput: document.querySelector("#dataset-input"),
   datasetDefaultButton: document.querySelector("#dataset-default-button"),
   loopInput: document.querySelector("#loop-input"),
@@ -406,12 +409,20 @@ function setupDropdowns() {
     onChange: (value) => {
       state.form.tool = value;
       syncValidationBackendDropdown();
+      syncLlmValidationPolicyControl();
       requestPreview();
     },
   });
   dropdowns.validationBackend = createDropdown(ui.validationBackendSelect, {
     onChange: (value) => {
       state.form.validation_backend = value;
+      syncLlmValidationPolicyControl();
+      requestPreview();
+    },
+  });
+  dropdowns.llmValidationPolicy = createDropdown(ui.llmValidationPolicySelect, {
+    onChange: (value) => {
+      state.form.llm_validation_policy = value;
       requestPreview();
     },
   });
@@ -431,6 +442,7 @@ function setupDropdowns() {
   });
   setDropdownOptions(dropdowns.runHistory, [], state.selectedHistoryRunId);
   syncValidationBackendDropdown();
+  syncLlmValidationPolicyControl();
 
   document.addEventListener("click", (event) => {
     const insideDropdown = Object.values(dropdowns).some((dropdown) => dropdown?.root.contains(event.target));
@@ -841,6 +853,27 @@ function syncValidationBackendDropdown() {
   setDropdownOptions(dropdowns.validationBackend, options, nextValue);
 }
 
+function showLlmValidationPolicyControl() {
+  return state.form?.tool === "apdr" && state.form?.validation_backend === "llm";
+}
+
+function llmValidationPolicyOptions() {
+  return [
+    { value: "docker-first", label: "docker-first" },
+    { value: "env-first", label: "env-first" },
+  ];
+}
+
+function syncLlmValidationPolicyControl() {
+  if (!dropdowns.llmValidationPolicy || !ui.llmPolicyRow || !state.form) {
+    return;
+  }
+  const nextValue = state.form.llm_validation_policy || "docker-first";
+  state.form.llm_validation_policy = nextValue;
+  setDropdownOptions(dropdowns.llmValidationPolicy, llmValidationPolicyOptions(), nextValue);
+  ui.llmPolicyRow.hidden = !showLlmValidationPolicyControl();
+}
+
 function populateLoadoutSelect() {
   setDropdownOptions(
     dropdowns.loadout,
@@ -881,6 +914,7 @@ function syncControlsFromForm() {
   ui.verboseCheckbox.checked = Boolean(state.form.verbose);
   setDropdownValue(dropdowns.tool, state.form.tool || "", { emit: false });
   syncValidationBackendDropdown();
+  syncLlmValidationPolicyControl();
   populateLoadoutSelect();
 }
 
@@ -1534,6 +1568,7 @@ function applyLoadoutToForm(loadout) {
     snippet_limit: loadout.snippet_limit || "",
     python_command: loadout.python_command || "",
     validation_backend: loadout.validation_backend || state.form.validation_backend || "env",
+    llm_validation_policy: loadout.llm_validation_policy || state.form.llm_validation_policy || "docker-first",
     loadout_name: loadout.name || "",
   };
   state.selectedLoadoutSlug = loadout.slug;
@@ -1547,6 +1582,7 @@ function currentConfigPayload() {
   return {
     ...state.form,
     loadout_name: state.form?.loadout_name || "",
+    llm_validation_policy: state.form?.llm_validation_policy || "docker-first",
     llm_only_mode: isLlmOnly,
     // When llm-only is selected, the actual validation backend is "env" (validation
     // still needs a backend), but the --llm-only flag handles the resolution logic.
