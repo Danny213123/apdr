@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 is awaiting human verification after automated execution, and Phases 24-25 remain upcoming
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1 and 22 are completed, Phase 23 still carries human-verification debt, Phase 24 is now planned for execution, and Phase 25 remains upcoming
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
@@ -65,6 +65,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
   1. APDR can generate or extract env-first and docker-first artifacts for the same fixed slice with matching model and backend contracts.
   2. Comparison outputs report pass delta, dominant-bucket delta, and timing delta between the two policies.
   3. A deterministic checker fails if the comparison drifts from the locked slice or omits required metrics.
+**Plans**: `24-01`, `24-02`, and `24-03`
 
 ### Phase 25: Docker-First Decision Closeout
 **Goal**: v2.4 closes with a reviewer-readable answer to the docker-first policy question, backed by the actual comparison evidence
@@ -82,7 +83,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 | 21.1. Repository Footprint and Download Size Reduction | 3/3 | Completed | 2026-04-01 |
 | 22. Docker-First Policy and Safe Degradation | 4/4 | Complete   | 2026-04-02 |
 | 23. Policy Truth and Failure Semantics | 3/3 | Human Verify | — |
-| 24. Env-First vs Docker-First Comparison Harness | 0/0 | Not Started | — |
+| 24. Env-First vs Docker-First Comparison Harness | 0/3 | Planned | — |
 | 25. Docker-First Decision Closeout | 0/0 | Not Started | — |
 
 ## Dependencies
@@ -90,4 +91,4 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 `Phase 21.1 -> Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
 
 *Roadmap created: 2026-04-01*
-*Last updated: 2026-04-02 (Phase 23 awaiting human verification)*
+*Last updated: 2026-04-02 (Phase 24 planned; Phase 23 human verification still pending)*
