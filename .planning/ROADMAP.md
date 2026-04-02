@@ -6,7 +6,7 @@
 
 ## Milestones
 
-- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phases 21.1, 22-25 planned; active as of 2026-04-01
+- [ ] **v2.4 Docker-First LLM Validation Decision and Proof** - Phase 21.1 completed; Phases 22-25 planned and active as of 2026-04-02
 - [x] **v2.3 Tier3 Validation Recovery and Reliability** - shipped 2026-04-01, archived in `.planning/milestones/v2.3-ROADMAP.md`
 - [ ] **v2.2 Improve LLM Performance and Benchmark Performance on macOS** - Phases 13-16 completed, but the milestone was superseded unfinished on 2026-03-30 after Phase 16 sample-contract closeout; live proof and milestone signoff remained open
 - [ ] **v2.1 Data-Driven Family Knowledge & LLM Recovery Accuracy** - superseded unfinished on 2026-03-28 after Phase 11 completion; Phase 12 remained open and is now historical debt rather than active milestone scope
@@ -19,7 +19,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 
 ## Phases
 
-- [ ] **Phase 21.1 (INSERTED): Repository Footprint and Download Size Reduction** - Reduce source checkout/download size and local tool-artifact bloat, especially under `tools/`, before continuing docker-first routing work
+- [x] **Phase 21.1 (INSERTED): Repository Footprint and Download Size Reduction** - Completed 2026-04-01 with tracked-source cleanup, safer APDR defaults, cleanup tooling, and a deterministic footprint proof
 - [ ] **Phase 22: Docker-First Policy and Safe Degradation** - Add a docker-first `llm` policy while preserving env-first control mode and safe fallback when Docker is unavailable or unsupported
 - [ ] **Phase 23: Policy Truth and Failure Semantics** - Make requested policy, actual validation path, bypass reasons, and failure-family truth inspectable end to end
 - [ ] **Phase 24: Env-First vs Docker-First Comparison Harness** - Compare the two first-hop policies on a fixed slice with matched model, backend, bucket, and timing contracts
@@ -35,7 +35,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
   1. Fresh source checkouts and GitHub downloads no longer include avoidable heavyweight tool build outputs that are currently inflating the repo footprint.
   2. Large local generated directories under `tools/`, especially APDR build and cache outputs, are either kept out of the repo tree by default or have a supported reclaim path.
   3. The remaining v2.4 docker-first work can proceed without depending on checked-in build artifacts or opaque gigabyte-scale local tool directories.
-**Plans**: `21.1-01`, `21.1-02`, and `21.1-03` planned
+**Plans**: `21.1-01`, `21.1-02`, and `21.1-03` completed
 
 ### Phase 22: Docker-First Policy and Safe Degradation
 **Goal**: Benchmark operators can explicitly run docker-first `llm` validation on supported hosts without losing the existing env-first control path or breaking unsupported environments
@@ -77,7 +77,7 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 21.1. Repository Footprint and Download Size Reduction | 0/3 | Planned | — |
+| 21.1. Repository Footprint and Download Size Reduction | 3/3 | Completed | 2026-04-01 |
 | 22. Docker-First Policy and Safe Degradation | 0/0 | Not Started | — |
 | 23. Policy Truth and Failure Semantics | 0/0 | Not Started | — |
 | 24. Env-First vs Docker-First Comparison Harness | 0/0 | Not Started | — |
@@ -88,4 +88,4 @@ This milestone now begins with an urgent repository-footprint reduction phase be
 `Phase 21.1 -> Phase 22 -> Phase 23 -> Phase 24 -> Phase 25`
 
 *Roadmap created: 2026-04-01*
-*Last updated: 2026-04-01 (Phase 21.1 planned; ready to execute)*
+*Last updated: 2026-04-02 (Phase 21.1 completed and verified)*

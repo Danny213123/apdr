@@ -9,8 +9,8 @@ Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 
 ### Repository Footprint
 
-- [ ] **DSK-01**: Fresh source checkouts and GitHub downloads should not include avoidable heavyweight tool build outputs or other generated artifacts under `tools/`
-- [ ] **DSK-02**: Developers should be able to avoid or reclaim gigabyte-scale local tool build and cache directories through supported defaults or cleanup flows without breaking normal APDR rebuildability
+- [x] **DSK-01**: Fresh source checkouts and GitHub downloads should not include avoidable heavyweight tool build outputs or other generated artifacts under `tools/`
+- [x] **DSK-02**: Developers should be able to avoid or reclaim gigabyte-scale local tool build and cache directories through supported defaults or cleanup flows without breaking normal APDR rebuildability
 
 ### Docker-First Routing
 
@@ -59,8 +59,8 @@ Deferred until the docker-first policy question is answered.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DSK-01 | Phase 21.1 | Pending |
-| DSK-02 | Phase 21.1 | Pending |
+| DSK-01 | Phase 21.1 | Completed |
+| DSK-02 | Phase 21.1 | Completed |
 | DFV-01 | Phase 22 | Pending |
 | DFV-02 | Phase 23 | Pending |
 | DFV-03 | Phase 22 | Pending |
@@ -77,4 +77,4 @@ Deferred until the docker-first policy question is answered.
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-01 after urgent pre-22 footprint phase insertion*
+*Last updated: 2026-04-02 after Phase 21.1 completion*

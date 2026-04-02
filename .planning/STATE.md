@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
 status: planning
-stopped_at: Phase 21.1 re-researched and replanned, ready to execute
-last_updated: "2026-04-01T23:36:58Z"
+stopped_at: Phase 21.1 completed and verified, ready to continue with Phase 22
+last_updated: "2026-04-02T00:24:11Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-01
-**Status:** Ready to execute
-**Progress:** [░░░░░░░░░░] 0%
+**Status:** Ready for Phase 22 planning
+**Progress:** [██░░░░░░░░] 20%
 **Last Activity:** 2026-04-01
-**Last Activity Description:** Phase 21.1 re-researched and replanned with stronger footprint evidence
+**Last Activity Description:** Phase 21.1 completed with verified source and local footprint reductions
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 21.1 — repository-footprint-and-download-size-reduction
+**Current Focus:** Phase 22 — docker-first-policy-and-safe-degradation
 
 ---
 
 ## Current Position
 
-Phase: 21.1
-Plan: `21.1-01`, `21.1-02`, `21.1-03`
-Status: Ready to execute
-Last activity: 2026-04-01 -- Phase 21.1 re-research completed and execution plans refreshed
+Phase: 22
+Plan: Context captured; planning next
+Status: Ready to plan
+Last activity: 2026-04-01 -- Phase 21.1 completed and Phase 22 is next
 
 ---
 
@@ -46,14 +46,15 @@ Last activity: 2026-04-01 -- Phase 21.1 re-research completed and execution plan
 
 - Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
 - Planned phases: 5
-- Active phase plan count: 3
+- Active phase plan count: 0
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
 - Fixed-slice dominant bucket deltas: `module-not-found -3`, `version-not-found -3`, `environment-build-failed -3`
 - Active live baseline for the shipped evidence: `runs/20260330-020943-apdr` resumed from `runs/20260330-004502-apdr`
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
-- Current local footprint baseline: `tools ~29G`, `tools/apdr/.apdr-cache ~15G`, `tools/apdr/target ~6.7G`
+- Phase 21.1 footprint proof: `source_delta -5.55GB`, `cache_delta -15.04GB`, `target_delta -20.45GB`
+- Current local footprint candidate: `tools ~2.9G`, `tools/apdr/.apdr-cache ~1.3G`, `tools/apdr/target` removed
 
 ---
 
@@ -82,6 +83,7 @@ Last activity: 2026-04-01 -- Phase 21.1 re-research completed and execution plan
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: Phase 21.1 is planned as a three-step execution flow: source-distributed artifact cleanup, local cache/build default and cleanup improvements, then a deterministic footprint proof package.
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: The proof contract must distinguish tracked source bloat from local cache/build bloat rather than collapsing all reclaimed bytes into one number.
 - [Phase 21.1-repository-footprint-and-download-size-reduction]: Cache-default work must update every direct repo-local fallback, including `ResolveConfig`, cache commands, classify-log, and learned family knowledge, and should reuse `tools/apdr/tests/test_cache.rs` for regression coverage.
+- [Phase 21.1-repository-footprint-and-download-size-reduction]: Phase 21.1 completed with tracked-source cleanup, external-first APDR defaults, a supported cleanup helper, and a deterministic proof package built from a saved pre-fix snapshot plus a real post-cleanup candidate.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Make docker-first the standard `llm` policy now, but preserve env-first as an explicit comparison control.
 - [Phase 22-docker-first-policy-and-safe-degradation]: If Docker is unavailable or unsupported, fall back to env with an explicit bypass reason instead of failing or skipping the case.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Apply docker-first broadly to `llm` cases except host-runtime or clearly unsuitable cases, and gate support by runtime checks rather than by platform carve-outs.
@@ -93,23 +95,23 @@ Last activity: 2026-04-01 -- Phase 21.1 re-research completed and execution plan
 
 ### Pending Todos
 
-- Next step is `$gsd-execute-phase 21.1`
-- Revisit Phase 22 planning assumptions only after Phase 21.1 execution confirms the footprint contract
+- Next step is `$gsd-plan-phase 22`
+- Revisit Phase 22 planning assumptions in light of the lighter repo baseline and preserved Docker/debug requirements
 
 ### Blockers/Concerns
 
-- Repo footprint is currently distorted by tracked `tools/apdr/target-*` build outputs and large local APDR cache/build directories; footprint work must preserve reproducibility without treating checked-in binaries as normal source.
 - Do not overstate the fixed-slice evidence as a full-corpus benchmark claim.
+- Do not overstate the Phase 21.1 footprint proof as a Git history rewrite; it improves the current tree and future defaults.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-01T23:36:58Z
-Stopped at: Phase 21.1 re-researched and replanned, ready to execute
+Last session: 2026-04-02T00:24:11Z
+Stopped at: Phase 21.1 completed and verified, ready to continue with Phase 22
 Resume file: None
 
 ---
 
-*State updated after Phase 21.1 research refresh on 2026-04-01*
+*State updated after Phase 21.1 completion on 2026-04-02*
