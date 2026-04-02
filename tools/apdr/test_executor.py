@@ -38,7 +38,13 @@ def parse_args() -> argparse.Namespace:
         "--validation-backend",
         choices=("env", "docker", "llm"),
         default="env",
-        help="Validation backend: env (local venvs), docker, or llm (env first, then LLM agent fallback)",
+        help="Validation backend: env (local venvs), docker, or llm (docker-first by default; env-first remains selectable)",
+    )
+    parser.add_argument(
+        "--llm-validation-policy",
+        choices=("docker-first", "env-first"),
+        default="docker-first",
+        help="First validation hop inside llm mode: docker-first (default) or env-first control path",
     )
     parser.add_argument("--no-validate", action="store_true", help="Skip APDR validation")
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
@@ -280,6 +286,8 @@ def main() -> int:
             str(args.docker_timeout),
             "--validation-backend",
             str(args.validation_backend),
+            "--llm-validation-policy",
+            str(args.llm_validation_policy),
             "--llm-provider",
             "ollama",
             "--llm-model",

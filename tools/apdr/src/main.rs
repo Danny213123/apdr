@@ -13,8 +13,9 @@ use apdr::context;
 use apdr::recovery::classifier;
 use apdr::resolver;
 use apdr::{
-    default_apdr_cache_path, ResolveConfig, RunContractMetadata, VALIDATION_BACKEND_DOCKER,
-    VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
+    default_apdr_cache_path, ResolveConfig, RunContractMetadata,
+    LLM_VALIDATION_POLICY_DOCKER_FIRST, LLM_VALIDATION_POLICY_ENV_FIRST,
+    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
 };
 
 fn main() {
@@ -116,6 +117,26 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     }
                 };
             }
+            "--llm-validation-policy" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or("--llm-validation-policy expects a value")?;
+                config.llm_validation_policy = match value.trim().to_ascii_lowercase().as_str() {
+                    LLM_VALIDATION_POLICY_DOCKER_FIRST => {
+                        LLM_VALIDATION_POLICY_DOCKER_FIRST.to_string()
+                    }
+                    LLM_VALIDATION_POLICY_ENV_FIRST => {
+                        LLM_VALIDATION_POLICY_ENV_FIRST.to_string()
+                    }
+                    _ => {
+                        return Err(
+                            "--llm-validation-policy must be `docker-first` or `env-first`"
+                                .to_string(),
+                        )
+                    }
+                };
+            }
             "--cache-path" => {
                 index += 1;
                 let value = args.get(index).ok_or("--cache-path expects a value")?;
@@ -209,12 +230,13 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
         config.benchmark_context_log.as_deref(),
         "apdr-resolve-command",
         &format!(
-            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate={}\nvalidation_backend={}\npython_override={}\nrange={}\nmax_retries={}",
+            "snippet={}\noutput_dir={}\nallow_llm={}\nvalidate={}\nvalidation_backend={}\nllm_validation_policy={}\npython_override={}\nrange={}\nmax_retries={}",
             snippet_path.display(),
             config.output_dir.display(),
             config.allow_llm,
             config.validate,
             config.validation_backend(),
+            config.llm_validation_policy(),
             config.python_version.as_deref().unwrap_or(""),
             config.python_version_range,
             config.max_retries
@@ -530,6 +552,7 @@ fn print_help() {
     println!(
         "              [--docker-timeout 300] [--validation-backend env|docker|llm] [--no-validate]"
     );
+    println!("              [--llm-validation-policy docker-first|env-first]");
     println!("              [--pre-solve-timeout 10]");
     println!("              [--no-execute-snippet]");
     println!("              [--no-parallel-versions] [--no-config-scan]");

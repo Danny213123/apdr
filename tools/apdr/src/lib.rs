@@ -16,6 +16,8 @@ use std::time::Duration;
 pub const VALIDATION_BACKEND_ENV: &str = "env";
 pub const VALIDATION_BACKEND_DOCKER: &str = "docker";
 pub const VALIDATION_BACKEND_LLM: &str = "llm";
+pub const LLM_VALIDATION_POLICY_DOCKER_FIRST: &str = "docker-first";
+pub const LLM_VALIDATION_POLICY_ENV_FIRST: &str = "env-first";
 pub const RUN_CONTRACT_VERSION: &str = "1";
 
 pub fn default_apdr_cache_path(tool_root: &Path) -> PathBuf {
@@ -78,6 +80,7 @@ pub struct ResolveConfig {
     pub benchmark_context_log: Option<PathBuf>,
     pub validate: bool,
     pub validation_backend: String,
+    pub llm_validation_policy: String,
     pub execute_snippet: bool,
     pub force_validate: bool,
     pub run_contract: RunContractMetadata,
@@ -339,6 +342,7 @@ impl ResolveConfig {
             benchmark_context_log: None,
             validate: true,
             validation_backend: VALIDATION_BACKEND_ENV.to_string(),
+            llm_validation_policy: LLM_VALIDATION_POLICY_DOCKER_FIRST.to_string(),
             execute_snippet: true,
             force_validate: false,
             run_contract: RunContractMetadata::default(),
@@ -350,6 +354,10 @@ impl ResolveConfig {
     pub fn validation_backend(&self) -> &str {
         normalize_validation_backend(&self.validation_backend)
     }
+
+    pub fn llm_validation_policy(&self) -> &str {
+        normalize_llm_validation_policy(&self.llm_validation_policy)
+    }
 }
 
 pub fn normalize_validation_backend(value: &str) -> &str {
@@ -357,6 +365,13 @@ pub fn normalize_validation_backend(value: &str) -> &str {
         VALIDATION_BACKEND_DOCKER => VALIDATION_BACKEND_DOCKER,
         VALIDATION_BACKEND_LLM => VALIDATION_BACKEND_LLM,
         _ => VALIDATION_BACKEND_ENV,
+    }
+}
+
+pub fn normalize_llm_validation_policy(value: &str) -> &str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        LLM_VALIDATION_POLICY_ENV_FIRST => LLM_VALIDATION_POLICY_ENV_FIRST,
+        _ => LLM_VALIDATION_POLICY_DOCKER_FIRST,
     }
 }
 
