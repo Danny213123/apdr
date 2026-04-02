@@ -25,7 +25,7 @@ Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 
 ### Compatibility Guardrails
 
-- [ ] **GDR-01**: When Docker is unavailable, unsupported, or explicitly bypassed, APDR degrades clearly without silently breaking `llm` validation
+- [x] **GDR-01**: When Docker is unavailable, unsupported, or explicitly bypassed, APDR degrades clearly without silently breaking `llm` validation
 - [ ] **GDR-02**: Docker-first evaluation preserves truthful classification for host-runtime or framework blockers instead of flattening them into generic dependency-resolution failures
 
 ### Decision Evidence
@@ -66,7 +66,7 @@ Deferred until the docker-first policy question is answered.
 | DFV-03 | Phase 22 | Completed |
 | CMP-01 | Phase 24 | Pending |
 | CMP-02 | Phase 24 | Pending |
-| GDR-01 | Phase 22 | Pending |
+| GDR-01 | Phase 22 | Complete |
 | GDR-02 | Phase 23 | Pending |
 | EVD-10 | Phase 25 | Pending |
 
