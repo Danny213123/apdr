@@ -8,7 +8,7 @@ APDR is the agentic dependency resolver in this repository. It now runs the full
 4. Expand known transitive dependencies
 5. Generate `requirements.txt` and a resolution report
 6. Validate the environment in local Python interpreters with retries and error-driven recovery
-7. Persist learned mappings, version data, lockfiles, build artifacts, and recovery patterns in `.apdr-cache/`
+7. Persist learned mappings, version data, lockfiles, build artifacts, and recovery patterns in the APDR cache root
 
 ## Build
 
@@ -16,6 +16,8 @@ APDR is the agentic dependency resolver in this repository. It now runs the full
 cd /path/to/apdr-repo/tools/apdr
 ./build.sh
 ```
+
+`./build.sh` now sends Cargo output to `APDR_TARGET_DIR` when set, or to `$HOME/.cache/apdr/target` by default so normal builds do not repopulate `tools/apdr/target` inside the repo.
 
 On Windows 11, build with Cargo directly:
 
@@ -131,7 +133,9 @@ The report includes cache hits, heuristic hits, LLM calls, retries, unresolved i
 
 ## Cache Layout
 
-`.apdr-cache/` stores:
+APDR uses `APDR_CACHE_DIR` when set. Otherwise it prefers a per-user cache directory outside the repo tree when the platform exposes one, and only falls back to `tools/apdr/.apdr-cache` when no external cache root is available.
+
+The APDR cache root stores:
 
 - dynamic import-to-package mappings
 - version constraints
@@ -145,6 +149,15 @@ The report includes cache hits, heuristic hits, LLM calls, retries, unresolved i
 `cargo run -- cache stats` now reports disk usage for the heavy cache directories. `cargo run -- cache prune` removes legacy `pip-cache/`, removes the opt-out `package-repository/` cache when it is disabled, and trims `validated-envs/` down to the configured retention limits.
 
 By default APDR keeps up to 24 validated envs and up to 8 GiB of validated-env cache data. You can override those limits with `APDR_VALIDATED_ENV_CACHE_MAX_ENTRIES` and `APDR_VALIDATED_ENV_CACHE_MAX_GB`. Set `APDR_ENABLE_PACKAGE_REPOSITORY_CACHE=1` only if you explicitly want the much larger package-repository cache back.
+
+To inspect or reclaim local APDR footprint safely:
+
+```bash
+bash scripts/cleanup-apdr-footprint.sh --dry-run
+bash scripts/cleanup-apdr-footprint.sh --apply
+```
+
+The cleanup helper honors `APDR_CACHE_DIR`, `APDR_TARGET_DIR`, `--cache-path`, and `--target-dir`, reports cache plus local target sizes before deleting anything, and requires `--apply` for destructive cleanup.
 
 ## Notes
 
