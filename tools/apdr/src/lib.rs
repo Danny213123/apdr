@@ -1124,7 +1124,7 @@ mod tests {
         result.validation.requested_llm_validation_policy =
             Some(LLM_VALIDATION_POLICY_DOCKER_FIRST.to_string());
         result.validation.llm_validation_route = Some("env-first-docker-bypass".to_string());
-        result.validation.docker_bypass_reason = Some("docker unavailable".to_string());
+        result.validation.docker_bypass_reason = Some("docker cli unavailable".to_string());
         result.validation.docker_bypass_note_path =
             Some("out/.apdr-debug/docker-bypass.txt".to_string());
         result
@@ -1137,7 +1137,7 @@ mod tests {
 
         assert!(report.contains("requested_llm_validation_policy: docker-first"));
         assert!(report.contains("llm_validation_route: env-first-docker-bypass"));
-        assert!(report.contains("docker_bypass_reason: docker unavailable"));
+        assert!(report.contains("docker_bypass_reason: docker cli unavailable"));
         assert!(report.contains("docker_bypass_note: out/.apdr-debug/docker-bypass.txt"));
     }
 
@@ -1148,7 +1148,7 @@ mod tests {
 
         assert!(summary.contains("REQUESTED_LLM_VALIDATION_POLICY=docker-first"));
         assert!(summary.contains("LLM_VALIDATION_ROUTE=env-first-docker-bypass"));
-        assert!(summary.contains("DOCKER_BYPASS_REASON=docker unavailable"));
+        assert!(summary.contains("DOCKER_BYPASS_REASON=docker cli unavailable"));
         assert!(summary.contains("DOCKER_BYPASS_NOTE=out/.apdr-debug/docker-bypass.txt"));
     }
 

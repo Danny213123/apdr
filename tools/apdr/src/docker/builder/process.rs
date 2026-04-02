@@ -11,6 +11,27 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DockerUnavailabilityReason {
+    CliUnavailable,
+    DaemonUnavailable,
+}
+
+impl DockerUnavailabilityReason {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::CliUnavailable => "docker cli unavailable",
+            Self::DaemonUnavailable => "docker daemon unavailable",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DockerValidationAvailability {
+    Available,
+    Unavailable(DockerUnavailabilityReason),
+}
+
 pub(super) fn catalog_package_repository(
     store: &mut CacheStore,
     python_version: &str,
@@ -189,6 +210,21 @@ pub(super) fn command_on_path(command: &str) -> bool {
             })
         })
         .unwrap_or(false)
+}
+
+pub(super) fn probe_docker_validation_availability() -> DockerValidationAvailability {
+    if !command_on_path("docker") {
+        return DockerValidationAvailability::Unavailable(DockerUnavailabilityReason::CliUnavailable);
+    }
+
+    let mut command = Command::new("docker");
+    command.args(["info", "--format", "{{.ServerVersion}}"]);
+    match run_command_with_timeout(&mut command, Duration::from_secs(8)) {
+        Ok(result) if result.success => DockerValidationAvailability::Available,
+        _ => DockerValidationAvailability::Unavailable(
+            DockerUnavailabilityReason::DaemonUnavailable,
+        ),
+    }
 }
 
 pub(super) fn run_install_command(command: &str, args: &[&str]) -> (bool, String) {

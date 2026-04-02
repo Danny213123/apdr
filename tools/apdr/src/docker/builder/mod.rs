@@ -130,6 +130,8 @@ use self::env_backend::validated_env_cache_path;
 #[cfg(test)]
 use self::env_backend::ValidatedEnvCacheSource;
 #[cfg(test)]
+use self::process::{DockerUnavailabilityReason, DockerValidationAvailability};
+#[cfg(test)]
 use self::python_runtime::{normalized_command_output_path, windows_launcher_version_arg};
 #[cfg(test)]
 use crate::cache::build_cache;
@@ -604,7 +606,12 @@ mod tests {
         let config = ResolveConfig::for_tool_root(Path::new("."));
 
         assert_eq!(
-            llm_validation_route(&config, &[], "requests==2.31.0", true),
+            llm_validation_route(
+                &config,
+                &[],
+                "requests==2.31.0",
+                DockerValidationAvailability::Available
+            ),
             LlmValidationRoute::DockerFirst
         );
     }
@@ -615,7 +622,12 @@ mod tests {
         config.llm_validation_policy = "env-first".to_string();
 
         assert_eq!(
-            llm_validation_route(&config, &[], "requests==2.31.0", true),
+            llm_validation_route(
+                &config,
+                &[],
+                "requests==2.31.0",
+                DockerValidationAvailability::Available
+            ),
             LlmValidationRoute::EnvFirstControl
         );
     }
@@ -634,7 +646,7 @@ mod tests {
                 &config,
                 &imports,
                 "pyobjc-framework-SystemConfiguration==10.0",
-                true
+                DockerValidationAvailability::Available
             ),
             LlmValidationRoute::EnvFirstHostRuntime
         );
@@ -645,8 +657,34 @@ mod tests {
         let config = ResolveConfig::for_tool_root(Path::new("."));
 
         assert_eq!(
-            llm_validation_route(&config, &[], "requests==2.31.0", false),
-            LlmValidationRoute::EnvFirstDockerBypass
+            llm_validation_route(
+                &config,
+                &[],
+                "requests==2.31.0",
+                DockerValidationAvailability::Unavailable(
+                    DockerUnavailabilityReason::CliUnavailable
+                )
+            ),
+            LlmValidationRoute::EnvFirstDockerBypass(DockerUnavailabilityReason::CliUnavailable)
+        );
+    }
+
+    #[test]
+    fn phase22_policy_daemon_unavailable_falls_back_to_env() {
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        assert_eq!(
+            llm_validation_route(
+                &config,
+                &[],
+                "requests==2.31.0",
+                DockerValidationAvailability::Unavailable(
+                    DockerUnavailabilityReason::DaemonUnavailable
+                )
+            ),
+            LlmValidationRoute::EnvFirstDockerBypass(
+                DockerUnavailabilityReason::DaemonUnavailable
+            )
         );
     }
 
@@ -662,7 +700,7 @@ mod tests {
         apply_llm_route_metadata(
             &mut summary,
             &config,
-            LlmValidationRoute::EnvFirstDockerBypass,
+            LlmValidationRoute::EnvFirstDockerBypass(DockerUnavailabilityReason::CliUnavailable),
         )
         .expect("route metadata");
 
@@ -679,7 +717,7 @@ mod tests {
         );
         assert_eq!(
             summary.docker_bypass_reason.as_deref(),
-            Some("docker unavailable")
+            Some("docker cli unavailable")
         );
         assert_eq!(
             summary.docker_bypass_note_path.as_deref(),
@@ -688,7 +726,34 @@ mod tests {
         assert!(note.contains("note_type: docker-bypass"));
         assert!(note.contains("requested_llm_validation_policy: docker-first"));
         assert!(note.contains("llm_validation_route: env-first-docker-bypass"));
-        assert!(note.contains("docker_bypass_reason: docker unavailable"));
+        assert!(note.contains("docker_bypass_reason: docker cli unavailable"));
+    }
+
+    #[test]
+    fn phase22_policy_daemon_unavailable_writes_bypass_note() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().expect("tempdir");
+        let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.output_dir = temp.path().join("out");
+        let mut summary = ValidationSummary::default();
+
+        apply_llm_route_metadata(
+            &mut summary,
+            &config,
+            LlmValidationRoute::EnvFirstDockerBypass(
+                DockerUnavailabilityReason::DaemonUnavailable,
+            ),
+        )
+        .expect("route metadata");
+
+        let note_path = temp.path().join("out/.apdr-debug/docker-bypass.txt");
+        let note = fs::read_to_string(&note_path).expect("docker bypass note");
+        assert_eq!(
+            summary.docker_bypass_reason.as_deref(),
+            Some("docker daemon unavailable")
+        );
+        assert!(note.contains("docker_bypass_reason: docker daemon unavailable"));
     }
 
     #[test]

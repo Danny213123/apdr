@@ -1,7 +1,10 @@
 use super::docker_backend::{
     env_has_build_timeout, env_has_interpreter_failure, validate_requirements_docker_deterministic,
 };
-use super::process::{command_on_path, run_command_with_timeout, truncate_log};
+use super::process::{
+    probe_docker_validation_availability, run_command_with_timeout, truncate_log,
+    DockerUnavailabilityReason, DockerValidationAvailability,
+};
 use super::*;
 use crate::context;
 use crate::docker::system_deps;
@@ -21,7 +24,7 @@ pub(super) enum LlmValidationRoute {
     DockerFirst,
     EnvFirstControl,
     EnvFirstHostRuntime,
-    EnvFirstDockerBypass,
+    EnvFirstDockerBypass(DockerUnavailabilityReason),
 }
 
 pub(super) fn validate_requirements_llm(
@@ -33,7 +36,15 @@ pub(super) fn validate_requirements_llm(
     config: &ResolveConfig,
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
-    let route = llm_validation_route(config, imports, requirements_txt, command_on_path("docker"));
+    let docker_availability =
+        if config.llm_validation_policy() == LLM_VALIDATION_POLICY_ENV_FIRST
+            || llm_case_requires_host_runtime(imports, requirements_txt)
+        {
+            DockerValidationAvailability::Available
+        } else {
+            probe_docker_validation_availability()
+        };
+    let route = llm_validation_route(config, imports, requirements_txt, docker_availability);
     let mut summary = match route {
         LlmValidationRoute::DockerFirst => validate_requirements_llm_docker_first(
             snippet_path,
@@ -69,9 +80,10 @@ pub(super) fn validate_requirements_llm(
                 false,
             )
         }
-        LlmValidationRoute::EnvFirstDockerBypass => {
+        LlmValidationRoute::EnvFirstDockerBypass(_) => {
+            let reason = llm_docker_bypass_reason(route).unwrap_or("docker unavailable");
             eprintln!(
-                "[llm-resolver] docker-first requested but Docker is unavailable, falling back to env validation before LangGraph agent"
+                "[llm-resolver] docker-first requested but {reason}, falling back to env validation before LangGraph agent"
             );
             validate_requirements_llm_env_first(
                 snippet_path,
@@ -228,7 +240,7 @@ pub(super) fn llm_validation_route(
     config: &ResolveConfig,
     imports: &[String],
     requirements_txt: &str,
-    docker_available: bool,
+    docker_availability: DockerValidationAvailability,
 ) -> LlmValidationRoute {
     if config.llm_validation_policy() == LLM_VALIDATION_POLICY_ENV_FIRST {
         return LlmValidationRoute::EnvFirstControl;
@@ -236,8 +248,8 @@ pub(super) fn llm_validation_route(
     if llm_case_requires_host_runtime(imports, requirements_txt) {
         return LlmValidationRoute::EnvFirstHostRuntime;
     }
-    if !docker_available {
-        return LlmValidationRoute::EnvFirstDockerBypass;
+    if let DockerValidationAvailability::Unavailable(reason) = docker_availability {
+        return LlmValidationRoute::EnvFirstDockerBypass(reason);
     }
     LlmValidationRoute::DockerFirst
 }
@@ -247,7 +259,7 @@ fn llm_validation_route_label(route: LlmValidationRoute) -> &'static str {
         LlmValidationRoute::DockerFirst => "docker-first",
         LlmValidationRoute::EnvFirstControl => "env-first-control",
         LlmValidationRoute::EnvFirstHostRuntime => "env-first-host-runtime",
-        LlmValidationRoute::EnvFirstDockerBypass => "env-first-docker-bypass",
+        LlmValidationRoute::EnvFirstDockerBypass(_) => "env-first-docker-bypass",
     }
 }
 
@@ -256,7 +268,7 @@ fn llm_validation_first_hop(route: LlmValidationRoute) -> &'static str {
         LlmValidationRoute::DockerFirst => VALIDATION_BACKEND_DOCKER,
         LlmValidationRoute::EnvFirstControl
         | LlmValidationRoute::EnvFirstHostRuntime
-        | LlmValidationRoute::EnvFirstDockerBypass => "env",
+        | LlmValidationRoute::EnvFirstDockerBypass(_) => "env",
     }
 }
 
@@ -265,7 +277,7 @@ fn llm_docker_bypass_reason(route: LlmValidationRoute) -> Option<&'static str> {
         LlmValidationRoute::DockerFirst => None,
         LlmValidationRoute::EnvFirstControl => Some("explicit env-first control policy"),
         LlmValidationRoute::EnvFirstHostRuntime => Some("host-runtime pre-skip"),
-        LlmValidationRoute::EnvFirstDockerBypass => Some("docker unavailable"),
+        LlmValidationRoute::EnvFirstDockerBypass(reason) => Some(reason.label()),
     }
 }
 
