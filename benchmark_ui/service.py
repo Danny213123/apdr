@@ -943,6 +943,7 @@ class BenchmarkService:
             "validationPath": self._result_validation_path(result),
             "requestedLlmValidationPolicy": self._result_requested_llm_validation_policy(result),
             "llmValidationRoute": self._result_llm_validation_route(result),
+            "dockerStatus": self._result_docker_status(result),
             "dockerBypassReason": self._result_docker_bypass_reason(result),
             "dockerBypassNote": self._result_docker_bypass_note(result),
             "debugDir": self._result_debug_dir(result),
@@ -1868,6 +1869,31 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("llm_validation_route") or "").strip()
+
+    def _result_docker_status(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerStatus") or "").strip()
+        if direct:
+            return direct
+
+        route = self._result_llm_validation_route(result)
+        bypass_reason = self._result_docker_bypass_reason(result)
+        validation_path = self._result_validation_path(result)
+        escalated_backend = self._result_escalated_backend(result)
+
+        if route == "env-first-control" or bypass_reason == "explicit env-first control policy":
+            return "env-first control"
+        if route == "env-first-host-runtime" or bypass_reason == "host-runtime pre-skip":
+            return "host-runtime pre-skip"
+        if route == "env-first-docker-bypass" or bypass_reason in (
+            "docker cli unavailable",
+            "docker daemon unavailable",
+        ):
+            return "bypassed"
+
+        path_hops = {part.strip() for part in validation_path.split("->") if part.strip()}
+        if route == "docker-first" or "docker" in path_hops or escalated_backend == "docker":
+            return "attempted"
+        return ""
 
     def _result_docker_bypass_reason(self, result: dict[str, Any]) -> str:
         direct = str(result.get("dockerBypassReason") or "").strip()

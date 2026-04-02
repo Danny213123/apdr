@@ -429,6 +429,7 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(row["validationPath"], "env->docker")
             self.assertEqual(row["requestedLlmValidationPolicy"], "docker-first")
             self.assertEqual(row["llmValidationRoute"], "env-first-docker-bypass")
+            self.assertEqual(row["dockerStatus"], "bypassed")
             self.assertEqual(row["dockerBypassReason"], "docker cli unavailable")
             self.assertEqual(
                 row["dockerBypassNote"],
@@ -438,6 +439,82 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(row["escalatedBackend"], "docker")
             self.assertNotEqual(row["requestedLlmValidationPolicy"], row["validationBackend"])
             self.assertNotEqual(row["llmValidationRoute"], row["validationPath"])
+
+    def test_case_row_derives_exact_docker_status_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            base_result = {
+                "snippet": "cases/routed/snippet.py",
+                "returncode": 1,
+                "succeeded": False,
+                "skipped": False,
+                "requirements": [],
+                "output_files": ["output_data_3.11.yml"],
+                "log_tail": [],
+                "duration_seconds": 1.1,
+            }
+            run_config = {"tool": "apdr", "loop_count": 1}
+
+            scenarios = [
+                (
+                    "docker route",
+                    {
+                        "validation_backend": "llm",
+                        "validation_path": "docker->llm-agent",
+                        "llm_validation_route": "docker-first",
+                    },
+                    "attempted",
+                ),
+                (
+                    "env first control",
+                    {
+                        "validation_backend": "llm",
+                        "validation_path": "env->llm-agent",
+                        "llm_validation_route": "env-first-control",
+                        "docker_bypass_reason": "explicit env-first control policy",
+                    },
+                    "env-first control",
+                ),
+                (
+                    "host runtime pre skip",
+                    {
+                        "validation_backend": "llm",
+                        "validation_path": "env",
+                        "llm_validation_route": "env-first-host-runtime",
+                        "docker_bypass_reason": "host-runtime pre-skip",
+                    },
+                    "host-runtime pre-skip",
+                ),
+                (
+                    "docker bypass",
+                    {
+                        "validation_backend": "llm",
+                        "validation_path": "env",
+                        "llm_validation_route": "env-first-docker-bypass",
+                        "docker_bypass_reason": "docker daemon unavailable",
+                    },
+                    "bypassed",
+                ),
+                (
+                    "historical docker path",
+                    {
+                        "validation_backend": "llm",
+                        "validation_path": "env->docker",
+                    },
+                    "attempted",
+                ),
+            ]
+
+            for label, metadata, expected in scenarios:
+                with self.subTest(label=label):
+                    row = service._build_case_row(
+                        {
+                            **base_result,
+                            "output_metadata": metadata,
+                        },
+                        run_config,
+                    )
+                    self.assertEqual(row["dockerStatus"], expected)
 
 
 if __name__ == "__main__":

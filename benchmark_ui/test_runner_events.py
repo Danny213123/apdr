@@ -472,6 +472,7 @@ class TestRunnerEventEmission(unittest.TestCase):
             result["requestedLlmValidationPolicy"],
         )
         self.assertEqual(row["llmValidationRoute"], result["llmValidationRoute"])
+        self.assertEqual(row["dockerStatus"], "bypassed")
         self.assertEqual(row["dockerBypassReason"], result["dockerBypassReason"])
         self.assertEqual(row["dockerBypassNote"], result["dockerBypassNote"])
         self.assertEqual(row["debugDir"], result["debugDir"])

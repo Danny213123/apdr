@@ -723,6 +723,32 @@ function kvRows(fields) {
     .join("");
 }
 
+function validationTruthFields(item) {
+  const hasLlmTruth =
+    item.validationBackend === "llm" ||
+    item.requestedLlmValidationPolicy ||
+    item.llmValidationRoute ||
+    item.dockerStatus ||
+    item.dockerBypassReason ||
+    item.dockerBypassNote;
+  if (!hasLlmTruth) {
+    return [];
+  }
+
+  const fields = [
+    ["Requested policy", item.requestedLlmValidationPolicy],
+    ["Validation path", item.validationPath],
+    ["LLM route", item.llmValidationRoute],
+    ["Docker status", item.dockerStatus],
+    ["Docker bypass", item.dockerBypassReason],
+    ["Failure family", item.failureFamily],
+    ["Result origin", item.resultOrigin],
+    ["Debug dir", item.debugDir],
+    ["Docker bypass note", item.dockerBypassNote],
+  ];
+  return fields.filter(([, value]) => value);
+}
+
 function switchPage(pageId, options = {}) {
   const { pushHistory = true, replaceHistory = false } = options;
   state.activePage = pageId;
@@ -1080,8 +1106,23 @@ function renderCaseDetails(container, item) {
     ["Outputs", String((item.outputFiles || []).length)],
   ]);
 
+  const truthFields = validationTruthFields(item);
   const logTail = item.logTail || [];
   container.querySelector(".attempt-list").innerHTML = `
+    ${
+      truthFields.length
+        ? `
+      <article class="attempt-card">
+        <div class="attempt-header">
+          <span class="section-title">Validation truth</span>
+        </div>
+        <div class="attempt-analysis">
+          ${kvRows(truthFields)}
+        </div>
+      </article>
+    `
+        : ""
+    }
     <article class="attempt-card">
       <div class="attempt-header">
         <span class="section-title">Execution summary</span>
@@ -1373,6 +1414,15 @@ function renderLlmCases(filtered = null, options = {}) {
     "pllm",
     "legacy",
     "readpy",
+    "validationPath",
+    "requestedLlmValidationPolicy",
+    "llmValidationRoute",
+    "dockerStatus",
+    "dockerBypassReason",
+    "dockerBypassNote",
+    "failureFamily",
+    "resultOrigin",
+    "debugDir",
   ]);
   if (!force && state.renderCache.llmCasesKey === nextKey) {
     return;
