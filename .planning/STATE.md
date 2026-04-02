@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: verifying
-stopped_at: Completed 22-docker-first-policy-and-safe-degradation-03-PLAN.md
-last_updated: "2026-04-02T01:25:47.285Z"
+status: planning
+stopped_at: Phase 22 verification found a Docker-usability degradation gap; gap closure planned
+last_updated: "2026-04-02T01:45:49Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 6
+  completed_phases: 1
+  total_plans: 7
   completed_plans: 6
-  percent: 100
+  percent: 20
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Phase complete — ready for verification
-**Progress:** [██████████] 100%
+**Status:** Ready for Phase 22 gap closure execution
+**Progress:** [██░░░░░░░░] 20%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Completed Phase 22 plan 03 and moved Phase 22 to ready for verification
+**Last Activity Description:** Planned Phase 22 gap closure after verification found the Docker-usability degradation mismatch
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 22 closeout verification and Phase 23 handoff
+**Current Focus:** Phase 22 gap closure for unusable-Docker env degradation
 
 ---
 
 ## Current Position
 
-Phase: 22 (docker-first-policy-and-safe-degradation) — COMPLETE
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy proof contract
+Phase: 22 (docker-first-policy-and-safe-degradation)
+Plan: gap closure `22-04` planned
+Status: Ready to execute gap closure
+Last activity: 2026-04-02 -- Verification found the installed-but-unusable Docker fallback gap and Phase 22 now awaits `22-04`
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy 
 
 - Active milestone: `v2.4 Docker-First LLM Validation Decision and Proof`
 - Planned phases: 5
-- Active phase plan count: 3
+- Active phase plan count: 4
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -58,6 +58,7 @@ Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy 
 - Phase 22 plan 01 execution: `9min`, `2 tasks`, `5 files`, commits `ebd3810` and `e787cff`
 - Phase 22 plan 02 execution: `4min`, `2 tasks`, `8 files`, commits `211f55e` and `454f416`
 - Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
+- Phase 22 verification gap: docker-first `llm` still treats Docker on PATH as usable even when the daemon is unavailable, so `GDR-01` remains open until `22-04`
 
 ---
 
@@ -98,6 +99,7 @@ Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy 
 - [Phase 22-docker-first-policy-and-safe-degradation]: Rewrite Doctor copy around docker-first degradation to env validation instead of targeted Docker escalation.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Persisted requested llm policy, route category, and bypass details in top-level APDR outputs instead of relying on debug-folder inspection alone.
 - [Phase 22-docker-first-policy-and-safe-degradation]: Used a contract-shaped Phase 22 proof slice with archetype identifiers rather than implying a live comparison harness before Phase 24.
+- [Phase 22-docker-first-policy-and-safe-degradation]: Verification reopened `GDR-01`; docker-first `llm` must also degrade to env when Docker is installed but unusable, not only when the CLI is missing.
 
 ### Roadmap Evolution
 
@@ -105,23 +107,24 @@ Last activity: 2026-04-02 -- Completed plan 22-03 and froze the Phase 22 policy 
 
 ### Pending Todos
 
-- Next step is verify the completed Phase 22 artifacts and begin Phase 23 planning.
-- Keep detailed case-row Docker build visibility deferred to Phase 23; Phase 22 only locked the routing/degradation contract.
+- Next step is `$gsd-execute-phase 22 --gaps-only`
+- Keep detailed case-row Docker build visibility deferred to Phase 23; the current gap closure only restores truthful unusable-Docker degradation for Phase 22.
 
 ### Blockers/Concerns
 
 - Do not overstate the fixed-slice evidence as a full-corpus benchmark claim.
 - Do not overstate the Phase 21.1 footprint proof as a Git history rewrite; it improves the current tree and future defaults.
+- Phase 22 is not actually closed until installed-but-unusable Docker falls back to env validation and the proof contract freezes that case.
 - `hard-gists/1239373/snippet.py` remains an explicitly interrupted tail case in the candidate artifact and should stay visible in milestone review.
 
 ---
 
 ## Session Continuity
 
-Last session: 2026-04-02T01:25:47.281Z
-Stopped at: Completed 22-docker-first-policy-and-safe-degradation-03-PLAN.md
+Last session: 2026-04-02T01:45:49Z
+Stopped at: Phase 22 verification found a Docker-usability degradation gap; gap closure planned
 Resume file: None
 
 ---
 
-*State updated after Phase 22 plan 03 completion on 2026-04-02*
+*State updated after Phase 22 gap closure planning on 2026-04-02*
