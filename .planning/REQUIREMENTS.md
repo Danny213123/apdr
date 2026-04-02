@@ -30,7 +30,7 @@ Requirements for the v2.4 milestone. Each will map to exactly one roadmap phase.
 
 ### Decision Evidence
 
-- [ ] **EVD-10**: Milestone closes with a reviewer-readable recommendation on whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode
+- [x] **EVD-10**: Milestone closes with a reviewer-readable recommendation on whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode
 
 ## v2 Requirements
 
@@ -68,7 +68,7 @@ Deferred until the docker-first policy question is answered.
 | CMP-02 | Phase 24 | Completed |
 | GDR-01 | Phase 22 | Completed |
 | GDR-02 | Phase 23 | Complete |
-| EVD-10 | Phase 25 | Pending |
+| EVD-10 | Phase 25 | Completed |
 
 **Coverage:**
 - v1 requirements: 10 total
@@ -77,4 +77,4 @@ Deferred until the docker-first policy question is answered.
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-02 after Phase 24 completion and CMP-01/CMP-02 were marked complete*
+*Last updated: 2026-04-02 after Phase 25 completion and EVD-10 was marked complete*

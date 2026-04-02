@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
-status: ready_to_execute
-stopped_at: Phase 25 planned; ready to execute with Phase 23 human verification debt still open
-last_updated: "2026-04-02T17:24:37Z"
+status: ready_to_archive
+stopped_at: Phase 25 complete; milestone closeout is conditionally ready with Phase 23 human verification debt still open
+last_updated: "2026-04-02T17:35:30Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 16
+  completed_plans: 16
   percent: 80
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready to execute
+**Status:** Ready for milestone closeout
 **Progress:** [████████░░] 80%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 25 planning artifacts were created; execution is ready while Phase 23 human verification debt remains visible
+**Last Activity Description:** Phase 25 complete; milestone archival is conditionally ready while Phase 23 browser UAT remains open
 **Resume File:** None
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 25 — docker-first-decision-closeout
+**Current Focus:** Milestone closeout — v2.4 conditional archive readiness
 
 ---
 
 ## Current Position
 
-Phase: 25 (docker-first-decision-closeout) — PLANNED
-Plan: 0 of 3
-Status: Ready to execute
-Last activity: 2026-04-02 -- Research, validation, and three execution plans were created for the final docker-first closeout
+Phase: 25 (docker-first-decision-closeout) — COMPLETE
+Plan: 3 of 3 complete
+Status: Ready for milestone closeout
+Last activity: 2026-04-02 -- Phase 25 completed with an `optional` verdict and a conditional archive handoff
 
 ---
 
@@ -62,7 +62,7 @@ Last activity: 2026-04-02 -- Research, validation, and three execution plans wer
 - Phase 23 plan 01 execution: `7min`, `2 tasks`, `5 files`, commits `9250d48` and `290993a`
 - Phase 23 plan 02 execution: `14min`, `2 tasks`, `6 files`, commits `22f9b40` and `fc4623c`
 - Phase 23 plan 03 execution: `8min`, `2 tasks`, `4 files`, commits `a4a3545` and `7bf568f`
-- Current phase plan count: 3
+- Current phase plan count: 0
 - Pending upstream verification debt: Phase 23 browser UAT still has 2 unresolved items
 
 ---
@@ -125,8 +125,8 @@ Last activity: 2026-04-02 -- Research, validation, and three execution plans wer
 
 ### Pending Todos
 
-- Execute Phase 25 to turn the paired comparison evidence into the final docker-first recommendation
-- Clear the remaining Phase 23 human verification items in `23-HUMAN-UAT.md` before milestone closeout
+- Decide whether to archive v2.4 now under the documented residual-debt posture or clear Phase 23 browser UAT first
+- If the residual-debt posture is acceptable, run `$gsd-complete-milestone`
 
 ### Blockers/Concerns
 
@@ -142,9 +142,9 @@ Last activity: 2026-04-02 -- Research, validation, and three execution plans wer
 ## Session Continuity
 
 Last session: 2026-04-02T17:24:37Z
-Stopped at: Phase 25 planned; ready to execute with Phase 23 human verification debt still open
+Stopped at: Phase 25 complete; milestone closeout is conditionally ready with Phase 23 human verification debt still open
 Resume file: None
 
 ---
 
-*State updated after Phase 25 planning on 2026-04-02*
+*State updated after Phase 25 completion on 2026-04-02*
