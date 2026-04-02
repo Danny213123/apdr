@@ -24,10 +24,12 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - That same baseline's saved outputs showed env-only attempt metadata and empty `docker_image_id` / `build_image_id` values, which is why Phase 18 made targeted Docker recovery and routed-backend truth explicit deliverables instead of assumptions.
 - Benchmark summary and case-report accounting still have trust gaps, including resumed-run aggregation confusion and some host-runtime skip rows marked as successes, so reporting correctness is now part of the milestone surface instead of a side concern.
 - The user wants the next gains to come from real reliability on live benchmark runs, not from UI work or another broad round of deterministic patch tables.
-- The next open product question is whether eligible `llm` validation should skip the initial env attempt and go straight to Docker, or whether that would hide useful signal or regress correctness.
+- The remaining open product question is no longer whether APDR can compare env-first and docker-first `llm` routing, but whether the fixed-slice evidence is strong enough to make docker-first the default recommendation for milestone closeout.
 - Phase 21.1 completed on 2026-04-01: the repo no longer tracks APDR `target-*` build trees, APDR now prefers external cache/build defaults, the repo ships a supported cleanup helper, and the proof package records `source_delta_bytes=-5551066900`, `cache_delta_bytes=-15041748090`, and `target_delta_bytes=-20451258961`.
 - The post-cleanup local footprint now shows `tools` at about `2.9G`, `tools/apdr/.apdr-cache` at about `1.3G`, and no remaining repo-local `tools/apdr/target` directory.
 - Phase 22 completed on 2026-04-02: APDR now ships docker-first `llm` as the standard policy with env-first control, real Docker usability gating, exact `docker cli unavailable` versus `docker daemon unavailable` bypass reasons, and a fixed five-case proof contract.
+- Phase 24 completed on 2026-04-02: the repo now ships a paired-policy comparison harness, frozen env-first and docker-first sample artifacts, a deterministic delta checker, and a runbook/proof pack for matched-slice replay.
+- The frozen Phase 24 comparison contract currently reports `pass_delta=2`, `module-not-found=-1`, `environment-build-failed=-1`, and `docker_startup_duration_seconds=+61.0` on the locked slice; Phase 25 must interpret those tradeoffs without overstating them.
 - Phase 17 completed on 2026-03-31: the LangGraph fallback state contract no longer trips the duplicate `confidence` key path, tier3 artifacts now record terminal fallback outcome fields, and the repo has a fixed-slice proof checker for later live replay.
 - Phase 18 completed on 2026-03-31: eligible `llm`-mode env failures now route through a deterministic Docker middle hop before final agent fallback, saved artifacts preserve `validation_path` plus `escalated_backend`, and benchmark Doctor/proof surfaces now describe the real backend path.
 - Phase 19 completed on 2026-04-01: APDR artifacts now expose `failure_family` for environment-specific versus dependency-resolution outcomes, benchmark summaries keep host-runtime cases in the skip bucket, resumed history is separated from live rows, and the repo now carries a deterministic accounting-proof package anchored to the March 30 baseline.
@@ -70,12 +72,13 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Reviewer-ready live evidence now shows the fixed-slice before/after delta, representative case artifacts, and explicit interrupted-tail truth - validated in Phase 21: live-evidence-and-closeout-pack
 - [x] Repository-distributed and local APDR footprint is materially reduced with source-cleanup, safer defaults, supported cleanup tooling, and a deterministic proof package - validated in Phase 21.1: repository-footprint-and-download-size-reduction
 - [x] Docker-first `llm` policy now exists with env-first control, exact unusable-Docker fallback reasons, and a deterministic proof contract - validated in Phase 22: docker-first-policy-and-safe-degradation
+- [x] The repo now ships a matched env-first versus docker-first comparison harness with frozen artifacts, delta reporting, and a deterministic proof checker - validated in Phase 24: env-first-vs-docker-first-comparison-harness
 
 ### Active
 
-- [ ] Determine whether eligible `llm` validation should go Docker-first instead of env-first.
-- [ ] Preserve truthful artifact, backend-path, and provenance surfaces while evaluating a new routing policy.
-- [ ] Produce evidence-backed guidance on whether Docker-first improves or harms the current tier3 recovery workflow.
+- [ ] Decide whether docker-first should replace env-first, remain optional, or be rejected for `llm` mode.
+- [ ] Close the remaining Phase 23 browser-visible validation-truth UAT debt before milestone closeout.
+- [ ] Publish evidence-backed guidance on how the fixed-slice comparison changes correctness and runtime tradeoffs for the current tier3 workflow.
 
 ### Out of Scope
 
@@ -123,6 +126,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Start v2.4 by explicitly testing the Docker-first `llm` question instead of assuming the Phase 18 env-first policy is final | The next valuable decision is whether the first validation hop is still paying for itself now that Docker routing and evidence surfaces are repaired | Pending |
 | Insert a pre-22 footprint phase before continuing Docker-first work | Repo-distributed build artifacts and local APDR caches are large enough to distort day-to-day development cost | Good |
 | Skip optional external research for v2.4 | This is a local runtime-policy and evidence question, not a new external product domain | Good |
+| Build a fixed-slice paired comparison harness before publishing the docker-first verdict | The recommendation needs matched env-first versus docker-first evidence, not intuition or incomparable saved runs | Good |
 
 ## Shipped Milestone Snapshot
 
@@ -170,4 +174,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after Phase 22 completion*
+*Last updated: 2026-04-02 after Phase 24 completion*
