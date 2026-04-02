@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Docker-First LLM Validation Decision and Proof
 status: executing
-stopped_at: Completed 23-policy-truth-and-failure-semantics-01-PLAN.md
-last_updated: "2026-04-02T03:22:33.698Z"
+stopped_at: Completed 23-policy-truth-and-failure-semantics-02-PLAN.md
+last_updated: "2026-04-02T03:37:15.848Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Executing Phase 23
-**Progress:** [████████░░] 80%
+**Status:** Ready to execute
+**Progress:** [█████████░] 90%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 23 plan 01 completed
+**Last Activity Description:** Phase 23 plan 02 completed
 **Resume File:** None
 
 ---
@@ -36,7 +36,7 @@ progress:
 ## Current Position
 
 Phase: 23 (policy-truth-and-failure-semantics) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-02
 
@@ -60,6 +60,7 @@ Last activity: 2026-04-02
 - Phase 22 plan 03 execution: `5min`, `2 tasks`, `7 files`, commits `2d44a9e` and `5aa6e05`
 - Phase 22 plan 04 execution: `6min`, `2 tasks`, `10 files`, commits `447502d`, `ff779a1`, and `883495b`
 - Phase 23 plan 01 execution: `7min`, `2 tasks`, `5 files`, commits `9250d48` and `290993a`
+- Phase 23 plan 02 execution: `14min`, `2 tasks`, `6 files`, commits `22f9b40` and `fc4623c`
 - Next phase plan count: 3
 
 ---
@@ -109,6 +110,8 @@ Last activity: 2026-04-02
 - [Phase 23-policy-truth-and-failure-semantics]: Freeze GDR-02 with a deterministic policy-truth slice that includes Docker attempt, env-first control, Docker CLI bypass, Docker daemon bypass, host-runtime pre-skip, and framework/runtime environment-specific archetypes.
 - [Phase 23-policy-truth-and-failure-semantics]: Keep requested policy and route metadata additive so validationBackend and validationPath remain the actual execution truth.
 - [Phase 23-policy-truth-and-failure-semantics]: Use the same camelCase policy-truth keys for saved rows and live events to avoid another inspection-schema fork.
+- [Phase 23-policy-truth-and-failure-semantics]: Derived dockerStatus from existing route, bypass, and validation path truth instead of adding a new backend taxonomy.
+- [Phase 23-policy-truth-and-failure-semantics]: Keep docker-first host-runtime and Docker-unavailable markers environment-specific while true package misses remain dependency-resolution.
 
 ### Roadmap Evolution
 
@@ -129,10 +132,10 @@ Last activity: 2026-04-02
 
 ## Session Continuity
 
-Last session: 2026-04-02T03:22:33.693Z
-Stopped at: Completed 23-policy-truth-and-failure-semantics-01-PLAN.md
+Last session: 2026-04-02T03:37:15.844Z
+Stopped at: Completed 23-policy-truth-and-failure-semantics-02-PLAN.md
 Resume file: None
 
 ---
 
-*State updated after Phase 23 plan 01 completion on 2026-04-02*
+*State updated after Phase 23 plan 02 completion on 2026-04-02*
