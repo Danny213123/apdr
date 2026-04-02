@@ -233,6 +233,63 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(info_fields["Ctx window"], "32768")
             self.assertEqual(info_fields["Build profile"], "pgo")
 
+    def test_historical_llm_run_keeps_backend_stable_and_surfaces_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = AppState(repo_root)
+            run_dir = repo_root / "runs" / "20260329-005500-apdr"
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            state.write_json(
+                run_dir / "summary.json",
+                {
+                    "tool": "apdr",
+                    "model": "",
+                    "base_url": "",
+                    "dataset_tar": str(repo_root / "hard-gists.tar.gz"),
+                    "dataset_dir": str(repo_root / "hard-gists"),
+                    "loop_count": 1,
+                    "search_range": 1,
+                    "rag": False,
+                    "verbose": False,
+                    "snippet_limit": "",
+                    "python_command": "",
+                    "validation_backend": "llm",
+                    "llm_validation_policy": "env-first",
+                    "started_at": "2026-03-28T10:00:00",
+                    "finished_at": "2026-03-28T10:00:01",
+                    "status": "completed",
+                    "results": [],
+                    "run_contract": {
+                        "run_contract_version": "1",
+                        "tool": "apdr",
+                        "model_name": "qwen3.5:9b",
+                        "base_url": "http://localhost:11434",
+                        "validation_backend": "llm",
+                        "llm_validation_policy": "env-first",
+                        "run_intent": "comparison",
+                        "execution_mode": "llm-hybrid",
+                        "cache_state": "warm",
+                        "host_architecture": "arm64",
+                        "apdr_binary_architecture": "arm64",
+                        "python_architecture": "arm64-64",
+                        "llm_context_window": "32768",
+                        "inference_policy": "temperature=0.2; mode=compare",
+                        "build_profile": "pgo",
+                    },
+                },
+            )
+
+            service = BenchmarkService(state)
+            payload = service.load_run("20260329-005500-apdr")
+            run = payload["run"]
+            info_fields = {item["label"]: item["value"] for item in run["infoFields"]}
+
+            self.assertEqual(payload["formConfig"]["validation_backend"], "llm")
+            self.assertEqual(payload["formConfig"]["llm_validation_policy"], "env-first")
+            self.assertEqual(info_fields["Validation"], "LLM resolver (env-first control + Docker follow-up + agent fallback)")
+            self.assertEqual(info_fields["LLM policy"], "env-first")
+
     def test_historical_run_shows_macos_replay_workers_and_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

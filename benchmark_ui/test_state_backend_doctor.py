@@ -65,15 +65,18 @@ class TestStateBackendDoctor(unittest.TestCase):
             return "/usr/bin/cargo"
         return "/usr/bin/python3"
 
-    def test_llm_backend_warns_when_docker_is_missing_for_targeted_escalation(self) -> None:
+    def test_llm_backend_warns_when_docker_is_missing_for_docker_first_degradation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
             with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_aware_which):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
 
-            docker_row = next(row for row in rows if row["label"] == "Docker (targeted for APDR llm escalation)")
+            docker_row = next(
+                row for row in rows if row["label"] == "Docker (preferred for APDR llm docker-first)"
+            )
             self.assertEqual(docker_row["status"], "WARN")
-            self.assertIn("eligible cases cannot use targeted Docker escalation", docker_row["detail"])
+            self.assertIn("requested docker-first validation", docker_row["detail"])
+            self.assertIn("degrade to env validation", docker_row["detail"])
 
     def test_llm_backend_still_checks_local_env_tooling(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -83,7 +86,7 @@ class TestStateBackendDoctor(unittest.TestCase):
 
             backend_row = next(row for row in rows if row["label"] == "apdr validation backend")
             tooling_row = next(row for row in rows if row["label"] == "apdr env tooling")
-            self.assertIn("targeted Docker escalation", backend_row["detail"])
+            self.assertIn("Docker-first validation with safe env fallback", backend_row["detail"])
             self.assertEqual(tooling_row["status"], "PASS")
             self.assertEqual(tooling_row["detail"], "virtualenv tooling ready")
 
@@ -102,7 +105,8 @@ class TestStateBackendDoctor(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             service = BenchmarkService(_FakeDoctorState(Path(temp_dir)))
             summary = service._doctor_intro_summary("apdr", "llm")
-            self.assertIn("targeted Docker escalation", summary)
+            self.assertIn("Docker-first llm readiness", summary)
+            self.assertIn("env fallback", summary)
 
 
 if __name__ == "__main__":

@@ -195,6 +195,7 @@ class AppState:
             "snippet_limit": "",
             "python_command": "",
             "validation_backend": "docker" if tool == "pllm" else "env",
+            "llm_validation_policy": "docker-first",
             "run_intent": "baseline",
             "cache_state": "unknown",
             "llm_context_window": str(
@@ -302,7 +303,10 @@ class AppState:
         if resolved == "docker":
             return "Docker build + run validation"
         if resolved == "llm":
-            return "Local env validation + targeted Docker escalation + agent fallback"
+            return (
+                "Docker-first validation with safe env fallback + agent fallback; "
+                "env-first remains available as a control"
+            )
         return "Isolated local Python env validation"
 
     def choose_runner(self, tool: str, python_command: str = "") -> list[str]:
@@ -604,7 +608,7 @@ class AppState:
         if shutil.which("docker"):
             code, output = self._run_command(["docker", "--version"], cwd=self.repo_root, timeout=5)
             docker_cli_label = (
-                "Docker CLI (targeted for APDR llm escalation)"
+                "Docker CLI (preferred for APDR llm docker-first)"
                 if docker_targeted_for_llm
                 else
                 "Docker CLI (optional for APDR env validation)"
@@ -613,7 +617,7 @@ class AppState:
             )
             docker_cli_status = "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL")
             docker_cli_detail = output or (
-                "Docker is installed and can support targeted APDR llm escalation."
+                "Docker is installed and can serve as the first validation hop for APDR llm."
                 if docker_targeted_for_llm
                 else
                 "Docker is installed, but the selected backend does not require it."
@@ -627,8 +631,8 @@ class AppState:
                 detail = f"{detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor."
             elif code != 0 and docker_targeted_for_llm:
                 detail = (
-                    f"{detail} APDR llm mode can still run env-first, but eligible cases cannot use "
-                    "targeted Docker escalation until Docker is available."
+                    f"{detail} APDR llm requested docker-first validation, so runs will "
+                    "degrade to env validation until Docker is available."
                 )
             elif code != 0 and docker_optional:
                 detail = f"{detail} Docker is optional for the selected backend."
@@ -636,7 +640,7 @@ class AppState:
                 self._doctor_row(
                     "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL"),
                     (
-                        "Docker daemon (targeted for APDR llm escalation)"
+                        "Docker daemon (preferred for APDR llm docker-first)"
                         if docker_targeted_for_llm
                         else
                         "Docker daemon (optional for APDR env validation)"
@@ -651,8 +655,8 @@ class AppState:
                 checks.append(
                     self._doctor_row(
                         "WARN",
-                        "Docker (targeted for APDR llm escalation)",
-                        "Docker is not installed. APDR llm mode can still run env-first, but eligible cases cannot use targeted Docker escalation.",
+                        "Docker (preferred for APDR llm docker-first)",
+                        "Docker is not installed. APDR llm requested docker-first validation, so runs will degrade to env validation until Docker is available.",
                     )
                 )
             elif docker_optional:

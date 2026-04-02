@@ -1290,6 +1290,11 @@ class BenchmarkService:
         ]
         jobs = run.get("total") or str(config.get("snippet_limit") or "all")
         artifacts = self.state.relative_path(run["runDir"]) if run.get("runDir") else "runs/pending"
+        llm_validation_label = (
+            "LLM resolver (env-first control + Docker follow-up + agent fallback)"
+            if contract_view["llm_validation_policy"] == "env-first"
+            else "LLM resolver (docker-first + env fallback + agent fallback)"
+        )
         fields = [
             {"label": "Run ID", "value": run.get("runId") or "standby"},
             {"label": "Version", "value": self.state.version_display()},
@@ -1335,7 +1340,11 @@ class BenchmarkService:
                 14,
                 {
                     "label": "Validation",
-                    "value": "Docker build + run" if validation_backend == "docker" else "LLM resolver (env + targeted Docker escalation + agent fallback)" if validation_backend == "llm" else "local Python environments",
+                    "value": "Docker build + run"
+                    if validation_backend == "docker"
+                    else llm_validation_label
+                    if validation_backend == "llm"
+                    else "local Python environments",
                 },
             )
             if validation_backend == "llm":
@@ -2006,7 +2015,10 @@ class BenchmarkService:
             if resolved_backend == "docker":
                 return "Doctor is checking Docker, Ollama, dataset readiness, and each tool runtime."
             if resolved_backend == "llm":
-                return "Doctor is checking local Python interpreters, targeted Docker escalation readiness, the LLM agent, Ollama, dataset readiness, and each tool runtime."
+                return (
+                    "Doctor is checking Docker-first llm readiness, local Python env fallback "
+                    "readiness, the LLM agent, Ollama, dataset readiness, and each tool runtime."
+                )
             return "Doctor is checking local Python interpreters, Ollama, dataset readiness, and each tool runtime."
         if tool == "pllm":
             return "Doctor is checking Docker, Ollama, dataset readiness, and each tool runtime."
