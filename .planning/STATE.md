@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
 status: ready
-stopped_at: Phase 28 complete
-last_updated: "2026-04-03T02:04:39Z"
+stopped_at: Phase 29 planned
+last_updated: "2026-04-03T02:23:17Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
@@ -17,10 +17,10 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-03
-**Status:** Ready for Phase 29 Planning
+**Status:** Ready for Phase 29 Execution
 **Progress:** [██████░░░░] 60%
 **Last Activity:** 2026-04-03
-**Last Activity Description:** Phase 28 completed
+**Last Activity Description:** Phase 29 planned
 **Resume File:** .planning/ROADMAP.md
 
 ---
@@ -36,9 +36,9 @@ progress:
 ## Current Position
 
 Phase: 29 (LLM Benchmark Gains and Regression Harness) — NEXT
-Plan: Not started
-Status: Ready for planning Phase 29
-Last activity: 2026-04-03 -- Phase 28 completed
+Plan: 3 plans in 3 waves
+Status: Ready for execution Phase 29
+Last activity: 2026-04-03 -- Phase 29 planned
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-03 -- Phase 28 completed
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 0
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -57,7 +57,7 @@ Last activity: 2026-04-03 -- Phase 28 completed
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Frozen before-state Docker regression example: case `005bbad123ef309a5bef` previously built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces no usable end-to-end recovery path and generic failure labels when the model returns empty or unstable output
-- Current phase plan count: 0
+- Current phase plan count: 3
 - Next phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
@@ -130,6 +130,8 @@ Last activity: 2026-04-03 -- Phase 28 completed
 - [Phase 28-llm-recovery-loop-and-failure-semantics]: Recovery should consume authored plan plus authored/executed Docker artifacts and persist bounded recovery outcomes instead of relying on a flattened last-log string.
 - [Phase 28-llm-recovery-loop-and-failure-semantics]: Final case truth should additively distinguish `llm-no-output`, `provider-tooling-failure`, `docker-infrastructure-failure`, and `dependency-runtime-failure` without removing the existing coarse `failure_family`.
 - [Phase 28 complete]: APDR now writes `recovery-attempts.json`, exports `recovery_outcome` plus additive `failure_truth_*` fields, and surfaces those values through benchmark saved/live metadata.
+- [Phase 29 planning]: Compare baseline versus candidate `llm` and `llm-only` behavior on a locked slice using the April 2, 2026 pre-v2.5 runs as the before-state anchors.
+- [Phase 29 planning]: Keep Phase 29 focused on the regression harness and deterministic delta contract; Phase 30 owns the live evidence pack and final recommendation.
 
 ### Roadmap Evolution
 
@@ -158,4 +160,4 @@ Resume file: .planning/ROADMAP.md
 
 ---
 
-*State updated after completing Phase 28 on 2026-04-03*
+*State updated after planning Phase 29 on 2026-04-03*
