@@ -1317,6 +1317,27 @@ fn resolver_marks_pythonista_clipboard_camera_as_host_runtime_skip() {
 }
 
 #[test]
+fn resolver_marks_maya_pyqt_llm_only_as_host_runtime_skip() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/skip_maya_pyqt_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/test-skip-maya-pyqt-llm-only-output");
+    config.allow_llm = true;
+    config.llm_only_mode = true;
+    config.execute_snippet = false;
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_eq!(result.validation.status, "skipped-host-runtime");
+    assert!(result
+        .validation
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("Autodesk Maya desktop runtime"));
+}
+
+#[test]
 fn namespace_validation_rejects_invalid_swaps() {
     assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed("PySide", "PySide6",));
     assert!(
@@ -2403,6 +2424,118 @@ fn phase26_intake_preserves_failure_class() {
     assert_eq!(intake_failure.failure_class, "schema-validation-failure");
     assert_eq!(intake_failure.authored_plan_status, "unusable");
     assert_eq!(intake_failure.llm_only_behavior, "fail");
+}
+
+#[test]
+fn phase26_zero_dependency_intake_returns_deterministic_authored_plan() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-zero-dependency-intake-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    let parse_result = apdr::ParseResult {
+        imports: Vec::new(),
+        import_paths: Vec::new(),
+        config_deps: Vec::new(),
+        python_version_min: "3.9".to_string(),
+        python_version_max: Some("3.9".to_string()),
+        confidence: 0.72,
+        scanned_files: vec!["snippet.py".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
+    };
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/phase26-zero-dependency-intake");
+    config.allow_llm = true;
+    config.llm_only_mode = true;
+    config.validate = false;
+
+    let stage = apdr::resolver::tier3_llm::resolve(&[], &parse_result, &mut store, &config, "3.9");
+
+    assert!(stage.authored_plan.is_some());
+    assert_eq!(stage.authored_plan_status, "available");
+    assert!(stage.intake_failure.is_none());
+    assert_eq!(stage.prompts_issued, 0);
+    assert!(stage.unresolved.is_empty());
+    let plan = stage.authored_plan.unwrap();
+    assert!(plan.extracted_imports.is_empty());
+    assert!(plan.package_mappings.is_empty());
+    assert!(
+        plan.runtime_assumptions
+            .iter()
+            .any(|item| item.contains("no third-party imports were detected"))
+    );
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
+#[test]
+fn phase26_zero_dependency_retry_intake_returns_deterministic_authored_plan() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cache_path = tool_root.join("target/test-zero-dependency-retry-intake-cache");
+    let mut store = apdr::cache::store::CacheStore::load(&tool_root, cache_path.clone()).unwrap();
+    let parse_result = apdr::ParseResult {
+        imports: Vec::new(),
+        import_paths: Vec::new(),
+        config_deps: Vec::new(),
+        python_version_min: "3.9".to_string(),
+        python_version_max: Some("3.9".to_string()),
+        confidence: 0.72,
+        scanned_files: vec!["snippet.py".to_string()],
+        stdlib_modules: std::collections::BTreeSet::new(),
+        attribute_usage: std::collections::BTreeMap::new(),
+    };
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/phase26-zero-dependency-retry-intake");
+    config.allow_llm = true;
+    config.llm_only_mode = true;
+    config.validate = false;
+
+    let stage = apdr::resolver::tier3_llm::resolve_with_context(
+        &[],
+        "import array",
+        &parse_result,
+        &mut store,
+        &config,
+        "3.9",
+        Some("Retry path context".to_string()),
+    );
+
+    assert!(stage.authored_plan.is_some());
+    assert_eq!(stage.authored_plan_status, "available");
+    assert!(stage.intake_failure.is_none());
+    assert_eq!(stage.prompts_issued, 0);
+    assert!(stage.unresolved.is_empty());
+    let plan = stage.authored_plan.unwrap();
+    assert!(plan.extracted_imports.is_empty());
+    assert!(plan.package_mappings.is_empty());
+    assert!(
+        plan.runtime_assumptions
+            .iter()
+            .any(|item| item.contains("no third-party imports were detected"))
+    );
+
+    std::fs::remove_dir_all(cache_path).unwrap();
+}
+
+#[test]
+fn phase26_llm_only_resolve_path_keeps_zero_dependency_cases_out_of_intake_failure() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/stdlib_only_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/phase26-zero-dependency-resolve-path");
+    config.allow_llm = true;
+    config.llm_only_mode = true;
+    config.validate = false;
+    config.validation_backend = apdr::VALIDATION_BACKEND_DOCKER.to_string();
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    assert_ne!(result.validation.status, "llm-intake-failed");
+    assert!(result.intake_failure.is_none());
+    assert!(result.authored_plan.is_some());
+    assert_eq!(result.authored_plan_status, "deterministic-fallback");
+    assert!(result.requirements_txt.trim().is_empty());
+
+    std::fs::remove_dir_all(tool_root.join("target/phase26-zero-dependency-resolve-path")).ok();
 }
 
 #[test]

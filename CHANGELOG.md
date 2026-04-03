@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.18 - 2026-04-03
+
+- Reduced APDR repo footprint by untracking bulky `target-*` trees, moving cache and Cargo build defaults out of the repo, and shipping cleanup/footprint guard tooling so clones and local workspaces no longer accumulate tens of gigabytes under `tools/apdr`.
+- Made Docker-first the required validation route for APDR `llm` flows, surfaced requested-vs-actual backend policy truth in saved/live benchmark views, and added authored/executed Docker artifacts plus per-case Docker debug metadata for `llm` and `llm-only` runs.
+- Reworked the LLM pipeline around authored intake, Docker, and recovery plans with stricter failure truth, deterministic zero-import and evidence-backed package mapping shortcuts, serialized local Ollama access, tighter package-resolution timeouts, and richer diagnostics for timeout/provider-tooling failures in `llm-only` mode.
+
+## 0.2.17 - 2026-03-31
+
+- Fixed APDR's `llm` validation fallback path so post-env failures no longer crash the LangGraph agent pipeline, and saved artifacts now record whether fallback ran plus whether it `passed`, `abstained`, or `failed`.
+- Added targeted `env -> docker -> llm-agent` routing for eligible `llm` validation failures, along with explicit `validation_path` and `escalated_backend` metadata so saved case artifacts and benchmark views show the real backend route.
+- Updated benchmark Doctor and historical-run reporting to reflect targeted Docker escalation truthfully for APDR `llm` mode and added fixed-slice proof tooling for the new backend-path contract.
+
 ## 0.2.16 - 2026-03-30
 
 - Prevented benchmark stalls in APDR by adding a configurable SMT pre-solve wall-clock timeout, carrying that deadline through both the PubGrub and backtracking solver paths, bounding the host-Python metadata fallback, and skipping SMT pre-solve entirely for force-validated LLM benchmark runs that should proceed straight to validation.

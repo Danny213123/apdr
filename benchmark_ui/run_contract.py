@@ -77,9 +77,6 @@ def normalize_inference_policy(value: Any, temperature: float | None = None) -> 
 
 
 def normalize_llm_validation_policy(value: Any) -> str:
-    text = str(value or "").strip().lower().replace("_", "-")
-    if text == LLM_VALIDATION_POLICY_ENV_FIRST:
-        return LLM_VALIDATION_POLICY_ENV_FIRST
     return LLM_VALIDATION_POLICY_DOCKER_FIRST
 
 

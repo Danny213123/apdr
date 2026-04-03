@@ -15,6 +15,7 @@ Implements:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -140,24 +141,12 @@ def _build_constrained_model(
 # ---------------------------------------------------------------------------
 
 def handle(req: ResolutionRequest) -> ResolutionResponse:
-    client = LlmClient(req.provider, req.model, req.base_url)
     actual_agent_mode = "direct"
-    if not client.is_available():
-        intake_failure = _build_intake_failure(
-            reason="LLM provider not available",
-            diagnostics="LLM provider not available",
-        )
-        return ResolutionResponse(
-            error="LLM provider not available",
-            failure_reason="LLM provider not available",
-            authored_plan_status=intake_failure.authored_plan_status,
-            intake_failure=intake_failure,
-            **_response_metadata(req, actual_agent_mode),
-        )
 
     notes: list[str] = []
     prompts_issued = 0
     explicit_agent_requested = _uses_explicit_agent_mode(req)
+    deterministic_mappings: set[str] = set()
 
     # --- #4 (local): Pre-LLM local module detection ---
     llm_imports, local_skips, framework_mappings = filter_imports(req.imports)
@@ -170,16 +159,52 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
             pre_resolved[imp] = parent
             notes.append(f"Framework submodule {imp} -> {parent}")
 
+    llm_imports, evidence_mappings, evidence_notes = _seed_evidence_backed_mappings(
+        req,
+        llm_imports,
+    )
+    if evidence_mappings:
+        pre_resolved.update(evidence_mappings)
+        deterministic_mappings.update(evidence_mappings)
+        notes.extend(evidence_notes)
+
     # If all imports were resolved pre-LLM, return immediately
     if not llm_imports:
         result_mappings = [
             PackageMapping(import_name=imp, package_name=pkg)
             for imp, pkg in pre_resolved.items()
         ]
+        if not req.imports:
+            notes.append("No third-party imports required package resolution.")
+        authored_plan = _build_authored_case_plan(
+            req=req,
+            mappings={mapping.import_name: mapping.package_name for mapping in result_mappings},
+            unresolved=[],
+            local_skips=local_skips,
+            framework_mappings=framework_mappings,
+            deterministic_mappings=deterministic_mappings,
+            llm_confidence=1.0,
+        )
         return ResolutionResponse(
             mappings=result_mappings,
+            authored_plan=authored_plan,
+            authored_plan_status="available",
             notes=notes,
             prompts_issued=0,
+            **_response_metadata(req, actual_agent_mode),
+        )
+
+    client = LlmClient(req.provider, req.model, req.base_url)
+    if not client.is_available():
+        intake_failure = _build_intake_failure(
+            reason="LLM provider not available",
+            diagnostics="LLM provider not available",
+        )
+        return ResolutionResponse(
+            error="LLM provider not available",
+            failure_reason="LLM provider not available",
+            authored_plan_status=intake_failure.authored_plan_status,
+            intake_failure=intake_failure,
             **_response_metadata(req, actual_agent_mode),
         )
 
@@ -246,7 +271,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     if req.tier2_candidates:
         constrained_model = _build_constrained_model(req.tier2_candidates)
 
-    # Choose an agentic strategy based on ambiguity.
+    # Single-pass JSON completion — no instructor, no multi-pass chains.
     llm_confidence = 0.73
     result = None
     if constrained_model is not None and len(llm_imports) == 1:
@@ -260,40 +285,17 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         prompts_issued += 1
         if result is not None:
             notes.append("Used constrained decoding with tier2 candidates")
-        else:
-            result = client.complete_two_pass(
-                system_prompt=prompts.RESOLUTION_SYSTEM,
-                user_prompt=user_prompt,
-                response_model=MappingsResult,
-                max_tokens=512,
-            )
-            prompts_issued += 2
-            if result is not None:
-                notes.append("Used two-pass reasoning for single-import recovery")
-    elif len(llm_imports) == 1:
-        result = client.complete_two_pass(
+
+    if result is None:
+        result = client.complete_json(
             system_prompt=prompts.RESOLUTION_SYSTEM,
             user_prompt=user_prompt,
             response_model=MappingsResult,
-            max_tokens=768,
-        )
-        prompts_issued += 2
-        if result is not None:
-            notes.append("Used two-pass reasoning for single-import recovery")
-    else:
-        result, llm_confidence = client.complete_with_entropy(
-            system_prompt=prompts.RESOLUTION_SYSTEM,
-            user_prompt=user_prompt,
-            response_model=MappingsResult,
-            n=3,
-            temperature=0.2,
             max_tokens=1024,
         )
-        prompts_issued += 3
+        prompts_issued += 1
         if result is not None:
-            notes.append(f"Used self-consistency voting (confidence {llm_confidence:.2f})")
-        else:
-            notes.append("Self-consistency voting returned no usable mapping draft")
+            notes.append("Used tolerant JSON completion")
 
     if result is None:
         diagnostics_raw = client.last_failure_reason()
@@ -438,6 +440,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         unresolved=unresolved,
         local_skips=local_skips,
         framework_mappings=framework_mappings,
+        deterministic_mappings=deterministic_mappings,
         llm_confidence=llm_confidence,
     )
 
@@ -561,6 +564,85 @@ def _agent_seed_context(
     return seeded
 
 
+def _normalize_name(value: str) -> str:
+    return value.strip().lower().replace("-", "_").replace(".", "_")
+
+
+def _parse_context_evidence_lines(
+    context_lines: list[str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    import_mappings: dict[str, str] = {}
+    known_packages: dict[str, str] = {}
+
+    for line in context_lines:
+        mapping_match = re.match(
+            r"^\s*known import mapping:\s*(?P<imp>.+?)\s*->\s*(?P<pkg>.+?)\s*$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if mapping_match:
+            import_name = mapping_match.group("imp").strip()
+            package_name = mapping_match.group("pkg").strip()
+            if import_name and package_name:
+                import_mappings[_normalize_name(import_name)] = package_name
+            continue
+
+        if line.startswith("Known package: "):
+            package_name = line[len("Known package: ") :].strip()
+            if package_name:
+                known_packages[_normalize_name(package_name)] = package_name
+
+    return import_mappings, known_packages
+
+
+def _canonical_candidate_name(
+    package_name: str,
+    import_name: str,
+    tier2_candidates: dict[str, list[str]],
+) -> str:
+    normalized_target = _normalize_name(package_name)
+    for candidate in tier2_candidates.get(import_name, []):
+        if _normalize_name(candidate) == normalized_target:
+            return candidate
+    return package_name
+
+
+def _seed_evidence_backed_mappings(
+    req: ResolutionRequest,
+    llm_imports: list[str],
+) -> tuple[list[str], dict[str, str], list[str]]:
+    import_mappings, known_packages = _parse_context_evidence_lines(req.context)
+    deterministic: dict[str, str] = {}
+    notes: list[str] = []
+    remaining: list[str] = []
+
+    for import_name in llm_imports:
+        normalized_import = _normalize_name(import_name)
+        package_name = ""
+
+        if normalized_import in import_mappings:
+            package_name = _canonical_candidate_name(
+                import_mappings[normalized_import],
+                import_name,
+                req.tier2_candidates,
+            )
+        else:
+            for candidate in req.tier2_candidates.get(import_name, []):
+                if _normalize_name(candidate) == normalized_import and normalized_import in known_packages:
+                    package_name = known_packages[normalized_import]
+                    break
+
+        if package_name:
+            deterministic[import_name] = package_name
+            notes.append(
+                f"Deterministic evidence-backed mapping {import_name} -> {package_name}"
+            )
+        else:
+            remaining.append(import_name)
+
+    return remaining, deterministic, notes
+
+
 def _build_authored_case_plan(
     *,
     req: ResolutionRequest,
@@ -568,13 +650,18 @@ def _build_authored_case_plan(
     unresolved: list[str],
     local_skips: list[str],
     framework_mappings: dict[str, str],
+    deterministic_mappings: set[str],
     llm_confidence: float,
 ) -> AuthoredCasePlan:
     deterministic_fallback_sections: list[str] = []
+    if not req.imports:
+        deterministic_fallback_sections.append("no-third-party-imports")
     if local_skips:
         deterministic_fallback_sections.append("local-import-filter")
     if framework_mappings:
         deterministic_fallback_sections.append("framework-submodule-detection")
+    if deterministic_mappings:
+        deterministic_fallback_sections.append("evidence-backed-import-mapping")
 
     package_mappings: list[AuthoredPlanPackageMapping] = []
     for import_name in sorted(mappings):
@@ -582,6 +669,9 @@ def _build_authored_case_plan(
         confidence = llm_confidence
         if import_name in framework_mappings:
             source = "deterministic-framework"
+            confidence = 1.0
+        elif import_name in deterministic_mappings:
+            source = "deterministic-evidence"
             confidence = 1.0
         package_mappings.append(
             AuthoredPlanPackageMapping(
@@ -593,6 +683,10 @@ def _build_authored_case_plan(
         )
 
     runtime_assumptions = [f"python_version={req.python_version}"]
+    if not req.imports:
+        runtime_assumptions.append(
+            "no third-party imports were detected, so dependency resolution is empty by design"
+        )
     if local_skips:
         runtime_assumptions.append(
             "local helper imports are treated as project-local and excluded from PyPI resolution"
@@ -600,6 +694,10 @@ def _build_authored_case_plan(
     if framework_mappings:
         runtime_assumptions.append(
             "framework submodules are expected to resolve through their parent framework package"
+        )
+    if deterministic_mappings:
+        runtime_assumptions.append(
+            "exact import-to-package matches with benchmark evidence are resolved deterministically before LLM intake"
         )
 
     import_targets = sorted(
@@ -616,7 +714,7 @@ def _build_authored_case_plan(
     )
 
     section_confidence = {
-        "imports": 1.0 if req.imports else 0.0,
+        "imports": 1.0,
         "package_mappings": round(max(0.0, min(1.0, llm_confidence)), 2),
         "runtime_assumptions": round(max(0.5, min(1.0, llm_confidence)), 2),
         "smoke_strategy": round(max(0.5, min(1.0, llm_confidence)), 2),

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import threading
+import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel
 
 # Ensure the llm_py package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from llm_py.client import LlmClient, classify_failure_reason
+from llm_py.client import (
+    LlmClient,
+    _provider_call_gate,
+    _timeout_policy_for_action,
+    classify_failure_reason,
+)
 
 
 class _DummyResult(BaseModel):
@@ -75,6 +82,49 @@ def test_phase26_intake_classifies_schema_failure():
     assert failure_class == "schema-validation-failure"
 
 
+def test_phase28_intake_classifies_provider_busy_as_tooling_failure():
+    failure_class = classify_failure_reason(
+        'attempt 1: ollama json mode returned HTTP 503: {"error":"server busy, please try again.  '
+        'maximum pending requests exceeded"}; raw text completion failed: '
+        'APIConnectionError: litellm.APIConnectionError: Ollama_chatException - '
+        '{"error":"server busy, please try again.  maximum pending requests exceeded"}'
+    )
+    assert failure_class == "provider-tooling-failure"
+
+
+def test_phase29_ollama_gate_serializes_threads():
+    order: list[str] = []
+    release_first = threading.Event()
+    first_acquired = threading.Event()
+
+    with tempfile.TemporaryDirectory() as td:
+        lock_path = Path(td) / "ollama.lock"
+        with patch("llm_py.client._provider_gate_lock_path", return_value=lock_path):
+            def first_worker() -> None:
+                with _provider_call_gate("ollama", "test-model", "http://localhost:11434"):
+                    order.append("first")
+                    first_acquired.set()
+                    release_first.wait(timeout=1.0)
+
+            def second_worker() -> None:
+                first_acquired.wait(timeout=1.0)
+                with _provider_call_gate("ollama", "test-model", "http://localhost:11434"):
+                    order.append("second")
+
+            thread_one = threading.Thread(target=first_worker)
+            thread_two = threading.Thread(target=second_worker)
+            thread_one.start()
+            assert first_acquired.wait(timeout=1.0)
+            thread_two.start()
+            time.sleep(0.1)
+            assert order == ["first"]
+            release_first.set()
+            thread_one.join(timeout=1.0)
+            thread_two.join(timeout=1.0)
+
+    assert order == ["first", "second"]
+
+
 def test_phase26_intake_failure_details_include_preview():
     client = _bare_client()
     client._remember_failure(
@@ -85,3 +135,24 @@ def test_phase26_intake_failure_details_include_preview():
 
     assert details["failure_class"] == "timeout"
     assert "timed out" in details["diagnostic_preview"]
+
+
+def test_phase29_resolve_timeout_policy_is_tighter_than_default():
+    policy = _timeout_policy_for_action("resolve")
+
+    assert policy["time_budget"] < _timeout_policy_for_action("recovery")["time_budget"]
+    assert policy["json_timeout"] < 60
+    assert policy["raw_timeout"] < 60
+
+
+def test_phase29_provider_gate_allows_body_exception_to_propagate():
+    with tempfile.TemporaryDirectory() as td:
+        lock_path = Path(td) / "ollama.lock"
+        with patch("llm_py.client._provider_gate_lock_path", return_value=lock_path):
+            try:
+                with _provider_call_gate("ollama", "test-model", "http://localhost:11434"):
+                    raise OSError("body failure")
+            except OSError as exc:
+                assert str(exc) == "body failure"
+            else:
+                raise AssertionError("expected OSError from guarded body")

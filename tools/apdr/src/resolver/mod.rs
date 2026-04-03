@@ -90,12 +90,11 @@ pub fn resolve_path(
         &selected_python,
     )?;
 
-    // Fast path: detect host-runtime / hardware dependencies from import names alone.
-    // This avoids 250-375s of wasted tier1/2/3 + pre-solve work for cases that will
-    // inevitably be skipped after resolution anyway.
-    // In LLM-only mode, skip this check â€” let the LLM decide everything.
-    if !config.llm_only_mode {
-        if let Some((status, note)) = detect_skip_reason(&parse_result, &[], &[]) {
+    // Fast path: detect clearly non-validatable host-runtime / hardware dependencies
+    // from import names alone. In llm-only mode we still honor explicit host-runtime
+    // skips, but continue to let strict intake decide other categories.
+    if let Some((status, note)) = detect_skip_reason(&parse_result, &[], &[]) {
+        if !config.llm_only_mode || status == "skipped-host-runtime" {
             report.notes.push(note.clone());
             let mut validation = skipped_validation_summary(
                 status,
@@ -457,7 +456,7 @@ pub fn resolve_path(
             &parse_result,
             &selected_python,
         );
-    } else if config.validation_backend() == VALIDATION_BACKEND_LLM && intake_failure.is_none() {
+    } else if intake_failure.is_none() && unresolved.is_empty() {
         authored_plan = Some(synthesize_deterministic_authored_plan(
             &parse_result,
             &resolved,

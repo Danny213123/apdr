@@ -165,6 +165,89 @@ def test_phase26_intake_no_output_returns_structured_failure(mock_client_cls):
 
 @pytest.mark.unit
 @patch("llm_py.actions.resolve.LlmClient")
+def test_phase26_zero_dependency_case_returns_deterministic_authored_plan(mock_client_cls):
+    resp = handle(
+        _make_request(
+            imports=[],
+            snippet_source="print('hello')",
+        )
+    )
+
+    assert resp.error == ""
+    assert resp.prompts_issued == 0
+    assert resp.authored_plan_status == "available"
+    assert resp.intake_failure is None
+    assert isinstance(resp.authored_plan, AuthoredCasePlan)
+    assert resp.authored_plan is not None
+    assert resp.authored_plan.extracted_imports == []
+    assert resp.authored_plan.package_mappings == []
+    assert resp.authored_plan.unresolved_imports == []
+    assert (
+        "no third-party imports were detected, so dependency resolution is empty by design"
+        in resp.authored_plan.runtime_assumptions
+    )
+    assert "No third-party imports required package resolution." in resp.notes
+    mock_client_cls.assert_not_called()
+
+
+@pytest.mark.unit
+@patch("llm_py.actions.resolve.LlmClient")
+def test_phase29_evidence_backed_exact_mappings_skip_llm_client(mock_client_cls):
+    resp = handle(
+        _make_request(
+            imports=["memcache", "redis", "requests", "sqlalchemy"],
+            context=[
+                "known import mapping: memcache -> python-memcached",
+                "known import mapping: redis -> redis",
+                "known import mapping: requests -> requests",
+                "known import mapping: sqlalchemy -> SQLAlchemy",
+                "Known package: python-memcached",
+                "Known package: redis",
+                "Known package: requests",
+                "Known package: sqlalchemy",
+            ],
+            tier2_candidates={
+                "memcache": ["python-memcached", "pymemcache"],
+                "redis": ["redis", "fakeredis"],
+                "requests": ["requests", "requests-file"],
+                "sqlalchemy": ["sqlalchemy", "flask-sqlalchemy"],
+            },
+            snippet_source=(
+                "import memcache\n"
+                "import redis\n"
+                "import requests\n"
+                "import sqlalchemy\n"
+            ),
+            attribute_usage={
+                "memcache": ["Client"],
+                "redis": ["StrictRedis"],
+                "requests": ["Session"],
+            },
+        )
+    )
+
+    assert resp.error == ""
+    assert resp.prompts_issued == 0
+    assert resp.unresolved == []
+    assert sorted((m.import_name, m.package_name) for m in resp.mappings) == [
+        ("memcache", "python-memcached"),
+        ("redis", "redis"),
+        ("requests", "requests"),
+        ("sqlalchemy", "sqlalchemy"),
+    ]
+    assert resp.authored_plan is not None
+    assert resp.authored_plan_status == "available"
+    assert any("Deterministic evidence-backed mapping memcache -> python-memcached" in note for note in resp.notes)
+    assert "evidence-backed-import-mapping" in resp.authored_plan.deterministic_fallback_sections
+    assert any(
+        mapping.source == "deterministic-evidence" and mapping.import_name == "sqlalchemy"
+        for mapping in resp.authored_plan.package_mappings
+    )
+    mock_client_cls.assert_not_called()
+
+
+@pytest.mark.unit
+@patch("llm_py.actions.resolve.LlmClient")
 def test_multi_import_low_confidence_falls_back_to_react(mock_client_cls, monkeypatch):
     mock_client = MagicMock()
     mock_client.is_available.return_value = True

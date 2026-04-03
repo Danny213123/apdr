@@ -41,7 +41,14 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     )
 
     if result is None:
-        return ResolutionResponse(version="", prompts_issued=1)
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
+        return ResolutionResponse(
+            version="",
+            prompts_issued=1,
+            failure_reason=diagnostics,
+            notes=[f"LLM diagnostics: {diagnostics}"] if diagnostics else [],
+        )
 
     version = result.version.strip()
     if version.upper() == "NONE" or version not in req.versions:

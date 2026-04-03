@@ -41,8 +41,12 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     )
 
     if result is None:
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
         return ResolutionResponse(
             error="LLM solvability assessment returned no output",
+            failure_reason=diagnostics,
+            notes=[f"LLM diagnostics: {diagnostics}"] if diagnostics else [],
             prompts_issued=1,
         )
 

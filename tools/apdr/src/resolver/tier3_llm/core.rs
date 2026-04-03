@@ -10,11 +10,15 @@ use crate::cache::store::CacheStore;
 use crate::context;
 use crate::resolver::{kgraph_db, pypi_client, version_sampler};
 use crate::{
-    AuthoredCasePlan, AuthoredDockerPlan, IntakeFailureRecord, ParseResult, ResolveConfig,
-    ResolvedDependency, SolvabilityAssessment, ValidationAttempt,
+    AuthoredCasePlan, AuthoredDockerPlan, AuthoredPlanPackageMapping, IntakeFailureRecord,
+    ParseResult, ResolveConfig, ResolvedDependency, SmokeStrategy, SolvabilityAssessment,
+    ValidationAttempt,
 };
 use std::collections::HashMap;
 use std::time::Instant;
+
+const PACKAGE_RESOLUTION_BENCHMARK_CONTEXT_TAIL_CHARS: usize = 16_000;
+
 pub struct StageResult {
     pub resolved: Vec<ResolvedDependency>,
     pub unresolved: Vec<String>,
@@ -110,6 +114,47 @@ fn protocol_empty_output_failure() -> IntakeFailureRecord {
     }
 }
 
+fn deterministic_zero_dependency_authored_plan(
+    parse_result: &ParseResult,
+    python_version: &str,
+    notes: &[String],
+) -> AuthoredCasePlan {
+    let mut section_confidence = std::collections::BTreeMap::new();
+    section_confidence.insert("imports".to_string(), 1.0);
+    section_confidence.insert("package_mappings".to_string(), 1.0);
+    section_confidence.insert("runtime_assumptions".to_string(), 1.0);
+    section_confidence.insert("smoke_strategy".to_string(), 1.0);
+
+    let mut deterministic_fallback_sections = Vec::new();
+    if notes.iter().any(|note| note.contains("local helper imports")) {
+        deterministic_fallback_sections.push("local-import-filter".to_string());
+    }
+
+    AuthoredCasePlan {
+        plan_version: "1".to_string(),
+        extracted_imports: parse_result.imports.clone(),
+        package_mappings: Vec::<AuthoredPlanPackageMapping>::new(),
+        unresolved_imports: Vec::new(),
+        system_dependency_hints: Vec::new(),
+        runtime_assumptions: vec![
+            format!("python_version={python_version}"),
+            "no third-party imports were detected, so dependency resolution is empty by design"
+                .to_string(),
+        ],
+        smoke_strategy: SmokeStrategy {
+            mode: "import".to_string(),
+            import_targets: Vec::new(),
+            commands: Vec::new(),
+            rationale:
+                "No third-party imports were detected, so dependency validation is a no-op."
+                    .to_string(),
+        },
+        section_confidence,
+        authorship: "deterministic-fallback".to_string(),
+        deterministic_fallback_sections,
+    }
+}
+
 pub fn author_docker_plan(
     authored_plan: &AuthoredCasePlan,
     config: &ResolveConfig,
@@ -184,9 +229,11 @@ pub fn assess_solvability(
     parse_result: &ParseResult,
     config: &ResolveConfig,
 ) -> Option<SolvabilityAssessment> {
-    let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
-            .unwrap_or_default();
+    let benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        PACKAGE_RESOLUTION_BENCHMARK_CONTEXT_TAIL_CHARS,
+    )
+    .unwrap_or_default();
 
     let mut request = build_base_request(config);
     request["action"] = "solvability".into();
@@ -269,14 +316,22 @@ pub fn resolve(
         }
     }
     if llm_candidates.is_empty() {
+        let mut notes = Vec::new();
+        if preserved_unresolved.is_empty() {
+            notes.push("No third-party imports required package resolution.".to_string());
+        } else {
+            notes.push("Skipped LLM resolution for likely local helper imports.".to_string());
+        }
+        let authored_plan =
+            deterministic_zero_dependency_authored_plan(parse_result, python_version, &notes);
         return StageResult {
             resolved: Vec::new(),
             unresolved: preserved_unresolved,
-            notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
+            notes,
             prompts_issued: 0,
             llm_duration_ms: llm_started.elapsed().as_millis(),
-            authored_plan: None,
-            authored_plan_status: "not-requested".to_string(),
+            authored_plan: Some(authored_plan),
+            authored_plan_status: "available".to_string(),
             intake_failure: None,
         };
     }
@@ -285,9 +340,11 @@ pub fn resolve(
     let failures = load_failure_memory(&config.cache_path);
     let failure_ctx = format_failure_context(&failures, &llm_candidates);
     let mut context = assemble_batch_context(store, &llm_candidates, &failure_ctx);
-    let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
-            .unwrap_or_default();
+    let benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        PACKAGE_RESOLUTION_BENCHMARK_CONTEXT_TAIL_CHARS,
+    )
+    .unwrap_or_default();
 
     // Build attribute_usage as JSON
     let attr_usage: serde_json::Value = serde_json::json!(parse_result
@@ -531,14 +588,22 @@ pub fn resolve_with_context(
         }
     }
     if llm_candidates.is_empty() {
+        let mut notes = Vec::new();
+        if preserved_unresolved.is_empty() {
+            notes.push("No third-party imports required package resolution.".to_string());
+        } else {
+            notes.push("Skipped LLM resolution for likely local helper imports.".to_string());
+        }
+        let authored_plan =
+            deterministic_zero_dependency_authored_plan(parse_result, python_version, &notes);
         return StageResult {
             resolved: Vec::new(),
             unresolved: preserved_unresolved,
-            notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
+            notes,
             prompts_issued: 0,
             llm_duration_ms: llm_started.elapsed().as_millis(),
-            authored_plan: None,
-            authored_plan_status: "not-requested".to_string(),
+            authored_plan: Some(authored_plan),
+            authored_plan_status: "available".to_string(),
             intake_failure: None,
         };
     }
@@ -559,9 +624,11 @@ pub fn resolve_with_context(
             .join("\n")
     ));
 
-    let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
-            .unwrap_or_default();
+    let benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        PACKAGE_RESOLUTION_BENCHMARK_CONTEXT_TAIL_CHARS,
+    )
+    .unwrap_or_default();
 
     let attr_usage: serde_json::Value = serde_json::json!(parse_result
         .attribute_usage
@@ -713,9 +780,11 @@ pub fn single_package_hint(
     }
 
     let context = assemble_context_for_import(store, import_name);
-    let benchmark_context =
-        context::read_context_tail(config.benchmark_context_log.as_deref(), 96_000)
-            .unwrap_or_default();
+    let benchmark_context = context::read_context_tail(
+        config.benchmark_context_log.as_deref(),
+        PACKAGE_RESOLUTION_BENCHMARK_CONTEXT_TAIL_CHARS,
+    )
+    .unwrap_or_default();
 
     let attr_usage: serde_json::Value = serde_json::json!(parse_result
         .attribute_usage

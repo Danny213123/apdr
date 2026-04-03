@@ -116,8 +116,14 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     prompts_issued += 1
 
     if result is None:
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
+        if diagnostics:
+            notes.append(f"LLM diagnostics: {diagnostics}")
         return ResolutionResponse(
             mappings=[PackageMapping(import_name=import_name, package_name=import_name)],
+            notes=notes,
+            failure_reason=diagnostics,
             prompts_issued=prompts_issued,
         )
 

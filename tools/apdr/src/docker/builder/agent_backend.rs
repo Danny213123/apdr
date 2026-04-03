@@ -9,8 +9,8 @@ use super::*;
 use crate::context;
 use crate::docker::system_deps;
 use crate::{
-    ResolveConfig, ValidationAttempt, ValidationSummary, LLM_VALIDATION_POLICY_ENV_FIRST,
-    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_LLM,
+    ResolveConfig, ValidationAttempt, ValidationSummary, VALIDATION_BACKEND_DOCKER,
+    VALIDATION_BACKEND_LLM,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,7 +22,6 @@ static DOCKER_AGENT_IMPORTABLE: OnceLock<bool> = OnceLock::new();
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum LlmValidationRoute {
     DockerFirst,
-    EnvFirstControl,
     EnvFirstHostRuntime,
     EnvFirstDockerBypass(DockerUnavailabilityReason),
 }
@@ -36,10 +35,7 @@ pub(super) fn validate_requirements_llm(
     config: &ResolveConfig,
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
-    let docker_availability =
-        if config.llm_validation_policy() == LLM_VALIDATION_POLICY_ENV_FIRST
-            || llm_case_requires_host_runtime(imports, requirements_txt)
-        {
+    let docker_availability = if llm_case_requires_host_runtime(imports, requirements_txt) {
             DockerValidationAvailability::Available
         } else {
             probe_docker_validation_availability()
@@ -54,16 +50,6 @@ pub(super) fn validate_requirements_llm(
             attempt_offset,
             config,
             store,
-        ),
-        LlmValidationRoute::EnvFirstControl => validate_requirements_llm_env_first(
-            snippet_path,
-            requirements_txt,
-            imports,
-            candidate_versions,
-            attempt_offset,
-            config,
-            store,
-            true,
         ),
         LlmValidationRoute::EnvFirstHostRuntime => {
             eprintln!(
@@ -237,14 +223,11 @@ fn validate_requirements_llm_docker_first(
 }
 
 pub(super) fn llm_validation_route(
-    config: &ResolveConfig,
+    _config: &ResolveConfig,
     imports: &[String],
     requirements_txt: &str,
     docker_availability: DockerValidationAvailability,
 ) -> LlmValidationRoute {
-    if config.llm_validation_policy() == LLM_VALIDATION_POLICY_ENV_FIRST {
-        return LlmValidationRoute::EnvFirstControl;
-    }
     if llm_case_requires_host_runtime(imports, requirements_txt) {
         return LlmValidationRoute::EnvFirstHostRuntime;
     }
@@ -257,7 +240,6 @@ pub(super) fn llm_validation_route(
 fn llm_validation_route_label(route: LlmValidationRoute) -> &'static str {
     match route {
         LlmValidationRoute::DockerFirst => "docker-first",
-        LlmValidationRoute::EnvFirstControl => "env-first-control",
         LlmValidationRoute::EnvFirstHostRuntime => "env-first-host-runtime",
         LlmValidationRoute::EnvFirstDockerBypass(_) => "env-first-docker-bypass",
     }
@@ -266,16 +248,15 @@ fn llm_validation_route_label(route: LlmValidationRoute) -> &'static str {
 fn llm_validation_first_hop(route: LlmValidationRoute) -> &'static str {
     match route {
         LlmValidationRoute::DockerFirst => VALIDATION_BACKEND_DOCKER,
-        LlmValidationRoute::EnvFirstControl
-        | LlmValidationRoute::EnvFirstHostRuntime
-        | LlmValidationRoute::EnvFirstDockerBypass(_) => "env",
+        LlmValidationRoute::EnvFirstHostRuntime | LlmValidationRoute::EnvFirstDockerBypass(_) => {
+            "env"
+        }
     }
 }
 
 fn llm_docker_bypass_reason(route: LlmValidationRoute) -> Option<&'static str> {
     match route {
         LlmValidationRoute::DockerFirst => None,
-        LlmValidationRoute::EnvFirstControl => Some("explicit env-first control policy"),
         LlmValidationRoute::EnvFirstHostRuntime => Some("host-runtime pre-skip"),
         LlmValidationRoute::EnvFirstDockerBypass(reason) => Some(reason.label()),
     }
@@ -295,7 +276,7 @@ fn write_llm_docker_bypass_note(
             config.llm_validation_policy(),
             llm_validation_route_label(route),
             llm_validation_first_hop(route),
-            config.llm_validation_policy() != LLM_VALIDATION_POLICY_ENV_FIRST,
+            true,
             reason,
         ),
     )?;

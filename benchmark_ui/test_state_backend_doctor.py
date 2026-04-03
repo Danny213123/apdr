@@ -81,10 +81,10 @@ class TestStateBackendDoctor(unittest.TestCase):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
 
             docker_row = next(
-                row for row in rows if row["label"] == "Docker (preferred for APDR llm docker-first)"
+                row for row in rows if row["label"] == "Docker (required first hop for APDR llm)"
             )
             self.assertEqual(docker_row["status"], "WARN")
-            self.assertIn("requested docker-first validation", docker_row["detail"])
+            self.assertIn("requires docker-first validation", docker_row["detail"])
             self.assertIn("degrade to env validation", docker_row["detail"])
             self.assertIn("docker cli unavailable", docker_row["detail"])
 
@@ -97,7 +97,7 @@ class TestStateBackendDoctor(unittest.TestCase):
             docker_row = next(
                 row
                 for row in rows
-                if row["label"] == "Docker daemon (preferred for APDR llm docker-first)"
+                if row["label"] == "Docker daemon (required first hop for APDR llm)"
             )
             self.assertEqual(docker_row["status"], "WARN")
             self.assertIn("degrade to env validation", docker_row["detail"])
@@ -111,7 +111,7 @@ class TestStateBackendDoctor(unittest.TestCase):
 
             backend_row = next(row for row in rows if row["label"] == "apdr validation backend")
             tooling_row = next(row for row in rows if row["label"] == "apdr env tooling")
-            self.assertIn("Docker-first validation with safe env fallback", backend_row["detail"])
+            self.assertIn("Docker-first validation is required", backend_row["detail"])
             self.assertIn("docker cli unavailable", backend_row["detail"])
             self.assertIn("docker daemon unavailable", backend_row["detail"])
             self.assertEqual(tooling_row["status"], "PASS")

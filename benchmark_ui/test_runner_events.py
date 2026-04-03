@@ -730,6 +730,22 @@ class TestMacosReplayPolicy(unittest.TestCase):
         self.assertEqual(workers, 4)
         self.assertTrue(any("macos-replay capped requested workers=9" in warning for warning in warnings))
 
+    def test_llm_only_auto_workers_default_to_one(self):
+        workers, warnings = determine_effective_worker_count(
+            {"llm_only_mode": True, "workers": 0},
+            cpu_count=12,
+        )
+        self.assertEqual(workers, 1)
+        self.assertEqual(warnings, [])
+
+    def test_llm_only_caps_excessive_workers(self):
+        workers, warnings = determine_effective_worker_count(
+            {"llm_only_mode": True, "workers": 9},
+            cpu_count=12,
+        )
+        self.assertEqual(workers, 1)
+        self.assertTrue(any("llm-only capped requested workers=9" in warning for warning in warnings))
+
     @patch("benchmark_ui.runner.detect_requested_apdr_binary")
     @patch("benchmark_ui.runner.detect_rosetta_translation")
     @patch("benchmark_ui.runner.sys.platform", "darwin")

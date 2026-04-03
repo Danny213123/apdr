@@ -123,16 +123,12 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     .get(index)
                     .ok_or("--llm-validation-policy expects a value")?;
                 config.llm_validation_policy = match value.trim().to_ascii_lowercase().as_str() {
-                    LLM_VALIDATION_POLICY_DOCKER_FIRST => {
+                    LLM_VALIDATION_POLICY_DOCKER_FIRST | LLM_VALIDATION_POLICY_ENV_FIRST => {
                         LLM_VALIDATION_POLICY_DOCKER_FIRST.to_string()
-                    }
-                    LLM_VALIDATION_POLICY_ENV_FIRST => {
-                        LLM_VALIDATION_POLICY_ENV_FIRST.to_string()
                     }
                     _ => {
                         return Err(
-                            "--llm-validation-policy must be `docker-first` or `env-first`"
-                                .to_string(),
+                            "--llm-validation-policy only supports `docker-first`".to_string(),
                         )
                     }
                 };
@@ -552,7 +548,7 @@ fn print_help() {
     println!(
         "              [--docker-timeout 300] [--validation-backend env|docker|llm] [--no-validate]"
     );
-    println!("              [--llm-validation-policy docker-first|env-first]");
+    println!("              [--llm-validation-policy docker-first]");
     println!("              [--pre-solve-timeout 10]");
     println!("              [--no-execute-snippet]");
     println!("              [--no-parallel-versions] [--no-config-scan]");

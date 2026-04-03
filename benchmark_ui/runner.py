@@ -199,6 +199,16 @@ def determine_effective_worker_count(
     requested = int(run_config.get("workers", 0) or 0)
     resolved_cpu_count = max(1, int(cpu_count or os.cpu_count() or 4))
     run_intent = normalize_run_intent(run_config.get("run_intent"))
+    llm_only_mode = bool(run_config.get("llm_only_mode"))
+    if llm_only_mode:
+        if requested > 1:
+            return (
+                1,
+                [
+                    f"llm-only capped requested workers={requested} to 1 to serialize local LLM intake."
+                ],
+            )
+        return 1, []
     if run_intent == "macos-replay":
         if requested <= 0:
             return 1, []

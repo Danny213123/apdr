@@ -22,6 +22,7 @@ import os
 import re
 import tempfile
 import threading
+from contextlib import contextmanager
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -31,6 +32,11 @@ import instructor
 import litellm
 import requests as _requests_lib
 from pydantic import BaseModel
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger("apdr_llm")
 
@@ -49,6 +55,97 @@ os.environ.setdefault("OLLAMA_KEEP_ALIVE", "-1")
 _cache_initialized = False
 _json_completion_cache: dict[str, str] = {}
 _json_completion_cache_lock = threading.Lock()
+_provider_gate_registry_lock = threading.Lock()
+_provider_gate_thread_locks: dict[str, threading.Lock] = {}
+
+
+def _provider_gate_cache_dir() -> Path:
+    candidates = [
+        Path(__file__).resolve().parents[3] / ".apdr-cache" / "llm-queue",
+        Path.home() / ".apdr-cache" / "llm-queue",
+        Path(tempfile.gettempdir()) / "apdr-cache" / "llm-queue",
+    ]
+    for directory in candidates:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            return directory
+        except OSError:
+            continue
+    return candidates[-1]
+
+
+def _provider_gate_key(provider: str, model: str, base_url: str) -> str:
+    canonical = f"{provider.strip().lower()}|{model.strip()}|{base_url.strip().rstrip('/')}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _provider_gate_lock_path(provider: str, model: str, base_url: str) -> Path:
+    return _provider_gate_cache_dir() / f"{_provider_gate_key(provider, model, base_url)}.lock"
+
+
+def _provider_gate_thread_lock(provider: str, model: str, base_url: str) -> threading.Lock:
+    key = _provider_gate_key(provider, model, base_url)
+    with _provider_gate_registry_lock:
+        lock = _provider_gate_thread_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _provider_gate_thread_locks[key] = lock
+        return lock
+
+
+@contextmanager
+def _provider_call_gate(provider: str, model: str, base_url: str):
+    """Serialize local-provider calls to avoid stampeding Ollama."""
+    if provider.strip().lower() != "ollama":
+        yield
+        return
+
+    thread_lock = _provider_gate_thread_lock(provider, model, base_url)
+    with thread_lock:
+        lock_path = _provider_gate_lock_path(provider, model, base_url)
+        try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            handle = lock_path.open("a+", encoding="utf-8")
+        except OSError:
+            yield
+            return
+
+        with handle:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                except OSError:
+                    yield
+                    return
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+
+
+def _timeout_policy_for_action(action_name: str) -> dict[str, float]:
+    normalized = (action_name or "").strip().lower()
+    if normalized == "resolve":
+        return {
+            "time_budget": 35.0,
+            "json_timeout": 20.0,
+            "raw_timeout": 10.0,
+        }
+    if normalized == "recovery":
+        return {
+            "time_budget": 60.0,
+            "json_timeout": 35.0,
+            "raw_timeout": 12.0,
+        }
+    return {
+        "time_budget": 45.0,
+        "json_timeout": 25.0,
+        "raw_timeout": 10.0,
+    }
 
 
 def classify_failure_reason(reason: str) -> str:
@@ -58,6 +155,19 @@ def classify_failure_reason(reason: str) -> str:
         return "empty-output"
     if "timeout" in lowered or "timed out" in lowered or "readtimeout" in lowered:
         return "timeout"
+    if any(
+        marker in lowered
+        for marker in (
+            "server busy",
+            "maximum pending requests exceeded",
+            "too many requests",
+            "http 429",
+            "http 503",
+            "status code 429",
+            "status code 503",
+        )
+    ):
+        return "provider-tooling-failure"
     if (
         ("json" in lowered and "validation" in lowered)
         or "schema failure" in lowered
@@ -157,17 +267,18 @@ def prewarm_ollama(base_url: str = "http://localhost:11434", model: str = "") ->
     if not model:
         return
     try:
-        _requests_lib.post(
-            f"{base_url.rstrip('/')}/api/chat",
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": False,
-                "options": {"num_predict": 1, "num_ctx": 256},
-                "keep_alive": "-1",
-            },
-            timeout=30,
-        )
+        with _provider_call_gate("ollama", model, base_url):
+            _requests_lib.post(
+                f"{base_url.rstrip('/')}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "options": {"num_predict": 1, "num_ctx": 256},
+                    "keep_alive": -1,
+                },
+                timeout=30,
+            )
         logger.info("Ollama pre-warm complete for %s", model)
     except Exception as e:
         logger.debug("Ollama pre-warm failed (non-fatal): %s", e)
@@ -548,7 +659,7 @@ class LlmClient:
             "model": self._litellm_model(model_override),
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "timeout": 120,
+            "timeout": 60,
         }
         if self.provider == "ollama":
             kwargs["api_base"] = self.base_url
@@ -594,6 +705,9 @@ class LlmClient:
         effective_model = model_override or self.model
         try:
             import requests as req_lib
+            timeout_policy = _timeout_policy_for_action(
+                self._action_name_for_prompt(system_prompt)
+            )
             policy = self._ollama_policy(
                 model_name=effective_model,
                 temperature=temperature,
@@ -609,7 +723,7 @@ class LlmClient:
                 ],
                 "format": schema,
                 "stream": False,
-                "keep_alive": "-1",
+                "keep_alive": -1,
                 "options": {
                     "temperature": policy["temperature"],
                     "num_ctx": policy["num_ctx"],
@@ -622,11 +736,12 @@ class LlmClient:
             }
             if policy["thinking"] is not None:
                 payload["think"] = policy["thinking"]
-            resp = req_lib.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                timeout=120,
-            )
+            with _provider_call_gate(self.provider, effective_model, self.base_url):
+                resp = req_lib.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    timeout=timeout_policy["json_timeout"],
+                )
             if resp.ok:
                 data = resp.json()
                 content = data.get("message", {}).get("content", "")
@@ -664,14 +779,17 @@ class LlmClient:
         user_prompt: str,
         temperature: float,
         max_tokens: int,
+        timeout: float = 60,
     ) -> tuple[str | None, str]:
         kwargs = self._base_kwargs(temperature, max_tokens)
+        kwargs["timeout"] = timeout
         kwargs["messages"] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
         try:
-            response = litellm.completion(**kwargs)
+            with _provider_call_gate(self.provider, self.model, self.base_url):
+                response = litellm.completion(**kwargs)
             text = response.choices[0].message.content
             if text:
                 return text.strip(), ""
@@ -725,15 +843,27 @@ class LlmClient:
         import time
         started = time.time()
         action_name = self._action_name_for_prompt(system_prompt)
+        timeout_policy = _timeout_policy_for_action(action_name)
 
         schema_instructions = _format_schema_instructions(response_model)
         augmented_prompt = f"{user_prompt}\n\n{schema_instructions}"
         diagnostics: list[str] = []
 
+        # Use an action-specific budget so one intake failure does not stall the run.
+        time_budget = timeout_policy["time_budget"]
+
         for attempt in range(1 + max_retries):
+            elapsed = time.time() - started
+            if attempt > 0 and elapsed >= time_budget:
+                diagnostics.append(
+                    f"attempt {attempt + 1}: skipped — time budget exhausted ({elapsed:.0f}s >= {time_budget:.0f}s)"
+                )
+                break
             content, transport_diagnostic = self._complete_json_raw_with_diagnostics(
                 system_prompt, augmented_prompt, temperature, max_tokens,
                 num_ctx=num_ctx,
+                request_timeout=timeout_policy["json_timeout"],
+                raw_timeout=timeout_policy["raw_timeout"],
             )
             if not content:
                 logger.debug("complete_json attempt %d: empty response", attempt + 1)
@@ -823,6 +953,8 @@ class LlmClient:
         temperature: float,
         max_tokens: int,
         num_ctx: int = 0,
+        request_timeout: float = 60,
+        raw_timeout: float = 60,
     ) -> tuple[str | None, str]:
         """Get raw JSON text from the LLM, using format=json for Ollama."""
         if self.provider == "ollama":
@@ -853,7 +985,7 @@ class LlmClient:
                     ],
                     "format": "json",
                     "stream": False,
-                    "keep_alive": "-1",
+                    "keep_alive": -1,
                     "options": {
                         "temperature": policy["temperature"],
                         "num_ctx": policy["num_ctx"],
@@ -866,11 +998,12 @@ class LlmClient:
                 }
                 if policy["thinking"] is not None:
                     payload["think"] = policy["thinking"]
-                resp = req_lib.post(
-                    f"{self.base_url}/api/chat",
-                    json=payload,
-                    timeout=120,
-                )
+                with _provider_call_gate(self.provider, self.model, self.base_url):
+                    resp = req_lib.post(
+                        f"{self.base_url}/api/chat",
+                        json=payload,
+                        timeout=request_timeout,
+                    )
                 if resp.ok:
                     data = resp.json()
                     content = data.get("message", {}).get("content", "")
@@ -902,6 +1035,7 @@ class LlmClient:
                 user_prompt,
                 temperature,
                 max_tokens,
+                timeout=raw_timeout,
             )
             if fallback_text:
                 return fallback_text, ""
@@ -960,11 +1094,12 @@ class LlmClient:
         ]
         diagnostics: list[str] = []
         try:
-            result = self._instructor_client.chat.completions.create(
-                response_model=response_model,
-                max_retries=max_retries,
-                **kwargs,
-            )
+            with _provider_call_gate(self.provider, self.model, self.base_url):
+                result = self._instructor_client.chat.completions.create(
+                    response_model=response_model,
+                    max_retries=max_retries,
+                    **kwargs,
+                )
             return result, ""
         except Exception as e:
             logger.warning("Structured completion failed: %s", e)
@@ -975,11 +1110,12 @@ class LlmClient:
             try:
                 fb_kwargs = self._base_kwargs(temperature, max_tokens, model_override=fallback_model)
                 fb_kwargs["messages"] = kwargs["messages"]
-                result = self._instructor_client.chat.completions.create(
-                    response_model=response_model,
-                    max_retries=2,
-                    **fb_kwargs,
-                )
+                with _provider_call_gate(self.provider, fallback_model, self.base_url):
+                    result = self._instructor_client.chat.completions.create(
+                        response_model=response_model,
+                        max_retries=2,
+                        **fb_kwargs,
+                    )
                 logger.info("Fallback model %s succeeded", fallback_model)
                 return result, ""
             except Exception as e2:

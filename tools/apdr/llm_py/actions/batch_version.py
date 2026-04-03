@@ -63,7 +63,14 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     )
 
     if result is None:
-        return ResolutionResponse(error="Batch version selection returned no output", prompts_issued=1)
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
+        return ResolutionResponse(
+            error="Batch version selection returned no output",
+            prompts_issued=1,
+            failure_reason=diagnostics,
+            notes=[f"LLM diagnostics: {diagnostics}"] if diagnostics else [],
+        )
 
     # Convert to a dict response for Rust to parse
     version_map = {}

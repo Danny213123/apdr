@@ -12,6 +12,7 @@ Improvements:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -122,9 +123,150 @@ If you see "from django.conf import settings", the package is "django", not "dja
 """
 
 
+_APDR_START_KEYS = (
+    "tool",
+    "dataset",
+    "total_snippets",
+    "resumed_completed",
+    "effective_workers",
+)
+_APDR_STABLE_KEYS = (
+    "build_profile",
+    "validation_backend",
+    "llm_validation_policy",
+    "allow_llm",
+    "validate",
+    "range",
+    "max_retries",
+)
+
+
+def _split_benchmark_blocks(context: str) -> list[tuple[str, list[str]]]:
+    blocks: list[tuple[str, list[str]]] = []
+    header = ""
+    lines: list[str] = []
+    for raw_line in context.splitlines():
+        line = raw_line.rstrip("\n")
+        if line.startswith("===== ") and line.endswith(" ====="):
+            if header:
+                blocks.append((header, lines))
+            header = line
+            lines = []
+            continue
+        if header:
+            lines.append(line)
+    if header:
+        blocks.append((header, lines))
+    return blocks
+
+
+def _parse_block_values(lines: list[str]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in lines:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            values[key] = value
+    return values
+
+
+def _summarize_apdr_benchmark_context(context: str) -> str:
+    if "kind=benchmark-start" not in context and "kind=apdr-" not in context:
+        return ""
+
+    start_values: dict[str, str] = {}
+    stable_values: dict[str, set[str]] = {key: set() for key in _APDR_STABLE_KEYS}
+    saw_apdr_blocks = False
+
+    for header, lines in _split_benchmark_blocks(context):
+        kind_match = re.search(r"kind=([A-Za-z0-9_-]+)", header)
+        kind = kind_match.group(1) if kind_match else ""
+        values = _parse_block_values(lines)
+        if not kind:
+            continue
+        if kind == "benchmark-start":
+            saw_apdr_blocks = True
+            for key in _APDR_START_KEYS:
+                value = values.get(key, "")
+                if value:
+                    start_values[key] = value
+            warnings = values.get("preflight_warnings", "")
+            if warnings and warnings != "[]":
+                start_values["preflight_warnings"] = warnings
+            continue
+        if kind.startswith("apdr-"):
+            saw_apdr_blocks = True
+            for key in _APDR_STABLE_KEYS:
+                value = values.get(key, "")
+                if value:
+                    stable_values[key].add(value)
+
+    if not saw_apdr_blocks:
+        return ""
+
+    summary_lines = ["APDR benchmark summary:"]
+    for key in _APDR_START_KEYS:
+        value = start_values.get(key, "")
+        if value:
+            summary_lines.append(f"{key}={value}")
+    if "preflight_warnings" in start_values:
+        summary_lines.append(f"preflight_warnings={start_values['preflight_warnings']}")
+    for key in _APDR_STABLE_KEYS:
+        values = stable_values.get(key, set())
+        if len(values) == 1:
+            summary_lines.append(f"{key}={next(iter(values))}")
+    summary_lines.append("shared_case_log=omitted")
+    return "\n".join(summary_lines)
+
+
+def _summarize_partial_apdr_benchmark_context(context: str) -> str:
+    interesting_keys = ("model", "base_url") + _APDR_START_KEYS + _APDR_STABLE_KEYS
+    values: dict[str, str] = {}
+
+    for raw_line in context.splitlines():
+        line = raw_line.strip().strip(",")
+        if not line or "=" not in line:
+            continue
+        if line.startswith("#") or line.startswith("{") or line.startswith("}"):
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().strip('"')
+        value = value.strip().strip('"').strip(",")
+        if key in interesting_keys and value and value not in {"[]", "{}", "--"}:
+            values.setdefault(key, value)
+
+    if not values:
+        return ""
+
+    summary_lines = ["APDR benchmark summary:"]
+    for key in ("tool", "model", "base_url") + _APDR_START_KEYS:
+        value = values.get(key, "")
+        if value:
+            summary_lines.append(f"{key}={value}")
+    for key in _APDR_STABLE_KEYS:
+        value = values.get(key, "")
+        if value:
+            summary_lines.append(f"{key}={value}")
+    summary_lines.append("shared_case_log=omitted")
+    return "\n".join(summary_lines)
+
+
 def compress_benchmark_context(context: str, max_chars: int = 8192) -> str:
     if not context.strip():
         return "- none"
+    apdr_summary = _summarize_apdr_benchmark_context(context)
+    if apdr_summary:
+        if len(apdr_summary) <= max_chars:
+            return apdr_summary
+        context = apdr_summary
+    partial_apdr_summary = _summarize_partial_apdr_benchmark_context(context)
+    if partial_apdr_summary:
+        if len(partial_apdr_summary) <= max_chars:
+            return partial_apdr_summary
+        context = partial_apdr_summary
     if len(context) <= max_chars:
         return context
     trimmed = context[len(context) - max_chars:]

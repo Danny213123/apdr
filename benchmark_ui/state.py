@@ -304,9 +304,9 @@ class AppState:
             return "Docker build + run validation"
         if resolved == "llm":
             return (
-                "Docker-first validation with safe env fallback when docker cli unavailable "
-                "or docker daemon unavailable + agent fallback; "
-                "env-first remains available as a control"
+                "Docker-first validation is required for APDR llm when Docker is usable, "
+                "with safe env fallback when docker cli unavailable or docker daemon unavailable "
+                "+ agent fallback"
             )
         return "Isolated local Python env validation"
 
@@ -609,7 +609,7 @@ class AppState:
         if shutil.which("docker"):
             code, output = self._run_command(["docker", "--version"], cwd=self.repo_root, timeout=5)
             docker_cli_label = (
-                "Docker CLI (preferred for APDR llm docker-first)"
+                "Docker CLI (required first hop for APDR llm)"
                 if docker_targeted_for_llm
                 else
                 "Docker CLI (optional for APDR env validation)"
@@ -618,7 +618,7 @@ class AppState:
             )
             docker_cli_status = "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL")
             docker_cli_detail = output or (
-                "Docker is installed and can serve as the first validation hop for APDR llm."
+                "Docker is installed and will be used as the first validation hop for APDR llm."
                 if docker_targeted_for_llm
                 else
                 "Docker is installed, but the selected backend does not require it."
@@ -632,7 +632,7 @@ class AppState:
                 detail = f"{detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor."
             elif code != 0 and docker_targeted_for_llm:
                 detail = (
-                    f"{detail} APDR llm requested docker-first validation, so runs will "
+                    f"{detail} APDR llm requires docker-first validation, so runs will "
                     "degrade to env validation with docker_bypass_reason: "
                     "docker daemon unavailable until Docker is available."
                 )
@@ -642,7 +642,7 @@ class AppState:
                 self._doctor_row(
                     "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL"),
                     (
-                        "Docker daemon (preferred for APDR llm docker-first)"
+                        "Docker daemon (required first hop for APDR llm)"
                         if docker_targeted_for_llm
                         else
                         "Docker daemon (optional for APDR env validation)"
@@ -657,8 +657,8 @@ class AppState:
                 checks.append(
                     self._doctor_row(
                         "WARN",
-                        "Docker (preferred for APDR llm docker-first)",
-                        "Docker is not installed. APDR llm requested docker-first validation, "
+                        "Docker (required first hop for APDR llm)",
+                        "Docker is not installed. APDR llm requires docker-first validation, "
                         "so runs will degrade to env validation with docker_bypass_reason: "
                         "docker cli unavailable until Docker is available.",
                     )
