@@ -51,6 +51,52 @@ _json_completion_cache: dict[str, str] = {}
 _json_completion_cache_lock = threading.Lock()
 
 
+def classify_failure_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    lowered = text.lower()
+    if not lowered:
+        return "empty-output"
+    if "timeout" in lowered or "timed out" in lowered or "readtimeout" in lowered:
+        return "timeout"
+    if (
+        ("json" in lowered and "validation" in lowered)
+        or "schema failure" in lowered
+        or "schema_validation" in lowered
+        or "pydantic" in lowered
+    ):
+        return "schema-validation-failure"
+    if "could not extract json" in lowered or "not valid json" in lowered or "json" in lowered:
+        return "invalid-json"
+    if any(
+        marker in lowered
+        for marker in (
+            "connection",
+            "connecterror",
+            "transport",
+            "refused",
+            "dns",
+            "http ",
+            "httpx",
+            "remoteprotocolerror",
+        )
+    ):
+        return "transport-failure"
+    if any(
+        marker in lowered
+        for marker in (
+            "provider not available",
+            "provider",
+            "ollama",
+            "litellm",
+            "instructor",
+            "tool",
+            "unsupported",
+        )
+    ):
+        return "provider-tooling-failure"
+    return "empty-output"
+
+
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, "").strip())
@@ -244,6 +290,8 @@ class LlmClient:
         self.provider = provider
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self._last_failure_reason = ""
+        self._last_failure_lock = threading.Lock()
         # --- REC-03: Compute prompt version hash for cache invalidation ---
         self._prompt_version_hash = self._compute_prompt_version()
         self._instructor_client = instructor.from_litellm(litellm.completion)
@@ -256,6 +304,27 @@ class LlmClient:
         # --- #13: Pre-warm Ollama to load model into GPU memory ---
         if self.provider == "ollama":
             prewarm_ollama(self.base_url, self.model)
+
+    def _remember_failure(self, reason: str) -> None:
+        with self._last_failure_lock:
+            self._last_failure_reason = str(reason or "").strip()
+
+    def last_failure_reason(self) -> str:
+        with self._last_failure_lock:
+            return self._last_failure_reason
+
+    def failure_details(self) -> dict[str, str]:
+        reason = self.last_failure_reason()
+        return {
+            "failure_class": classify_failure_reason(reason),
+            "diagnostic_preview": self._truncate_debug(reason, limit=400),
+        }
+
+    def _truncate_debug(self, value: Any, limit: int = 240) -> str:
+        text = str(value or "").strip().replace("\n", "\\n")
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3] + "..."
 
     def _compute_prompt_version(self) -> str:
         """Compute SHA256 hash of prompt templates for cache versioning.
@@ -580,6 +649,22 @@ class LlmClient:
         max_tokens: int = 1024,
     ) -> str | None:
         """Raw text completion with system/user message separation."""
+        text, diagnostic = self._complete_text_with_diagnostics(
+            system_prompt,
+            user_prompt,
+            temperature,
+            max_tokens,
+        )
+        self._remember_failure("" if text else diagnostic)
+        return text
+
+    def _complete_text_with_diagnostics(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str | None, str]:
         kwargs = self._base_kwargs(temperature, max_tokens)
         kwargs["messages"] = [
             {"role": "system", "content": system_prompt},
@@ -588,10 +673,12 @@ class LlmClient:
         try:
             response = litellm.completion(**kwargs)
             text = response.choices[0].message.content
-            return text.strip() if text else None
+            if text:
+                return text.strip(), ""
+            return None, "raw text completion returned empty content"
         except Exception as e:
             logger.warning("LLM completion failed: %s", e)
-            return None
+            return None, f"raw text completion failed: {type(e).__name__}: {e}"
 
     # ------------------------------------------------------------------
     # Tolerant JSON completion (primary path for small models)
@@ -607,6 +694,28 @@ class LlmClient:
         max_retries: int = 2,
         num_ctx: int = 0,
     ) -> T | None:
+        result, diagnostic = self.complete_json_with_diagnostics(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=response_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            num_ctx=num_ctx,
+        )
+        self._remember_failure("" if result is not None else diagnostic)
+        return result
+
+    def complete_json_with_diagnostics(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type[T],
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        max_retries: int = 2,
+        num_ctx: int = 0,
+    ) -> tuple[T | None, str]:
         """JSON completion with tolerant parsing — works with small models.
 
         Uses Ollama's format="json" mode (simple JSON enforcement without
@@ -619,14 +728,18 @@ class LlmClient:
 
         schema_instructions = _format_schema_instructions(response_model)
         augmented_prompt = f"{user_prompt}\n\n{schema_instructions}"
+        diagnostics: list[str] = []
 
         for attempt in range(1 + max_retries):
-            content = self._complete_json_raw(
+            content, transport_diagnostic = self._complete_json_raw_with_diagnostics(
                 system_prompt, augmented_prompt, temperature, max_tokens,
                 num_ctx=num_ctx,
             )
             if not content:
                 logger.debug("complete_json attempt %d: empty response", attempt + 1)
+                diagnostics.append(
+                    f"attempt {attempt + 1}: {transport_diagnostic or 'completion backend returned no content'}"
+                )
                 continue
 
             parsed = _extract_json_from_text(content)
@@ -634,6 +747,10 @@ class LlmClient:
                 logger.debug(
                     "complete_json attempt %d: JSON extraction failed from: %.300s",
                     attempt + 1, content,
+                )
+                diagnostics.append(
+                    f"attempt {attempt + 1}: could not extract JSON from "
+                    f"{self._truncate_debug(content)}"
                 )
                 augmented_prompt = (
                     f"{user_prompt}\n\n{schema_instructions}\n\n"
@@ -663,10 +780,13 @@ class LlmClient:
                     }
                 )
 
-                return result
+                return result, ""
             except Exception as e:
                 logger.debug(
                     "complete_json attempt %d: validation failed: %s", attempt + 1, e,
+                )
+                diagnostics.append(
+                    f"attempt {attempt + 1}: JSON validation failed: {self._truncate_debug(e)}"
                 )
                 augmented_prompt = (
                     f"{user_prompt}\n\n{schema_instructions}\n\n"
@@ -674,7 +794,10 @@ class LlmClient:
                     f"Please fix and return valid JSON."
                 )
 
-        return None
+        diagnostic = "; ".join(diagnostics[-4:])
+        if not diagnostic:
+            diagnostic = "LLM returned no usable JSON response"
+        return None, diagnostic
 
     def _complete_json_raw(
         self,
@@ -684,6 +807,23 @@ class LlmClient:
         max_tokens: int,
         num_ctx: int = 0,
     ) -> str | None:
+        content, _diagnostic = self._complete_json_raw_with_diagnostics(
+            system_prompt,
+            user_prompt,
+            temperature,
+            max_tokens,
+            num_ctx=num_ctx,
+        )
+        return content
+
+    def _complete_json_raw_with_diagnostics(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        num_ctx: int = 0,
+    ) -> tuple[str | None, str]:
         """Get raw JSON text from the LLM, using format=json for Ollama."""
         if self.provider == "ollama":
             cache_key = self._json_cache_key(
@@ -696,7 +836,7 @@ class LlmClient:
             with _json_completion_cache_lock:
                 cached = _json_completion_cache.get(cache_key)
             if cached is not None:
-                return cached
+                return cached, ""
             try:
                 import requests as req_lib
                 policy = self._ollama_policy(
@@ -738,11 +878,44 @@ class LlmClient:
                         cleaned = content.strip()
                         with _json_completion_cache_lock:
                             _json_completion_cache[cache_key] = cleaned
-                        return cleaned
+                        return cleaned, ""
+                    message = data.get("message", {})
+                    diagnostic = (
+                        "ollama json mode returned empty message.content"
+                        if isinstance(message, dict)
+                        else "ollama json mode returned empty message payload"
+                    )
+                    if isinstance(message, dict):
+                        diagnostic = (
+                            f"{diagnostic} (message keys: {', '.join(sorted(message.keys())) or 'none'})"
+                        )
+                else:
+                    diagnostic = (
+                        f"ollama json mode returned HTTP {resp.status_code}: "
+                        f"{self._truncate_debug(resp.text)}"
+                    )
             except Exception as e:
                 logger.warning("Ollama JSON call failed: %s", e)
-        # Non-Ollama or Ollama failed: use raw text completion
-        return self.complete(system_prompt, user_prompt, temperature, max_tokens)
+                diagnostic = f"ollama json mode failed: {type(e).__name__}: {e}"
+            fallback_text, fallback_diagnostic = self._complete_text_with_diagnostics(
+                system_prompt,
+                user_prompt,
+                temperature,
+                max_tokens,
+            )
+            if fallback_text:
+                return fallback_text, ""
+            if fallback_diagnostic:
+                diagnostic = f"{diagnostic}; {fallback_diagnostic}" if diagnostic else fallback_diagnostic
+            return None, diagnostic
+
+        # Non-Ollama: use raw text completion only.
+        return self._complete_text_with_diagnostics(
+            system_prompt,
+            user_prompt,
+            temperature,
+            max_tokens,
+        )
 
     def complete_structured(
         self,
@@ -753,6 +926,26 @@ class LlmClient:
         max_tokens: int = 1024,
         max_retries: int = 3,
     ) -> T | None:
+        result, diagnostic = self.complete_structured_with_diagnostics(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=response_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+        )
+        self._remember_failure("" if result is not None else diagnostic)
+        return result
+
+    def complete_structured_with_diagnostics(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type[T],
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        max_retries: int = 3,
+    ) -> tuple[T | None, str]:
         """Structured output completion using instructor.
 
         Returns a validated Pydantic model instance or None on failure.
@@ -765,15 +958,17 @@ class LlmClient:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        diagnostics: list[str] = []
         try:
             result = self._instructor_client.chat.completions.create(
                 response_model=response_model,
                 max_retries=max_retries,
                 **kwargs,
             )
-            return result
+            return result, ""
         except Exception as e:
             logger.warning("Structured completion failed: %s", e)
+            diagnostics.append(f"instructor primary failed: {type(e).__name__}: {e}")
 
         # --- #8: Fallback to alternative models ---
         for fallback_model in self._fallback_models:
@@ -786,12 +981,32 @@ class LlmClient:
                     **fb_kwargs,
                 )
                 logger.info("Fallback model %s succeeded", fallback_model)
-                return result
+                return result, ""
             except Exception as e2:
                 logger.warning("Fallback model %s failed: %s", fallback_model, e2)
+                diagnostics.append(
+                    f"instructor fallback {fallback_model} failed: {type(e2).__name__}: {e2}"
+                )
                 continue
 
-        return None
+        fallback_result, fallback_diagnostic = self.complete_json_with_diagnostics(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=response_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=1,
+        )
+        if fallback_result is not None:
+            logger.info("Structured completion recovered via tolerant JSON fallback")
+            return fallback_result, ""
+        if fallback_diagnostic:
+            diagnostics.append(f"tolerant json fallback failed: {fallback_diagnostic}")
+
+        diagnostic = "; ".join(diagnostics[-4:])
+        if not diagnostic:
+            diagnostic = "structured completion returned no usable output"
+        return None, diagnostic
 
     # ------------------------------------------------------------------
     # #4 + #9: Two-pass with structured scratchpad
@@ -858,9 +1073,10 @@ class LlmClient:
         agreement across samples. High entropy = low confidence.
         """
         results: list[T] = []
+        diagnostics: list[str] = []
 
-        def _single_call() -> T | None:
-            return self.complete_structured(
+        def _single_call() -> tuple[T | None, str]:
+            return self.complete_structured_with_diagnostics(
                 system_prompt,
                 user_prompt,
                 response_model,
@@ -873,13 +1089,19 @@ class LlmClient:
             futures = [executor.submit(_single_call) for _ in range(n)]
             for future in as_completed(futures):
                 try:
-                    result = future.result()
+                    result, diagnostic = future.result()
                     if result is not None:
                         results.append(result)
+                    elif diagnostic:
+                        diagnostics.append(diagnostic)
                 except Exception:
                     pass
 
         if not results:
+            diagnostic = "; ".join(dict.fromkeys(diagnostics))
+            if not diagnostic:
+                diagnostic = "semantic entropy voting produced no usable responses"
+            self._remember_failure(diagnostic)
             return None, 0.0
 
         # Count unique answers by JSON serialization
@@ -912,6 +1134,7 @@ class LlmClient:
         # Blend agreement and entropy-based confidence
         final_confidence = (confidence + entropy_confidence) / 2.0
 
+        self._remember_failure("")
         return best_result, final_confidence
 
     def complete_with_voting(

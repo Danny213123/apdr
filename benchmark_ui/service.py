@@ -528,6 +528,9 @@ class BenchmarkService:
             "verbose": self._as_bool(payload.get("verbose", defaults["verbose"])),
             "snippet_limit": snippet_limit,
             "python_command": str(payload.get("python_command") or payload.get("pythonCommand") or defaults["python_command"]).strip(),
+            "llm_only_mode": self._as_bool(
+                payload.get("llm_only_mode", payload.get("llmOnlyMode", defaults["llm_only_mode"]))
+            ),
             "validation_backend": self.state.normalize_validation_backend(
                 tool,
                 str(payload.get("validation_backend") or payload.get("validationBackend") or defaults["validation_backend"]).strip(),
@@ -947,6 +950,12 @@ class BenchmarkService:
             "dockerBypassReason": self._result_docker_bypass_reason(result),
             "dockerBypassNote": self._result_docker_bypass_note(result),
             "debugDir": self._result_debug_dir(result),
+            "authoredPlanStatus": self._result_authored_plan_status(result),
+            "authoredPlanPath": self._result_authored_plan_path(result),
+            "authoredPlanAuthorship": self._result_authored_plan_authorship(result),
+            "authoredPlanFallbackSections": self._result_authored_plan_fallback_sections(result),
+            "intakeFailureClass": self._result_intake_failure_class(result),
+            "intakeFailurePath": self._result_intake_failure_path(result),
             "escalatedBackend": self._result_escalated_backend(result),
             "failureFamily": self._result_failure_family(result),
             "failureBucket": self._result_failure_bucket(result),
@@ -971,8 +980,9 @@ class BenchmarkService:
             "verbose": config["verbose"],
             "snippet_limit": config["snippet_limit"],
             "python_command": config["python_command"],
-            "validation_backend": config["validation_backend"],
+            "validation_backend": "llm-only" if config.get("llm_only_mode") else config["validation_backend"],
             "llm_validation_policy": config["llm_validation_policy"],
+            "llm_only_mode": config.get("llm_only_mode", False),
             "loadout_name": config["loadout_name"],
             "run_intent": config["run_intent"],
             "cache_state": config["cache_state"],
@@ -1232,6 +1242,7 @@ class BenchmarkService:
 
     def _info_fields(self, config: dict[str, Any], run: dict[str, Any]) -> list[dict[str, str]]:
         tool = config.get("tool") or ""
+        llm_only_mode = self._as_bool(config.get("llm_only_mode"))
         validation_backend = self.state.normalize_validation_backend(
             tool, str(config.get("validation_backend") or "")
         )
@@ -1297,9 +1308,9 @@ class BenchmarkService:
         jobs = run.get("total") or str(config.get("snippet_limit") or "all")
         artifacts = self.state.relative_path(run["runDir"]) if run.get("runDir") else "runs/pending"
         llm_validation_label = (
-            "LLM resolver (env-first control + Docker follow-up + agent fallback)"
+            "LLM resolver (legacy env-first control + Docker follow-up + agent fallback)"
             if contract_view["llm_validation_policy"] == "env-first"
-            else "LLM resolver (docker-first + env fallback + agent fallback)"
+            else "LLM resolver (docker-first required + env fallback + agent fallback)"
         )
         fields = [
             {"label": "Run ID", "value": run.get("runId") or "standby"},
@@ -1342,18 +1353,33 @@ class BenchmarkService:
                 },
             )
         if tool == "apdr":
+            validation_label = (
+                "LLM-only resolver + Docker validation"
+                if llm_only_mode and validation_backend == "docker"
+                else "LLM-only resolver + local Python env validation"
+                if llm_only_mode
+                else "Docker build + run"
+                if validation_backend == "docker"
+                else llm_validation_label
+                if validation_backend == "llm"
+                else "local Python environments"
+            )
             fields.insert(
                 14,
                 {
                     "label": "Validation",
-                    "value": "Docker build + run"
-                    if validation_backend == "docker"
-                    else llm_validation_label
-                    if validation_backend == "llm"
-                    else "local Python environments",
+                    "value": validation_label,
                 },
             )
-            if validation_backend == "llm":
+            if llm_only_mode:
+                fields.insert(
+                    15,
+                    {
+                        "label": "LLM mode",
+                        "value": "llm-only",
+                    },
+                )
+            elif validation_backend == "llm":
                 fields.insert(
                     15,
                     {
@@ -1361,10 +1387,10 @@ class BenchmarkService:
                         "value": contract_view["llm_validation_policy"],
                     },
                 )
-            if validation_backend in ("env", "llm"):
+            if validation_backend in ("env", "llm") or (llm_only_mode and validation_backend == "env"):
                 available, missing = self.state.apdr_local_interpreters()
                 fields.insert(
-                    16 if validation_backend == "llm" else 15,
+                    16 if validation_backend == "llm" or (llm_only_mode and validation_backend == "env") else 15,
                     {
                         "label": "Py envs",
                         "value": self._compact_apdr_interpreter_label(available, missing),
@@ -1921,6 +1947,65 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("debug_dir") or "").strip()
+
+    def _result_authored_plan_status(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("authoredPlanStatus") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("authored_plan_status") or "").strip()
+
+    def _result_authored_plan_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("authoredPlanPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("authored_plan_path") or "").strip()
+
+    def _result_authored_plan_authorship(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("authoredPlanAuthorship") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("authored_plan_authorship") or "").strip()
+
+    def _result_authored_plan_fallback_sections(self, result: dict[str, Any]) -> list[str]:
+        direct = result.get("authoredPlanFallbackSections")
+        if isinstance(direct, list):
+            return [str(item).strip() for item in direct if str(item).strip()]
+        if isinstance(direct, str) and direct.strip():
+            return [item.strip() for item in direct.split(",") if item.strip()]
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return []
+        raw = str(metadata.get("authored_plan_fallback_sections") or "").strip()
+        if not raw:
+            return []
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    def _result_intake_failure_class(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("intakeFailureClass") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("intake_failure_class") or "").strip()
+
+    def _result_intake_failure_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("intakeFailurePath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("intake_failure_path") or "").strip()
 
     def _result_escalated_backend(self, result: dict[str, Any]) -> str:
         direct = str(result.get("escalatedBackend") or "").strip()

@@ -2342,6 +2342,228 @@ fn phase20_module_removed_runtime_becomes_skipped_unsolvable() {
     );
 }
 
+#[test]
+fn phase26_intake_preserves_authored_plan() {
+    let response = serde_json::json!({
+        "authored_plan": {
+            "plan_version": "1",
+            "extracted_imports": ["sklearn"],
+            "package_mappings": [
+                {
+                    "import_name": "sklearn",
+                    "package_name": "scikit-learn",
+                    "source": "llm",
+                    "confidence": 0.91
+                }
+            ],
+            "unresolved_imports": [],
+            "system_dependency_hints": [],
+            "runtime_assumptions": ["python_version=3.11"],
+            "smoke_strategy": {
+                "mode": "import",
+                "import_targets": ["sklearn"],
+                "commands": [],
+                "rationale": "Verify imports."
+            },
+            "section_confidence": {
+                "imports": 1.0,
+                "package_mappings": 0.91
+            },
+            "authorship": "llm-authored",
+            "deterministic_fallback_sections": []
+        }
+    });
+
+    let authored_plan = apdr::resolver::tier3_llm::parse_authored_plan_response(&response)
+        .expect("expected authored plan");
+
+    assert_eq!(authored_plan.extracted_imports, vec!["sklearn"]);
+    assert_eq!(authored_plan.package_mappings.len(), 1);
+    assert_eq!(authored_plan.package_mappings[0].package_name, "scikit-learn");
+    assert_eq!(authored_plan.smoke_strategy.mode, "import");
+}
+
+#[test]
+fn phase26_intake_preserves_failure_class() {
+    let response = serde_json::json!({
+        "intake_failure": {
+            "failure_class": "schema-validation-failure",
+            "reason": "LLM package-resolution call returned no output.",
+            "diagnostic_preview": "schema failure while validating authored plan",
+            "raw_response_preview": "",
+            "authored_plan_status": "unusable",
+            "llm_only_behavior": "fail"
+        }
+    });
+
+    let intake_failure =
+        apdr::resolver::tier3_llm::parse_intake_failure_response(&response)
+            .expect("expected intake failure");
+
+    assert_eq!(intake_failure.failure_class, "schema-validation-failure");
+    assert_eq!(intake_failure.authored_plan_status, "unusable");
+    assert_eq!(intake_failure.llm_only_behavior, "fail");
+}
+
+fn phase26_truth_fixture_result(output_name: &str) -> apdr::ResolveResult {
+    apdr::ResolveResult {
+        snippet_path: PathBuf::from("snippet.py"),
+        python_version: "3.11".to_string(),
+        parse_result: apdr::ParseResult {
+            imports: vec!["sklearn".to_string()],
+            import_paths: Vec::new(),
+            config_deps: Vec::new(),
+            python_version_min: "3.11".to_string(),
+            python_version_max: None,
+            confidence: 0.9,
+            scanned_files: vec!["snippet.py".to_string()],
+            stdlib_modules: std::collections::BTreeSet::new(),
+            attribute_usage: std::collections::BTreeMap::new(),
+        },
+        run_contract: apdr::RunContractMetadata {
+            run_contract_version: "1".to_string(),
+            model_name: "qwen3.5:9b".to_string(),
+            base_url: "http://localhost:11434".to_string(),
+            run_intent: "phase26-test".to_string(),
+            execution_mode: "llm".to_string(),
+            cache_state: "warm".to_string(),
+            host_architecture: "arm64".to_string(),
+            apdr_binary_architecture: "arm64".to_string(),
+            python_architecture: "arm64".to_string(),
+            llm_context_window: "16384".to_string(),
+            inference_policy: "phase26".to_string(),
+            build_profile: "debug".to_string(),
+        },
+        solvability: None,
+        resolved: vec![apdr::ResolvedDependency {
+            import_name: "sklearn".to_string(),
+            package_name: "scikit-learn".to_string(),
+            version: Some("1.5.0".to_string()),
+            strategy: "llm".to_string(),
+            confidence: 0.91,
+        }],
+        unresolved: Vec::new(),
+        requirements_txt: "scikit-learn==1.5.0\n".to_string(),
+        lockfile: Some("scikit-learn==1.5.0\n".to_string()),
+        build_image_id: None,
+        authored_plan: Some(apdr::AuthoredCasePlan {
+            plan_version: "1".to_string(),
+            extracted_imports: vec!["sklearn".to_string()],
+            package_mappings: vec![apdr::AuthoredPlanPackageMapping {
+                import_name: "sklearn".to_string(),
+                package_name: "scikit-learn".to_string(),
+                source: "llm".to_string(),
+                confidence: 0.91,
+            }],
+            unresolved_imports: Vec::new(),
+            system_dependency_hints: Vec::new(),
+            runtime_assumptions: vec!["python_version=3.11".to_string()],
+            smoke_strategy: apdr::SmokeStrategy {
+                mode: "import".to_string(),
+                import_targets: vec!["sklearn".to_string()],
+                commands: Vec::new(),
+                rationale: "Verify imports.".to_string(),
+            },
+            section_confidence: std::collections::BTreeMap::from([
+                ("imports".to_string(), 1.0),
+                ("package_mappings".to_string(), 0.91),
+            ]),
+            authorship: "llm-authored".to_string(),
+            deterministic_fallback_sections: Vec::new(),
+        }),
+        authored_plan_status: "available".to_string(),
+        intake_failure: Some(apdr::IntakeFailureRecord {
+            failure_class: "schema-validation-failure".to_string(),
+            reason: "LLM package-resolution call returned no output.".to_string(),
+            diagnostic_preview: "schema failure while validating authored plan".to_string(),
+            raw_response_preview: String::new(),
+            authored_plan_status: "unusable".to_string(),
+            llm_only_behavior: "fail".to_string(),
+        }),
+        validation: apdr::ValidationSummary {
+            succeeded: false,
+            status: "llm-intake-failed".to_string(),
+            reason: Some("LLM intake failed".to_string()),
+            validation_backend: "docker".to_string(),
+            debug_dir: Some(format!("target/{output_name}/.apdr-debug")),
+            ..Default::default()
+        },
+        resolution_report: apdr::ResolutionReport::default(),
+    }
+}
+
+#[test]
+fn phase26_truth_write_outputs_include_case_plan_and_intake_failure_artifacts() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase26-truth-artifacts");
+    let result = phase26_truth_fixture_result("phase26-truth-artifacts");
+
+    if output_dir.exists() {
+        std::fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    let (_requirements_path, _report_path) = result.write_outputs(&output_dir).unwrap();
+
+    let case_plan = std::fs::read_to_string(output_dir.join("case-plan.json")).unwrap();
+    let intake_failure =
+        std::fs::read_to_string(output_dir.join("intake-failure.json")).unwrap();
+
+    assert!(case_plan.contains("\"smoke_strategy\""));
+    assert!(case_plan.contains("\"authorship\": \"llm-authored\""));
+    assert!(intake_failure.contains("\"failure_class\": \"schema-validation-failure\""));
+
+    std::fs::remove_dir_all(output_dir).unwrap();
+}
+
+#[test]
+fn phase26_truth_summary_lines_include_authorship_metadata() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase26-truth-summary");
+    let result = phase26_truth_fixture_result("phase26-truth-summary");
+    let requirements_path = output_dir.join("requirements.txt");
+    let report_path = output_dir.join("resolution-report.txt");
+    let summary = result.summary_lines(&requirements_path, &report_path);
+
+    assert!(summary.contains("AUTHORED_PLAN_STATUS=available"));
+    assert!(summary.contains("AUTHORED_PLAN_PATH="));
+    assert!(summary.contains("AUTHORED_PLAN_AUTHORSHIP=llm-authored"));
+    assert!(summary.contains("INTAKE_FAILURE_CLASS=schema-validation-failure"));
+    assert!(summary.contains("INTAKE_FAILURE_PATH="));
+}
+
+#[test]
+fn phase26_truth_llm_only_no_output_becomes_intake_failure() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let snippet = tool_root.join("tests/fixtures/sample_snippet.py");
+    let mut config = apdr::ResolveConfig::for_tool_root(&tool_root);
+    config.output_dir = tool_root.join("target/phase26-llm-only-intake-failed");
+    config.validate = false;
+    config.allow_llm = true;
+    config.llm_only_mode = true;
+
+    let prior_python = std::env::var("APDR_PYTHON").ok();
+    std::env::set_var("APDR_PYTHON", "python-that-does-not-exist");
+
+    let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
+
+    if let Some(previous) = prior_python {
+        std::env::set_var("APDR_PYTHON", previous);
+    } else {
+        std::env::remove_var("APDR_PYTHON");
+    }
+
+    assert!(result.authored_plan.is_none());
+    assert_eq!(result.authored_plan_status, "unusable");
+    assert_eq!(result.validation.status, "llm-intake-failed");
+    assert_eq!(
+        result
+            .intake_failure
+            .as_ref()
+            .map(|failure| failure.failure_class.as_str()),
+        Some("empty-output")
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Phase 9 targeted compatibility recovery tests
 // ---------------------------------------------------------------------------

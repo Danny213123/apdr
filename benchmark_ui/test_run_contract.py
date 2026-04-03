@@ -96,6 +96,33 @@ class TestRunContract(unittest.TestCase):
             )
             self.assertEqual(config["llm_validation_policy"], "docker-first")
 
+    def test_service_coerces_legacy_env_first_policy_to_docker_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            config = service._normalize_run_config(
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(Path(temp_dir) / "hard-gists.tar.gz"),
+                    "validation_backend": "llm",
+                    "llm_validation_policy": "env-first",
+                }
+            )
+            self.assertEqual(config["llm_validation_policy"], "docker-first")
+
+    def test_service_preserves_llm_only_mode_from_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = BenchmarkService(AppState(Path(temp_dir)))
+            config = service._normalize_run_config(
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(Path(temp_dir) / "hard-gists.tar.gz"),
+                    "validation_backend": "docker",
+                    "llm_only_mode": True,
+                }
+            )
+            self.assertEqual(config["validation_backend"], "docker")
+            self.assertTrue(config["llm_only_mode"])
+
     def test_build_run_contract_includes_required_keys(self) -> None:
         contract = build_run_contract(
             repo_root=Path.cwd(),
@@ -121,7 +148,7 @@ class TestRunContract(unittest.TestCase):
         self.assertEqual(missing_required_keys(contract), [])
         self.assertEqual(set(REQUIRED_RUN_CONTRACT_KEYS), set(contract.keys()))
         self.assertEqual(contract["model_name"], "qwen3.5:9b")
-        self.assertEqual(contract["llm_validation_policy"], "env-first")
+        self.assertEqual(contract["llm_validation_policy"], "docker-first")
         self.assertEqual(contract["run_intent"], "comparison")
         self.assertEqual(contract["execution_mode"], "env-fast")
         self.assertEqual(contract["cache_state"], "warm")
@@ -286,9 +313,66 @@ class TestRunContract(unittest.TestCase):
             info_fields = {item["label"]: item["value"] for item in run["infoFields"]}
 
             self.assertEqual(payload["formConfig"]["validation_backend"], "llm")
-            self.assertEqual(payload["formConfig"]["llm_validation_policy"], "env-first")
-            self.assertEqual(info_fields["Validation"], "LLM resolver (env-first control + Docker follow-up + agent fallback)")
+            self.assertEqual(payload["formConfig"]["llm_validation_policy"], "docker-first")
+            self.assertEqual(info_fields["Validation"], "LLM resolver (legacy env-first control + Docker follow-up + agent fallback)")
             self.assertEqual(info_fields["LLM policy"], "env-first")
+
+    def test_historical_llm_only_run_restores_backend_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = AppState(repo_root)
+            run_dir = repo_root / "runs" / "20260329-005700-apdr"
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            state.write_json(
+                run_dir / "summary.json",
+                {
+                    "tool": "apdr",
+                    "model": "",
+                    "base_url": "",
+                    "dataset_tar": str(repo_root / "hard-gists.tar.gz"),
+                    "dataset_dir": str(repo_root / "hard-gists"),
+                    "loop_count": 1,
+                    "search_range": 1,
+                    "rag": False,
+                    "verbose": False,
+                    "snippet_limit": "",
+                    "python_command": "",
+                    "validation_backend": "env",
+                    "llm_only_mode": True,
+                    "started_at": "2026-03-28T10:00:00",
+                    "finished_at": "2026-03-28T10:00:01",
+                    "status": "completed",
+                    "results": [],
+                    "run_contract": {
+                        "run_contract_version": "1",
+                        "tool": "apdr",
+                        "model_name": "qwen3.5:9b",
+                        "base_url": "http://localhost:11434",
+                        "validation_backend": "env",
+                        "llm_validation_policy": "docker-first",
+                        "run_intent": "comparison",
+                        "execution_mode": "env-fast",
+                        "cache_state": "warm",
+                        "host_architecture": "arm64",
+                        "apdr_binary_architecture": "arm64",
+                        "python_architecture": "arm64-64",
+                        "llm_context_window": "32768",
+                        "inference_policy": "temperature=0.2; mode=compare",
+                        "build_profile": "pgo",
+                    },
+                },
+            )
+
+            service = BenchmarkService(state)
+            payload = service.load_run("20260329-005700-apdr")
+            run = payload["run"]
+            info_fields = {item["label"]: item["value"] for item in run["infoFields"]}
+
+            self.assertEqual(payload["formConfig"]["validation_backend"], "llm-only")
+            self.assertTrue(payload["formConfig"]["llm_only_mode"])
+            self.assertEqual(info_fields["Validation"], "LLM-only resolver + local Python env validation")
+            self.assertEqual(info_fields["LLM mode"], "llm-only")
 
     def test_historical_run_shows_macos_replay_workers_and_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -388,7 +472,45 @@ class TestRunContract(unittest.TestCase):
             self.assertIn("llm", command)
             self.assertIn("--llm-validation-policy", command)
             policy_index = command.index("--llm-validation-policy")
-            self.assertEqual(command[policy_index + 1], "env-first")
+            self.assertEqual(command[policy_index + 1], "docker-first")
+
+    def test_runner_passes_llm_only_flag_for_llm_only_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = _FakeBenchmarkState(repo_root)
+            dataset_root = repo_root / "hard-gists"
+            snippet_dir = dataset_root / "case-001"
+            snippet_dir.mkdir(parents=True, exist_ok=True)
+            (snippet_dir / "snippet.py").write_text("print('ok')\n", encoding="utf-8")
+            dataset_tar = repo_root / "hard-gists.tar.gz"
+            with tarfile.open(dataset_tar, "w:gz"):
+                pass
+
+            worker = _CommandCapturingWorker(
+                state,
+                {
+                    "tool": "apdr",
+                    "dataset_tar": str(dataset_tar),
+                    "loop_count": 1,
+                    "search_range": 1,
+                    "rag": False,
+                    "verbose": False,
+                    "snippet_limit": "",
+                    "python_command": "",
+                    "validation_backend": "env",
+                    "llm_only_mode": True,
+                },
+                Queue(),
+            )
+
+            worker.run()
+
+            self.assertEqual(len(worker.commands), 1)
+            command = worker.commands[0]
+            self.assertIn("--llm-only", command)
+            self.assertNotIn("--force-validate", command)
+            backend_index = command.index("--validation-backend")
+            self.assertEqual(command[backend_index + 1], "docker")
 
     def test_case_row_keeps_requested_backend_distinct_from_validation_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -411,6 +533,12 @@ class TestRunContract(unittest.TestCase):
                         "docker_bypass_reason": "docker cli unavailable",
                         "docker_bypass_note": "cases/routed/.apdr-debug/docker-bypass.txt",
                         "debug_dir": "cases/routed/.apdr-debug",
+                        "authored_plan_status": "available",
+                        "authored_plan_path": "cases/routed/case-plan.json",
+                        "authored_plan_authorship": "llm-authored-with-deterministic-fallback",
+                        "authored_plan_fallback_sections": "tier1-cache,tier2-heuristic",
+                        "intake_failure_class": "",
+                        "intake_failure_path": "",
                         "escalated_backend": "docker",
                         "validation_status": "environment-build-failed",
                         "validation_reason": "env build failed",
@@ -436,6 +564,17 @@ class TestRunContract(unittest.TestCase):
                 "cases/routed/.apdr-debug/docker-bypass.txt",
             )
             self.assertEqual(row["debugDir"], "cases/routed/.apdr-debug")
+            self.assertEqual(row["authoredPlanStatus"], "available")
+            self.assertEqual(row["authoredPlanPath"], "cases/routed/case-plan.json")
+            self.assertEqual(
+                row["authoredPlanAuthorship"],
+                "llm-authored-with-deterministic-fallback",
+            )
+            self.assertEqual(
+                row["authoredPlanFallbackSections"],
+                ["tier1-cache", "tier2-heuristic"],
+            )
+            self.assertEqual(row["intakeFailureClass"], "")
             self.assertEqual(row["escalatedBackend"], "docker")
             self.assertNotEqual(row["requestedLlmValidationPolicy"], row["validationBackend"])
             self.assertNotEqual(row["llmValidationRoute"], row["validationPath"])

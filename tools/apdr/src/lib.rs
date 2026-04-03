@@ -95,6 +95,46 @@ pub struct ResolvedDependency {
     pub confidence: f64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredPlanPackageMapping {
+    pub import_name: String,
+    pub package_name: String,
+    pub source: String,
+    pub confidence: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SmokeStrategy {
+    pub mode: String,
+    pub import_targets: Vec<String>,
+    pub commands: Vec<String>,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredCasePlan {
+    pub plan_version: String,
+    pub extracted_imports: Vec<String>,
+    pub package_mappings: Vec<AuthoredPlanPackageMapping>,
+    pub unresolved_imports: Vec<String>,
+    pub system_dependency_hints: Vec<String>,
+    pub runtime_assumptions: Vec<String>,
+    pub smoke_strategy: SmokeStrategy,
+    pub section_confidence: BTreeMap<String, f64>,
+    pub authorship: String,
+    pub deterministic_fallback_sections: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IntakeFailureRecord {
+    pub failure_class: String,
+    pub reason: String,
+    pub diagnostic_preview: String,
+    pub raw_response_preview: String,
+    pub authored_plan_status: String,
+    pub llm_only_behavior: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct SolvabilityAssessment {
     pub decision: String,
@@ -227,6 +267,9 @@ pub struct ResolveResult {
     pub requirements_txt: String,
     pub lockfile: Option<String>,
     pub build_image_id: Option<String>,
+    pub authored_plan: Option<AuthoredCasePlan>,
+    pub authored_plan_status: String,
+    pub intake_failure: Option<IntakeFailureRecord>,
     pub validation: ValidationSummary,
     pub resolution_report: ResolutionReport,
 }
@@ -374,11 +417,8 @@ pub fn normalize_validation_backend(value: &str) -> &str {
     }
 }
 
-pub fn normalize_llm_validation_policy(value: &str) -> &str {
-    match value.trim().to_ascii_lowercase().as_str() {
-        LLM_VALIDATION_POLICY_ENV_FIRST => LLM_VALIDATION_POLICY_ENV_FIRST,
-        _ => LLM_VALIDATION_POLICY_DOCKER_FIRST,
-    }
+pub fn normalize_llm_validation_policy(_value: &str) -> &str {
+    LLM_VALIDATION_POLICY_DOCKER_FIRST
 }
 
 fn normalize_machine_architecture(value: &str) -> String {
@@ -594,6 +634,18 @@ impl ResolveResult {
         fs::create_dir_all(output_dir)?;
         let requirements_path = output_dir.join("requirements.txt");
         let report_path = output_dir.join("resolution-report.txt");
+        if let Some(plan) = &self.authored_plan {
+            let authored_plan_path = output_dir.join("case-plan.json");
+            let plan_json =
+                serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+            fs::write(&authored_plan_path, plan_json)?;
+        }
+        if let Some(intake_failure) = &self.intake_failure {
+            let intake_failure_path = output_dir.join("intake-failure.json");
+            let failure_json =
+                serde_json::to_string_pretty(intake_failure).map_err(io::Error::other)?;
+            fs::write(&intake_failure_path, failure_json)?;
+        }
         fs::write(&requirements_path, &self.requirements_txt)?;
         fs::write(&report_path, self.report_text())?;
         Ok((requirements_path, report_path))
@@ -601,6 +653,37 @@ impl ResolveResult {
 
     pub fn report_text(&self) -> String {
         let validation_path = self.validation.effective_validation_path();
+        let authored_plan_path = if self.authored_plan.is_some() {
+            "case-plan.json"
+        } else {
+            "--"
+        };
+        let authored_plan_authorship = self
+            .authored_plan
+            .as_ref()
+            .map(|plan| plan.authorship.as_str())
+            .unwrap_or("--");
+        let authored_plan_fallback_sections = self
+            .authored_plan
+            .as_ref()
+            .map(|plan| {
+                if plan.deterministic_fallback_sections.is_empty() {
+                    "--".to_string()
+                } else {
+                    plan.deterministic_fallback_sections.join(",")
+                }
+            })
+            .unwrap_or_else(|| "--".to_string());
+        let intake_failure_class = self
+            .intake_failure
+            .as_ref()
+            .map(|failure| failure.failure_class.as_str())
+            .unwrap_or("--");
+        let intake_failure_path = if self.intake_failure.is_some() {
+            "intake-failure.json"
+        } else {
+            "--"
+        };
         let resolved_rows = self
             .resolved
             .iter()
@@ -662,7 +745,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nvalidation_backend: {}\nvalidation_path: {}\nrequested_llm_validation_policy: {}\nllm_validation_route: {}\ndocker_bypass_reason: {}\ndocker_bypass_note: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nfailure_family: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nauthored_plan_status: {}\nauthored_plan_path: {}\nauthored_plan_authorship: {}\nauthored_plan_fallback_sections: {}\nintake_failure_class: {}\nintake_failure_path: {}\nvalidation_backend: {}\nvalidation_path: {}\nrequested_llm_validation_policy: {}\nllm_validation_route: {}\ndocker_bypass_reason: {}\ndocker_bypass_note: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nfailure_family: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -708,6 +791,12 @@ impl ResolveResult {
             self.run_contract.llm_context_window,
             self.run_contract.inference_policy,
             self.run_contract.build_profile,
+            self.authored_plan_status.as_str(),
+            authored_plan_path,
+            authored_plan_authorship,
+            authored_plan_fallback_sections,
+            intake_failure_class,
+            intake_failure_path,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             validation_path.as_deref().unwrap_or("--"),
             self.validation
@@ -862,8 +951,34 @@ fn extract_error_hint(log: &str) -> String {
 impl ResolveResult {
     pub fn summary_lines(&self, requirements_path: &Path, report_path: &Path) -> String {
         let validation_path = self.validation.effective_validation_path();
+        let output_dir = requirements_path.parent().unwrap_or_else(|| Path::new("."));
+        let authored_plan_path = self
+            .authored_plan
+            .as_ref()
+            .map(|_| output_dir.join("case-plan.json").display().to_string())
+            .unwrap_or_default();
+        let authored_plan_authorship = self
+            .authored_plan
+            .as_ref()
+            .map(|plan| plan.authorship.clone())
+            .unwrap_or_default();
+        let authored_plan_fallback_sections = self
+            .authored_plan
+            .as_ref()
+            .map(|plan| plan.deterministic_fallback_sections.join(","))
+            .unwrap_or_default();
+        let intake_failure_class = self
+            .intake_failure
+            .as_ref()
+            .map(|failure| failure.failure_class.clone())
+            .unwrap_or_default();
+        let intake_failure_path = self
+            .intake_failure
+            .as_ref()
+            .map(|_| output_dir.join("intake-failure.json").display().to_string())
+            .unwrap_or_default();
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nVALIDATION_BACKEND={}\nVALIDATION_PATH={}\nREQUESTED_LLM_VALIDATION_POLICY={}\nLLM_VALIDATION_ROUTE={}\nDOCKER_BYPASS_REASON={}\nDOCKER_BYPASS_NOTE={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nFAILURE_FAMILY={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nAUTHORED_PLAN_STATUS={}\nAUTHORED_PLAN_PATH={}\nAUTHORED_PLAN_AUTHORSHIP={}\nAUTHORED_PLAN_FALLBACK_SECTIONS={}\nINTAKE_FAILURE_CLASS={}\nINTAKE_FAILURE_PATH={}\nVALIDATION_BACKEND={}\nVALIDATION_PATH={}\nREQUESTED_LLM_VALIDATION_POLICY={}\nLLM_VALIDATION_ROUTE={}\nDOCKER_BYPASS_REASON={}\nDOCKER_BYPASS_NOTE={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nFAILURE_FAMILY={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -907,6 +1022,12 @@ impl ResolveResult {
             self.run_contract.llm_context_window,
             self.run_contract.inference_policy,
             self.run_contract.build_profile,
+            self.authored_plan_status.as_str(),
+            authored_plan_path,
+            authored_plan_authorship,
+            authored_plan_fallback_sections,
+            intake_failure_class,
+            intake_failure_path,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             validation_path.as_deref().unwrap_or(""),
             self.validation
@@ -1017,6 +1138,9 @@ mod tests {
             requirements_txt: "requests==2.32.0\n".to_string(),
             lockfile: None,
             build_image_id: None,
+            authored_plan: None,
+            authored_plan_status: "not-requested".to_string(),
+            intake_failure: None,
             validation: ValidationSummary {
                 succeeded: false,
                 status: "environment-build-failed".to_string(),

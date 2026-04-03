@@ -15,7 +15,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from llm_py.actions.resolve import MappingsResult, SelfRefineResult, handle
-from llm_py.models import PackageMapping, ResolutionRequest, ResolutionResponse
+from llm_py.models import (
+    AuthoredCasePlan,
+    IntakeFailureRecord,
+    PackageMapping,
+    ResolutionRequest,
+    ResolutionResponse,
+)
 
 
 def _make_request(**overrides) -> ResolutionRequest:
@@ -69,6 +75,92 @@ def test_single_import_uses_two_pass_reasoning(mock_client_cls, monkeypatch):
     ]
     mock_client.complete_two_pass.assert_called_once()
     mock_client.complete_with_entropy.assert_not_called()
+
+
+@pytest.mark.unit
+@patch("llm_py.actions.resolve.LlmClient")
+def test_multi_import_no_output_surfaces_diagnostics(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client.is_available.return_value = True
+    mock_client.complete_with_entropy.return_value = (None, 0.0)
+    mock_client.last_failure_reason.return_value = (
+        "instructor primary failed: RuntimeError: schema failure; "
+        "tolerant json fallback failed: attempt 1: could not extract JSON"
+    )
+    mock_client_cls.return_value = mock_client
+
+    resp = handle(
+        _make_request(
+            imports=["cv2", "flask_cors"],
+            snippet_source="import cv2\nfrom flask_cors import CORS",
+        )
+    )
+
+    assert resp.mappings == []
+    assert sorted(resp.unresolved) == ["cv2", "flask_cors"]
+    assert resp.abstain_reason == "LLM package-resolution call returned no output."
+    assert "schema failure" in resp.failure_reason
+    assert any("LLM diagnostics:" in note for note in resp.notes)
+
+
+@pytest.mark.unit
+@patch("llm_py.actions.resolve.LlmClient")
+def test_phase26_intake_success_returns_authored_case_plan(mock_client_cls, monkeypatch):
+    mock_client = MagicMock()
+    mock_client.is_available.return_value = True
+    mock_client.complete_two_pass.return_value = MappingsResult(
+        mappings=[PackageMapping(import_name="sklearn", package_name="scikit-learn")]
+    )
+    mock_client.complete_json.return_value = SelfRefineResult(
+        all_correct=True,
+        corrections=[],
+    )
+    mock_client_cls.return_value = mock_client
+
+    monkeypatch.setattr(
+        "llm_py.actions.resolve.package_exists_on_pypi",
+        lambda package_name: package_name.lower() == "scikit-learn",
+    )
+
+    resp = handle(_make_request())
+
+    assert resp.authored_plan_status == "available"
+    assert isinstance(resp.authored_plan, AuthoredCasePlan)
+    assert resp.intake_failure is None
+    assert resp.authored_plan is not None
+    assert resp.authored_plan.extracted_imports == ["sklearn"]
+    assert resp.authored_plan.package_mappings[0].package_name == "scikit-learn"
+    assert resp.authored_plan.smoke_strategy.mode == "import"
+    assert resp.authored_plan.smoke_strategy.import_targets == ["sklearn"]
+    assert resp.authored_plan.authorship == "llm-authored"
+
+
+@pytest.mark.unit
+@patch("llm_py.actions.resolve.LlmClient")
+def test_phase26_intake_no_output_returns_structured_failure(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client.is_available.return_value = True
+    mock_client.complete_with_entropy.return_value = (None, 0.0)
+    mock_client.last_failure_reason.return_value = (
+        "instructor primary failed: RuntimeError: schema failure; "
+        "tolerant json fallback failed: attempt 1: could not extract JSON"
+    )
+    mock_client_cls.return_value = mock_client
+
+    resp = handle(
+        _make_request(
+            imports=["cv2", "flask_cors"],
+            snippet_source="import cv2\nfrom flask_cors import CORS",
+        )
+    )
+
+    assert resp.authored_plan is None
+    assert resp.authored_plan_status == "unusable"
+    assert isinstance(resp.intake_failure, IntakeFailureRecord)
+    assert resp.intake_failure is not None
+    assert resp.intake_failure.failure_class == "schema-validation-failure"
+    assert "schema failure" in resp.intake_failure.diagnostic_preview
+    assert resp.intake_failure.llm_only_behavior == "fail"
 
 
 @pytest.mark.unit

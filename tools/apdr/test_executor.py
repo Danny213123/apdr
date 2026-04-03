@@ -38,20 +38,20 @@ def parse_args() -> argparse.Namespace:
         "--validation-backend",
         choices=("env", "docker", "llm"),
         default="env",
-        help="Validation backend: env (local venvs), docker, or llm (docker-first by default; env-first remains selectable)",
+        help="Validation backend: env (local venvs), docker, or llm (docker-first required)",
     )
     parser.add_argument(
         "--llm-validation-policy",
         choices=("docker-first", "env-first"),
         default="docker-first",
-        help="First validation hop inside llm mode: docker-first (default) or env-first control path",
+        help="First validation hop inside llm mode: docker-first (legacy env-first inputs are normalized)",
     )
     parser.add_argument("--no-validate", action="store_true", help="Skip APDR validation")
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
     parser.add_argument("--benchmark-context-log", default="", help="Append benchmark build/run/LLM trace to this file")
     parser.add_argument("--run-contract-json", default="", help="Path to the benchmark run contract JSON")
-    parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers)")
+    parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers, keep Docker validation)")
     parser.add_argument("--force-validate", action="store_true", help="Force venv validation even for cached/pre-solved results")
     parser.add_argument("--validation-timeout", type=int, default=0, help="Per-attempt validation timeout in seconds")
     parser.add_argument(
@@ -237,6 +237,12 @@ def write_output_file(
         f"llm_context_window: {_summary_or_contract(summary, 'LLM_CONTEXT_WINDOW', run_contract, 'llm_context_window')}",
         f"inference_policy: {_summary_or_contract(summary, 'INFERENCE_POLICY', run_contract, 'inference_policy')}",
         f"build_profile: {_summary_or_contract(summary, 'BUILD_PROFILE', run_contract, 'build_profile')}",
+        f"authored_plan_status: {summary.get('AUTHORED_PLAN_STATUS', '')}",
+        f"authored_plan_path: {summary.get('AUTHORED_PLAN_PATH', '')}",
+        f"authored_plan_authorship: {summary.get('AUTHORED_PLAN_AUTHORSHIP', '')}",
+        f"authored_plan_fallback_sections: {summary.get('AUTHORED_PLAN_FALLBACK_SECTIONS', '')}",
+        f"intake_failure_class: {summary.get('INTAKE_FAILURE_CLASS', '')}",
+        f"intake_failure_path: {summary.get('INTAKE_FAILURE_PATH', '')}",
         f"validation_succeeded: {summary.get('VALIDATION_SUCCEEDED', 'false')}",
         f"validation_status: {summary.get('VALIDATION_STATUS', '')}",
         f"validation_reason: {summary.get('VALIDATION_REASON', '')}",

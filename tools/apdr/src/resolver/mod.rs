@@ -47,7 +47,8 @@ use crate::docker;
 use crate::parser;
 use crate::recovery::classifier;
 use crate::{
-    ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, SolvabilityAssessment,
+    AuthoredCasePlan, AuthoredPlanPackageMapping, IntakeFailureRecord, ResolutionReport,
+    ResolveConfig, ResolveResult, ResolvedDependency, SmokeStrategy, SolvabilityAssessment,
     UnsolvableModuleRecord, ValidationSummary, VALIDATION_BACKEND_LLM,
 };
 
@@ -76,6 +77,9 @@ pub fn resolve_path(
     let mut selected_python = selected_python_version(&parse_result, config);
     let mut report = ResolutionReport::default();
     let mut pre_validation_llm_duration_ms = 0u128;
+    let mut authored_plan = None;
+    let mut authored_plan_status = "not-requested".to_string();
+    let mut intake_failure = None;
     write_parse_artifacts(
         &config.output_dir,
         snippet_path,
@@ -118,6 +122,9 @@ pub fn resolve_path(
                 requirements_txt: String::new(),
                 lockfile: Some(String::new()),
                 build_image_id: None,
+                authored_plan: None,
+                authored_plan_status: "not-requested".to_string(),
+                intake_failure: None,
                 validation,
                 resolution_report: report,
             });
@@ -173,6 +180,9 @@ pub fn resolve_path(
                 requirements_txt: String::new(),
                 lockfile: Some(String::new()),
                 build_image_id: None,
+                authored_plan: None,
+                authored_plan_status: "not-requested".to_string(),
+                intake_failure: None,
                 validation,
                 resolution_report: report,
             });
@@ -226,6 +236,9 @@ pub fn resolve_path(
                 requirements_txt: requirements_txt.clone(),
                 lockfile: Some(requirements_txt),
                 build_image_id: None,
+                authored_plan: None,
+                authored_plan_status: "not-requested".to_string(),
+                intake_failure: None,
                 validation,
                 resolution_report: report,
             });
@@ -329,6 +342,9 @@ pub fn resolve_path(
                     requirements_txt: String::new(),
                     lockfile: Some(String::new()),
                     build_image_id: None,
+                    authored_plan: None,
+                    authored_plan_status: "not-requested".to_string(),
+                    intake_failure: None,
                     validation,
                     resolution_report: report,
                 });
@@ -342,6 +358,15 @@ pub fn resolve_path(
                 config,
                 &selected_python,
             );
+            if authored_plan.is_none() {
+                authored_plan = stage3.authored_plan.clone();
+            }
+            if intake_failure.is_none() {
+                intake_failure = stage3.intake_failure.clone();
+            }
+            if authored_plan_status == "not-requested" {
+                authored_plan_status = stage3.authored_plan_status.clone();
+            }
             report.llm_calls += stage3.prompts_issued;
             pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
@@ -363,6 +388,15 @@ pub fn resolve_path(
                 config,
                 &selected_python,
             );
+            if authored_plan.is_none() {
+                authored_plan = stage3.authored_plan.clone();
+            }
+            if intake_failure.is_none() {
+                intake_failure = stage3.intake_failure.clone();
+            }
+            if authored_plan_status == "not-requested" {
+                authored_plan_status = stage3.authored_plan_status.clone();
+            }
             report.llm_calls += stage3.prompts_issued;
             pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
@@ -378,6 +412,15 @@ pub fn resolve_path(
                 config,
                 &selected_python,
             );
+            if authored_plan.is_none() {
+                authored_plan = stage3.authored_plan.clone();
+            }
+            if intake_failure.is_none() {
+                intake_failure = stage3.intake_failure.clone();
+            }
+            if authored_plan_status == "not-requested" {
+                authored_plan_status = stage3.authored_plan_status.clone();
+            }
             report.llm_calls += stage3.prompts_issued;
             pre_validation_llm_duration_ms += stage3.llm_duration_ms;
             report.notes.append(&mut stage3.notes);
@@ -394,6 +437,92 @@ pub fn resolve_path(
         } else {
             None
         };
+
+    if let Some(plan) = authored_plan.as_mut() {
+        merge_resolved_into_authored_plan(
+            plan,
+            &resolved,
+            &unresolved,
+            &parse_result,
+            &selected_python,
+        );
+    } else if config.validation_backend() == VALIDATION_BACKEND_LLM && intake_failure.is_none() {
+        authored_plan = Some(synthesize_deterministic_authored_plan(
+            &parse_result,
+            &resolved,
+            &unresolved,
+            &selected_python,
+        ));
+        authored_plan_status = "deterministic-fallback".to_string();
+    }
+
+    if config.llm_only_mode && authored_plan.is_none() {
+        let failure = intake_failure
+            .clone()
+            .unwrap_or_else(default_llm_only_intake_failure);
+        report.notes.push(format!(
+            "LLM-only intake failed before validation: {} [{}].",
+            failure.reason, failure.failure_class
+        ));
+        report.unresolved = parse_result.imports.clone();
+        report.duration = started.elapsed();
+        write_state_artifacts(&config.output_dir, "requirements-final.txt", "")?;
+        write_state_artifacts(
+            &config.output_dir,
+            "resolved-final.txt",
+            &format_dependency_state(&resolved, &report.unresolved),
+        )?;
+        let mut validation = ValidationSummary {
+            succeeded: false,
+            status: "llm-intake-failed".to_string(),
+            reason: Some(format!("{} [{}]", failure.reason, failure.failure_class)),
+            failure_bucket: "llm-intake-failed".to_string(),
+            validation_backend: config.validation_backend().to_string(),
+            selected_python_version: Some(selected_python.clone()),
+            solve_duration_ms: started.elapsed().as_millis(),
+            llm_duration_ms: pre_validation_llm_duration_ms,
+            ..ValidationSummary::default()
+        };
+        validation.debug_dir = Some(
+            context::debug_root(&config.output_dir)
+                .display()
+                .to_string(),
+        );
+        validation.attempts_dir = Some(
+            context::attempts_root(&config.output_dir)
+                .display()
+                .to_string(),
+        );
+        validation.llm_trace_dir =
+            Some(context::llm_root(&config.output_dir).display().to_string());
+        validation.iterations_dir = Some(
+            context::iterations_root(&config.output_dir)
+                .display()
+                .to_string(),
+        );
+        validation.context_log_path = config
+            .benchmark_context_log
+            .as_ref()
+            .map(|path| path.display().to_string());
+
+        return Ok(ResolveResult {
+            snippet_path: snippet_path.to_path_buf(),
+            python_version: selected_python.clone(),
+            parse_result,
+            run_contract: config.run_contract.clone(),
+            solvability,
+            resolved,
+            unresolved: report.unresolved.clone(),
+            requirements_txt: String::new(),
+            lockfile: Some(String::new()),
+            build_image_id: None,
+            authored_plan: None,
+            authored_plan_status: "unusable".to_string(),
+            intake_failure: Some(failure),
+            validation,
+            resolution_report: report,
+        });
+    }
 
     dedupe_dependencies(&mut resolved);
     if !resolved.is_empty() {
@@ -813,6 +942,9 @@ pub fn resolve_path(
         requirements_txt: requirements_txt.clone(),
         lockfile: Some(requirements_txt),
         build_image_id: validation.build_image_id.clone(),
+        authored_plan,
+        authored_plan_status,
+        intake_failure,
         validation,
         resolution_report: report,
     })
@@ -823,6 +955,150 @@ fn should_skip_from_assessment(assessment: Option<&crate::SolvabilityAssessment>
         return false;
     };
     assessment.decision == "skip" || assessment.confidence < 0.40
+}
+
+fn merge_resolved_into_authored_plan(
+    plan: &mut AuthoredCasePlan,
+    resolved: &[ResolvedDependency],
+    unresolved: &[String],
+    parse_result: &crate::ParseResult,
+    selected_python: &str,
+) {
+    let mut existing = BTreeSet::new();
+    for mapping in &plan.package_mappings {
+        existing.insert(mapping.import_name.clone());
+    }
+
+    for dependency in resolved {
+        if existing.contains(&dependency.import_name) {
+            continue;
+        }
+        let source = authored_source_for_strategy(&dependency.strategy);
+        if source != "llm" {
+            let section = deterministic_section_for_strategy(&dependency.strategy);
+            if !plan.deterministic_fallback_sections.iter().any(|item| item == section) {
+                plan.deterministic_fallback_sections.push(section.to_string());
+            }
+        }
+        plan.package_mappings.push(AuthoredPlanPackageMapping {
+            import_name: dependency.import_name.clone(),
+            package_name: dependency.package_name.clone(),
+            source: source.to_string(),
+            confidence: dependency.confidence,
+        });
+        existing.insert(dependency.import_name.clone());
+    }
+
+    plan.extracted_imports = parse_result.imports.clone();
+    plan.unresolved_imports = unresolved.to_vec();
+    if !plan
+        .runtime_assumptions
+        .iter()
+        .any(|item| item.starts_with("python_version="))
+    {
+        plan.runtime_assumptions
+            .push(format!("python_version={selected_python}"));
+    }
+    let import_targets: Vec<String> = plan
+        .package_mappings
+        .iter()
+        .map(|mapping| mapping.import_name.clone())
+        .collect();
+    plan.smoke_strategy.import_targets = import_targets;
+    if !plan.deterministic_fallback_sections.is_empty() && plan.authorship == "llm-authored" {
+        plan.authorship = "llm-authored-with-deterministic-fallback".to_string();
+    }
+}
+
+fn synthesize_deterministic_authored_plan(
+    parse_result: &crate::ParseResult,
+    resolved: &[ResolvedDependency],
+    unresolved: &[String],
+    selected_python: &str,
+) -> AuthoredCasePlan {
+    let mut deterministic_fallback_sections = Vec::new();
+    let package_mappings = resolved
+        .iter()
+        .map(|dependency| {
+            let section = deterministic_section_for_strategy(&dependency.strategy).to_string();
+            if !deterministic_fallback_sections.iter().any(|item| item == &section) {
+                deterministic_fallback_sections.push(section.clone());
+            }
+            AuthoredPlanPackageMapping {
+                import_name: dependency.import_name.clone(),
+                package_name: dependency.package_name.clone(),
+                source: authored_source_for_strategy(&dependency.strategy).to_string(),
+                confidence: dependency.confidence,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut section_confidence = BTreeMap::new();
+    section_confidence.insert("imports".to_string(), 1.0);
+    section_confidence.insert("package_mappings".to_string(), 1.0);
+    section_confidence.insert("runtime_assumptions".to_string(), 1.0);
+    section_confidence.insert("smoke_strategy".to_string(), 1.0);
+
+    AuthoredCasePlan {
+        plan_version: "1".to_string(),
+        extracted_imports: parse_result.imports.clone(),
+        package_mappings,
+        unresolved_imports: unresolved.to_vec(),
+        system_dependency_hints: Vec::new(),
+        runtime_assumptions: vec![
+            format!("python_version={selected_python}"),
+            "plan synthesized from deterministic resolver tiers before validation".to_string(),
+        ],
+        smoke_strategy: SmokeStrategy {
+            mode: "import".to_string(),
+            import_targets: resolved
+                .iter()
+                .map(|dependency| dependency.import_name.clone())
+                .collect(),
+            commands: Vec::new(),
+            rationale:
+                "Validate the imports that deterministic resolver tiers selected before broader validation."
+                    .to_string(),
+        },
+        section_confidence,
+        authorship: "deterministic-fallback".to_string(),
+        deterministic_fallback_sections,
+    }
+}
+
+fn authored_source_for_strategy(strategy: &str) -> &'static str {
+    if strategy.starts_with("llm") {
+        "llm"
+    } else if strategy.starts_with("cache") {
+        "deterministic-cache"
+    } else if strategy.starts_with("heuristic") {
+        "deterministic-heuristic"
+    } else {
+        "deterministic-fallback"
+    }
+}
+
+fn deterministic_section_for_strategy(strategy: &str) -> &'static str {
+    if strategy.starts_with("cache") {
+        "tier1-cache"
+    } else if strategy.starts_with("heuristic") {
+        "tier2-heuristic"
+    } else if strategy.starts_with("family") || strategy.starts_with("compatibility") {
+        "deterministic-compatibility"
+    } else {
+        "deterministic-fallback"
+    }
+}
+
+fn default_llm_only_intake_failure() -> IntakeFailureRecord {
+    IntakeFailureRecord {
+        failure_class: "empty-output".to_string(),
+        reason: "LLM intake did not produce a usable authored plan.".to_string(),
+        diagnostic_preview: "LLM intake did not produce a usable authored plan.".to_string(),
+        raw_response_preview: String::new(),
+        authored_plan_status: "unusable".to_string(),
+        llm_only_behavior: "fail".to_string(),
+    }
 }
 
 fn should_skip_smt_pre_solve(config: &ResolveConfig) -> bool {

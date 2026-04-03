@@ -10,6 +10,42 @@ class PackageMapping(BaseModel):
     package_name: str
 
 
+class SmokeStrategy(BaseModel):
+    mode: str = "import"
+    import_targets: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class AuthoredPlanPackageMapping(BaseModel):
+    import_name: str
+    package_name: str
+    source: str = "llm"
+    confidence: float = 0.0
+
+
+class AuthoredCasePlan(BaseModel):
+    plan_version: str = "1"
+    extracted_imports: list[str] = Field(default_factory=list)
+    package_mappings: list[AuthoredPlanPackageMapping] = Field(default_factory=list)
+    unresolved_imports: list[str] = Field(default_factory=list)
+    system_dependency_hints: list[str] = Field(default_factory=list)
+    runtime_assumptions: list[str] = Field(default_factory=list)
+    smoke_strategy: SmokeStrategy = Field(default_factory=SmokeStrategy)
+    section_confidence: dict[str, float] = Field(default_factory=dict)
+    authorship: str = "llm-authored"
+    deterministic_fallback_sections: list[str] = Field(default_factory=list)
+
+
+class IntakeFailureRecord(BaseModel):
+    failure_class: str = ""
+    reason: str = ""
+    diagnostic_preview: str = ""
+    raw_response_preview: str = ""
+    authored_plan_status: str = "unusable"
+    llm_only_behavior: str = "fail"
+
+
 class ResolutionRequest(BaseModel):
     """JSON-line request sent from Rust to Python over stdin."""
 
@@ -62,6 +98,9 @@ class ResolutionResponse(BaseModel):
     # For resolve / single
     mappings: list[PackageMapping] = Field(default_factory=list)
     unresolved: list[str] = Field(default_factory=list)
+    authored_plan: AuthoredCasePlan | None = None
+    authored_plan_status: str = ""
+    intake_failure: IntakeFailureRecord | None = None
 
     # For solvability
     decision: str = ""

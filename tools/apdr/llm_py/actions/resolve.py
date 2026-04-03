@@ -20,10 +20,18 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..active_learning import load_success_memory_context
-from ..client import LlmClient
+from ..client import LlmClient, classify_failure_reason
 from ..failure_memory import FailureMemory
 from ..local_detector import filter_imports
-from ..models import PackageMapping, ResolutionRequest, ResolutionResponse
+from ..models import (
+    AuthoredCasePlan,
+    AuthoredPlanPackageMapping,
+    IntakeFailureRecord,
+    PackageMapping,
+    ResolutionRequest,
+    ResolutionResponse,
+    SmokeStrategy,
+)
 from ..pypi_checker import package_exists_on_pypi, preload_known_packages
 from ..rag import assemble_retrieval_context
 from ..reverse_index import enrich_context as reverse_index_enrich, load as load_reverse_index
@@ -135,9 +143,15 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     client = LlmClient(req.provider, req.model, req.base_url)
     actual_agent_mode = "direct"
     if not client.is_available():
+        intake_failure = _build_intake_failure(
+            reason="LLM provider not available",
+            diagnostics="LLM provider not available",
+        )
         return ResolutionResponse(
             error="LLM provider not available",
             failure_reason="LLM provider not available",
+            authored_plan_status=intake_failure.authored_plan_status,
+            intake_failure=intake_failure,
             **_response_metadata(req, actual_agent_mode),
         )
 
@@ -282,11 +296,24 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
             notes.append("Self-consistency voting returned no usable mapping draft")
 
     if result is None:
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
+        intake_failure = _build_intake_failure(
+            reason="LLM package-resolution call returned no output.",
+            diagnostics=diagnostics,
+            raw_response_preview=diagnostics,
+        )
+        response_notes = ["LLM package-resolution call returned no output."]
+        if diagnostics:
+            response_notes.append(f"LLM diagnostics: {diagnostics}")
         return ResolutionResponse(
             unresolved=list(req.imports),
-            notes=["LLM package-resolution call returned no output."],
+            notes=response_notes,
             prompts_issued=prompts_issued,
             abstain_reason="LLM package-resolution call returned no output.",
+            failure_reason=diagnostics,
+            authored_plan_status=intake_failure.authored_plan_status,
+            intake_failure=intake_failure,
             **_response_metadata(req, actual_agent_mode),
         )
 
@@ -405,10 +432,20 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         for imp, pkg in mappings.items()
     ]
     unresolved = [imp for imp in req.imports if imp not in mappings]
+    authored_plan = _build_authored_case_plan(
+        req=req,
+        mappings=mappings,
+        unresolved=unresolved,
+        local_skips=local_skips,
+        framework_mappings=framework_mappings,
+        llm_confidence=llm_confidence,
+    )
 
     return ResolutionResponse(
         mappings=result_mappings,
         unresolved=unresolved,
+        authored_plan=authored_plan,
+        authored_plan_status="available",
         confidence=llm_confidence,
         notes=notes,
         prompts_issued=prompts_issued,
@@ -522,3 +559,123 @@ def _agent_seed_context(
     if suspicious:
         seeded.append("Draft contained suspicious identity mappings: " + ", ".join(suspicious[:5]))
     return seeded
+
+
+def _build_authored_case_plan(
+    *,
+    req: ResolutionRequest,
+    mappings: dict[str, str],
+    unresolved: list[str],
+    local_skips: list[str],
+    framework_mappings: dict[str, str],
+    llm_confidence: float,
+) -> AuthoredCasePlan:
+    deterministic_fallback_sections: list[str] = []
+    if local_skips:
+        deterministic_fallback_sections.append("local-import-filter")
+    if framework_mappings:
+        deterministic_fallback_sections.append("framework-submodule-detection")
+
+    package_mappings: list[AuthoredPlanPackageMapping] = []
+    for import_name in sorted(mappings):
+        source = "llm"
+        confidence = llm_confidence
+        if import_name in framework_mappings:
+            source = "deterministic-framework"
+            confidence = 1.0
+        package_mappings.append(
+            AuthoredPlanPackageMapping(
+                import_name=import_name,
+                package_name=mappings[import_name],
+                source=source,
+                confidence=round(max(0.0, min(1.0, confidence)), 2),
+            )
+        )
+
+    runtime_assumptions = [f"python_version={req.python_version}"]
+    if local_skips:
+        runtime_assumptions.append(
+            "local helper imports are treated as project-local and excluded from PyPI resolution"
+        )
+    if framework_mappings:
+        runtime_assumptions.append(
+            "framework submodules are expected to resolve through their parent framework package"
+        )
+
+    import_targets = sorted(
+        import_name for import_name in req.imports if import_name in mappings
+    )
+    smoke_strategy = SmokeStrategy(
+        mode="import",
+        import_targets=import_targets,
+        commands=[],
+        rationale=(
+            "Verify that the snippet's third-party imports can be imported before "
+            "broader validation continues."
+        ),
+    )
+
+    section_confidence = {
+        "imports": 1.0 if req.imports else 0.0,
+        "package_mappings": round(max(0.0, min(1.0, llm_confidence)), 2),
+        "runtime_assumptions": round(max(0.5, min(1.0, llm_confidence)), 2),
+        "smoke_strategy": round(max(0.5, min(1.0, llm_confidence)), 2),
+    }
+
+    authorship = (
+        "llm-authored-with-deterministic-preprocessing"
+        if deterministic_fallback_sections
+        else "llm-authored"
+    )
+
+    return AuthoredCasePlan(
+        extracted_imports=list(req.imports),
+        package_mappings=package_mappings,
+        unresolved_imports=list(unresolved),
+        system_dependency_hints=_system_dependency_hints(mappings),
+        runtime_assumptions=runtime_assumptions,
+        smoke_strategy=smoke_strategy,
+        section_confidence=section_confidence,
+        authorship=authorship,
+        deterministic_fallback_sections=deterministic_fallback_sections,
+    )
+
+
+def _system_dependency_hints(mappings: dict[str, str]) -> list[str]:
+    hints: list[str] = []
+    known_hints = {
+        "lxml": "lxml may require libxml2-dev and libxslt1-dev in Docker or env validation.",
+        "mysqlclient": "mysqlclient may require default-libmysqlclient-dev during build.",
+        "psycopg2": "psycopg2 may require libpq-dev during build.",
+        "opencv-python": "opencv-python may require libgl1 for import smoke in slim images.",
+        "opencv-python-headless": "opencv-python-headless may still require image codec libraries in some environments.",
+    }
+    seen_packages = {package_name.lower() for package_name in mappings.values()}
+    for package_name, hint in known_hints.items():
+        if package_name in seen_packages:
+            hints.append(hint)
+    return hints
+
+
+def _build_intake_failure(
+    *,
+    reason: str,
+    diagnostics: str,
+    raw_response_preview: str = "",
+) -> IntakeFailureRecord:
+    diagnostic_preview = _truncate_preview(diagnostics or reason)
+    return IntakeFailureRecord(
+        failure_class=classify_failure_reason(diagnostics or reason),
+        reason=reason,
+        diagnostic_preview=diagnostic_preview,
+        raw_response_preview=_truncate_preview(raw_response_preview),
+        authored_plan_status="unusable",
+        llm_only_behavior="fail",
+    )
+
+
+def _truncate_preview(value: str, limit: int = 280) -> str:
+    text = str(value or "").strip().replace("\n", "\\n")
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."

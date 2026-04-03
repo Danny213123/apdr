@@ -9,7 +9,10 @@ use super::process::call_python;
 use crate::cache::store::CacheStore;
 use crate::context;
 use crate::resolver::{kgraph_db, pypi_client, version_sampler};
-use crate::{ParseResult, ResolveConfig, ResolvedDependency, SolvabilityAssessment};
+use crate::{
+    AuthoredCasePlan, IntakeFailureRecord, ParseResult, ResolveConfig, ResolvedDependency,
+    SolvabilityAssessment,
+};
 use std::collections::HashMap;
 use std::time::Instant;
 pub struct StageResult {
@@ -18,6 +21,58 @@ pub struct StageResult {
     pub notes: Vec<String>,
     pub prompts_issued: usize,
     pub llm_duration_ms: u128,
+    pub authored_plan: Option<AuthoredCasePlan>,
+    pub authored_plan_status: String,
+    pub intake_failure: Option<IntakeFailureRecord>,
+}
+
+#[doc(hidden)]
+pub fn parse_authored_plan_response(response: &serde_json::Value) -> Option<AuthoredCasePlan> {
+    response
+        .get("authored_plan")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
+#[doc(hidden)]
+pub fn parse_intake_failure_response(
+    response: &serde_json::Value,
+) -> Option<IntakeFailureRecord> {
+    response
+        .get("intake_failure")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
+fn parse_authored_plan_status(
+    response: &serde_json::Value,
+    authored_plan: &Option<AuthoredCasePlan>,
+    intake_failure: &Option<IntakeFailureRecord>,
+) -> String {
+    if let Some(status) = response.get("authored_plan_status").and_then(|value| value.as_str()) {
+        let trimmed = status.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if authored_plan.is_some() {
+        "available".to_string()
+    } else if intake_failure.is_some() {
+        "unusable".to_string()
+    } else {
+        "not-requested".to_string()
+    }
+}
+
+fn protocol_empty_output_failure() -> IntakeFailureRecord {
+    IntakeFailureRecord {
+        failure_class: "empty-output".to_string(),
+        reason: "LLM package-resolution call returned no output.".to_string(),
+        diagnostic_preview: "LLM package-resolution call returned no output.".to_string(),
+        raw_response_preview: String::new(),
+        authored_plan_status: "unusable".to_string(),
+        llm_only_behavior: "fail".to_string(),
+    }
 }
 // ---------------------------------------------------------------------------
 // Solvability Assessment
@@ -119,6 +174,9 @@ pub fn resolve(
             notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
             prompts_issued: 0,
             llm_duration_ms: llm_started.elapsed().as_millis(),
+            authored_plan: None,
+            authored_plan_status: "not-requested".to_string(),
+            intake_failure: None,
         };
     }
 
@@ -174,6 +232,9 @@ pub fn resolve(
                 notes: vec!["LLM package-resolution call returned no output.".to_string()],
                 prompts_issued: 1,
                 llm_duration_ms: llm_started.elapsed().as_millis(),
+                authored_plan: None,
+                authored_plan_status: "unusable".to_string(),
+                intake_failure: Some(protocol_empty_output_failure()),
             };
         }
     };
@@ -224,6 +285,10 @@ pub fn resolve(
             notes.push(format!("tier3 agent failure: {}", reason.trim()));
         }
     }
+    let authored_plan = parse_authored_plan_response(&response);
+    let intake_failure = parse_intake_failure_response(&response);
+    let authored_plan_status =
+        parse_authored_plan_status(&response, &authored_plan, &intake_failure);
 
     // Parse mappings from Python response
     let mappings: Vec<(String, String)> = response
@@ -335,6 +400,9 @@ pub fn resolve(
         notes,
         prompts_issued: prompts_issued + mappings.len(),
         llm_duration_ms: llm_started.elapsed().as_millis(),
+        authored_plan,
+        authored_plan_status,
+        intake_failure,
     }
 }
 
@@ -368,6 +436,9 @@ pub fn resolve_with_context(
             notes: vec!["Skipped LLM resolution for likely local helper imports.".to_string()],
             prompts_issued: 0,
             llm_duration_ms: llm_started.elapsed().as_millis(),
+            authored_plan: None,
+            authored_plan_status: "not-requested".to_string(),
+            intake_failure: None,
         };
     }
 
@@ -420,6 +491,9 @@ pub fn resolve_with_context(
                 notes: vec!["LLM package-resolution call returned no output.".to_string()],
                 prompts_issued: 1,
                 llm_duration_ms: llm_started.elapsed().as_millis(),
+                authored_plan: None,
+                authored_plan_status: "unusable".to_string(),
+                intake_failure: Some(protocol_empty_output_failure()),
             };
         }
     };
@@ -456,6 +530,10 @@ pub fn resolve_with_context(
                 .collect()
         })
         .unwrap_or_default();
+    let authored_plan = parse_authored_plan_response(&response);
+    let intake_failure = parse_intake_failure_response(&response);
+    let authored_plan_status =
+        parse_authored_plan_status(&response, &authored_plan, &intake_failure);
 
     for import_name in &llm_candidates {
         let mapped = mappings
@@ -512,6 +590,9 @@ pub fn resolve_with_context(
         notes,
         prompts_issued: 1 + llm_candidates.len(),
         llm_duration_ms: llm_started.elapsed().as_millis(),
+        authored_plan,
+        authored_plan_status,
+        intake_failure,
     }
 }
 
