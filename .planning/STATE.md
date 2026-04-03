@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
-status: Ready for planning
-stopped_at: Phase 26 complete
-last_updated: "2026-04-03T00:24:30Z"
-last_activity: 2026-04-02
+status: Ready for execution
+stopped_at: Phase 27 planned
+last_updated: "2026-04-03T00:38:20Z"
+last_activity: 2026-04-03
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
+  total_plans: 6
   completed_plans: 3
   percent: 20
 ---
 
 # Project State: APDR
 
-**Last Updated:** 2026-04-02
-**Status:** Ready for planning
+**Last Updated:** 2026-04-03
+**Status:** Ready for execution
 **Progress:** [██░░░░░░░░] 20%
-**Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 26 completed with an authored intake-plan contract, strict `llm-only` intake failures, and a deterministic proof package
-**Resume File:** .planning/ROADMAP.md
+**Last Activity:** 2026-04-03
+**Last Activity Description:** Phase 27 was researched and split into three execution waves around Docker authoring, image handoff truth, and deterministic proof
+**Resume File:** .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-01-PLAN.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone v2.5 — Phase 27 is next
+**Current Focus:** Milestone v2.5 — Phase 27 is ready to execute
 
 ---
 
 ## Current Position
 
-Phase: Phase 26 complete
-Plan: Phase 27 next
-Status: Ready for Phase 27 planning
-Last activity: 2026-04-03 -- Phase 26 completed with authored intake truth, runtime artifacts, and proof fixtures
+Phase: Phase 27 planned
+Plan: 27-01 next
+Status: Ready for Phase 27 execution
+Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 execution plans
 
 ---
 
@@ -57,7 +57,7 @@ Last activity: 2026-04-03 -- Phase 26 completed with authored intake truth, runt
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Known Docker regression example: case `005bbad123ef309a5bef` built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces empty `requirements.txt` and generic failure labels instead of a usable start-to-finish case plan
-- Current phase plan count: 0
+- Current phase plan count: 3
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
 ---
@@ -122,6 +122,9 @@ Last activity: 2026-04-03 -- Phase 26 completed with authored intake truth, runt
 - [Phase 26-llm-case-intake-and-plan-authoring]: No-output paths must persist a structured intake-failure record that distinguishes empty output, invalid JSON, schema failure, timeout or transport failure, and provider or tooling incompatibility.
 - [Phase 26 complete]: Runtime case outputs now write `case-plan.json` and `intake-failure.json`, plus authored-plan metadata in summary lines and benchmark output metadata.
 - [Phase 26 complete]: The deterministic proof package is frozen in `.planning/phases/26-llm-case-intake-and-plan-authoring/` and should remain the source of truth for later Docker-authoring and recovery work.
+- [Phase 27-llm-authored-docker-validation-and-artifact-truth]: Docker authoring should be a second structured step derived from the authored case plan, not a fresh opaque prompt from raw snippet text.
+- [Phase 27-llm-authored-docker-validation-and-artifact-truth]: The build-to-run seam must capture and verify a locally usable image reference after build before `docker create` or `docker start`.
+- [Phase 27-llm-authored-docker-validation-and-artifact-truth]: Saved artifacts must preserve authored Docker intent, executed Docker inputs, and the exact image reference used so later recovery work can consume real Docker truth.
 
 ### Roadmap Evolution
 
@@ -145,9 +148,9 @@ Last activity: 2026-04-03 -- Phase 26 completed with authored intake truth, runt
 ## Session Continuity
 
 Last session: 2026-04-03T00:24:30Z
-Stopped at: Phase 26 complete
-Resume file: .planning/ROADMAP.md
+Stopped at: Phase 27 planned
+Resume file: .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-01-PLAN.md
 
 ---
 
-*State updated after completing Phase 26 on 2026-04-03*
+*State updated after planning Phase 27 on 2026-04-03*
