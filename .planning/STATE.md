@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
-status: Ready for planning
-stopped_at: Phase 27 complete
-last_updated: "2026-04-03T01:05:44Z"
+status: Ready for execution
+stopped_at: Phase 28 planned
+last_updated: "2026-04-03T01:24:39Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 9
+  total_plans: 12
   completed_plans: 6
   percent: 40
 ---
@@ -17,11 +17,11 @@ progress:
 # Project State: APDR
 
 **Last Updated:** 2026-04-03
-**Status:** Ready for planning
+**Status:** Ready for execution
 **Progress:** [████░░░░░░] 40%
 **Last Activity:** 2026-04-03
-**Last Activity Description:** Phase 27 completed with authored Docker-plan artifacts, executed Docker truth, and deterministic handoff proof coverage
-**Resume File:** .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-VERIFICATION.md
+**Last Activity Description:** Phase 28 was researched and split into three execution waves around artifact-aware recovery, additive failure truth, and deterministic proof coverage
+**Resume File:** .planning/phases/28-llm-recovery-loop-and-failure-semantics/28-01-PLAN.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone v2.5 — Phase 28 is ready to plan
+**Current Focus:** Milestone v2.5 — Phase 28 is ready to execute
 
 ---
 
 ## Current Position
 
-Phase: Phase 27 complete
-Plan: None active
-Status: Ready for Phase 28 planning
-Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docker-plan truth, executed Docker artifacts, and a deterministic handoff proof package
+Phase: Phase 28 planned
+Plan: 28-01 next
+Status: Ready for Phase 28 execution
+Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 execution plans around recovery contract, failure truth, and deterministic proof
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docke
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 0
+- Active phase plan count: 3
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -57,7 +57,7 @@ Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docke
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Frozen before-state Docker regression example: case `005bbad123ef309a5bef` previously built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces no usable end-to-end recovery path and generic failure labels when the model returns empty or unstable output
-- Current phase plan count: 0
+- Current phase plan count: 3
 - Next phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
@@ -127,6 +127,8 @@ Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docke
 - [Phase 27-llm-authored-docker-validation-and-artifact-truth]: The build-to-run seam must capture and verify a locally usable image reference after build before `docker create` or `docker start`.
 - [Phase 27-llm-authored-docker-validation-and-artifact-truth]: Saved artifacts must preserve authored Docker intent, executed Docker inputs, and the exact image reference used so later recovery work can consume real Docker truth.
 - [Phase 27 complete]: APDR now writes `docker-plan.json` plus `Dockerfile.authored`, preserves executed Docker artifacts and image-inspect traces per attempt, and verifies a usable local image reference before runtime.
+- [Phase 28-llm-recovery-loop-and-failure-semantics]: Recovery should consume authored plan plus authored/executed Docker artifacts and persist bounded recovery outcomes instead of relying on a flattened last-log string.
+- [Phase 28-llm-recovery-loop-and-failure-semantics]: Final case truth should additively distinguish `llm-no-output`, `provider-tooling-failure`, `docker-infrastructure-failure`, and `dependency-runtime-failure` without removing the existing coarse `failure_family`.
 
 ### Roadmap Evolution
 
@@ -149,10 +151,10 @@ Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docke
 
 ## Session Continuity
 
-Last session: 2026-04-03T01:05:44Z
-Stopped at: Phase 27 complete
-Resume file: .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-VERIFICATION.md
+Last session: 2026-04-03T01:24:39Z
+Stopped at: Phase 28 planned
+Resume file: .planning/phases/28-llm-recovery-loop-and-failure-semantics/28-01-PLAN.md
 
 ---
 
-*State updated after completing Phase 27 on 2026-04-03*
+*State updated after planning Phase 28 on 2026-04-03*
