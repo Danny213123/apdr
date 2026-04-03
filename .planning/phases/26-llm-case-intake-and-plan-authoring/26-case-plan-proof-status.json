@@ -1,0 +1,15 @@
+{
+  "errors": [],
+  "failure_class": "schema-validation-failure",
+  "fallback_sections": [
+    "tier1-cache"
+  ],
+  "import_count": 3,
+  "llm_only_behavior": "fail",
+  "mapping_count": 3,
+  "mode": "probe",
+  "passed": true,
+  "phase": "26",
+  "plan_authorship": "llm-authored-with-deterministic-fallback",
+  "probe_only": true
+}

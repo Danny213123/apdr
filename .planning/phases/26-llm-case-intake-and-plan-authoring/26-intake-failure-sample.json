@@ -1,0 +1,18 @@
+{
+  "phase": "26",
+  "case_id": "hard-gists/005bbad123ef309a5bef/snippet.py",
+  "mode": "llm-only",
+  "validation_backend": "docker",
+  "authored_plan_status": "unusable",
+  "authored_plan_path": "",
+  "intake_failure_path": "runs/sample/cases/005bbad123ef309a5bef/intake-failure.json",
+  "llm_only_behavior": "fail",
+  "intake_failure": {
+    "failure_class": "schema-validation-failure",
+    "reason": "LLM package-resolution call returned no output.",
+    "diagnostic_preview": "instructor primary failed: RuntimeError: schema failure; tolerant json fallback failed: attempt 1: could not extract JSON",
+    "raw_response_preview": "{\"imports\": [\"sqlalchemy\", \"memcache\"], \"package_mappings\": ...",
+    "authored_plan_status": "unusable",
+    "llm_only_behavior": "fail"
+  }
+}
