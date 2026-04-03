@@ -9,14 +9,23 @@ use crate::cache::store::CacheStore;
 use crate::context;
 use crate::docker::{smoke_test, system_deps, templates};
 use crate::{
-    ResolveConfig, ValidationAttempt, ValidationSummary, VALIDATION_BACKEND_DOCKER,
-    VALIDATION_BACKEND_ENV,
+    AuthoredDockerPlan, ResolveConfig, ValidationAttempt, ValidationSummary,
+    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV,
 };
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+#[derive(Clone, Debug, Default)]
+struct VerifiedImageRef {
+    image_ref: String,
+    image_id: Option<String>,
+    handoff_verified: bool,
+    inspect_path: Option<String>,
+    inspect_log: String,
+}
 
 pub(super) fn validate_requirements_docker(
     snippet_path: &Path,
@@ -35,8 +44,12 @@ pub(super) fn validate_requirements_docker(
         attempt_offset,
         config,
         store,
-        config.allow_llm,
+        should_attempt_docker_agent_fallback(config),
     )
+}
+
+pub(super) fn should_attempt_docker_agent_fallback(config: &ResolveConfig) -> bool {
+    config.allow_llm && !config.llm_only_mode
 }
 
 pub(super) fn validate_requirements_docker_deterministic(
@@ -75,6 +88,16 @@ fn validate_requirements_docker_inner(
         ..ValidationSummary::default()
     };
     context::ensure_debug_layout(&config.output_dir)?;
+    let authored_docker_plan = load_authored_docker_plan(&config.output_dir);
+    if authored_docker_plan.is_some() {
+        summary.authored_dockerfile_path = Some(
+            config
+                .output_dir
+                .join("Dockerfile.authored")
+                .display()
+                .to_string(),
+        );
+    }
 
     // Try LangGraph multi-agent pipeline first when LLM is enabled
     if allow_agent_fallback {
@@ -151,27 +174,37 @@ fn validate_requirements_docker_inner(
             let combined_log_path = work_dir.join("combined.log");
             let metadata_path = work_dir.join("metadata.txt");
             let context_snapshot_path = work_dir.join("benchmark-context-tail.txt");
+            let iidfile_path = work_dir.join("build-image.iid");
+            let inspect_path = work_dir.join("docker-image.inspect.txt");
+            let executed_dockerfile_path = work_dir.join("Dockerfile.executed");
+            let build_command_path = work_dir.join("docker-build.command.txt");
+            let run_command_path = work_dir.join("docker-run.command.txt");
             let build_command = format!(
-                "docker build --progress=plain -t {image_tag} {}",
-                work_dir.display()
+                "docker build --progress=plain --iidfile {} -t {image_tag} {}",
+                iidfile_path.display(),
+                work_dir.display(),
             );
             let container_name = docker_container_name(&build_key, python_version, attempt_index);
-            let run_command = format!(
+            let mut run_command = format!(
                 "docker create --name {container_name} {image_tag} && docker start -a {container_name}"
             );
 
             fs::write(work_dir.join("requirements.txt"), requirements_txt)?;
             fs::write(work_dir.join("smoke_test.py"), &smoke_test_script)?;
             fs::copy(snippet_path, work_dir.join("snippet.py"))?;
-            // Generate Dockerfile with inferred system deps
-            fs::write(
-                &dockerfile_path,
-                templates::python_slim_template(python_version, &sys_deps),
-            )?;
-            fs::write(work_dir.join("docker-build.command.txt"), &build_command)?;
-            fs::write(work_dir.join("docker-run.command.txt"), &run_command)?;
+            let dockerfile_contents = if let Some(plan) = authored_docker_plan.as_ref() {
+                templates::authored_docker_template(plan, python_version, &sys_deps)
+            } else {
+                templates::python_slim_template(python_version, &sys_deps)
+            };
+            // Keep Dockerfile as the build input and persist the executed copy separately.
+            fs::write(&dockerfile_path, &dockerfile_contents)?;
+            fs::write(&executed_dockerfile_path, &dockerfile_contents)?;
+            fs::write(&build_command_path, &build_command)?;
+            fs::write(&run_command_path, &run_command)?;
             fs::write(&run_log_path, "")?;
             fs::write(&combined_log_path, "")?;
+            fs::write(&inspect_path, "")?;
             if let Ok(tail) =
                 context::read_context_tail(config.benchmark_context_log.as_deref(), 48_000)
             {
@@ -192,8 +225,16 @@ fn validate_requirements_docker_inner(
                 combined_log_path: Some(combined_log_path.display().to_string()),
                 metadata_path: Some(metadata_path.display().to_string()),
                 context_snapshot_path: Some(context_snapshot_path.display().to_string()),
+                executed_dockerfile_path: Some(executed_dockerfile_path.display().to_string()),
+                docker_build_command_path: Some(build_command_path.display().to_string()),
+                docker_run_command_path: Some(run_command_path.display().to_string()),
+                image_inspect_path: Some(inspect_path.display().to_string()),
                 ..Default::default()
             };
+            summary.executed_dockerfile_path = attempt.executed_dockerfile_path.clone();
+            summary.docker_build_command_path = attempt.docker_build_command_path.clone();
+            summary.docker_run_command_path = attempt.docker_run_command_path.clone();
+            summary.image_inspect_path = attempt.image_inspect_path.clone();
 
             // Docker build with BuildKit enabled
             let build_timeout = total_budget.saturating_sub(validation_started.elapsed());
@@ -201,6 +242,8 @@ fn validate_requirements_docker_inner(
             build
                 .arg("build")
                 .arg("--progress=plain")
+                .arg("--iidfile")
+                .arg(&iidfile_path)
                 .arg("-t")
                 .arg(&image_tag)
                 .arg(&work_dir)
@@ -285,6 +328,53 @@ fn validate_requirements_docker_inner(
             let build_logs = build_output.combined_output;
             let build_exit_code = build_output.exit_code;
             let build_duration_ms = build_output.duration_ms;
+            let verified_image = verify_local_image_reference(
+                &image_tag,
+                &iidfile_path,
+                &inspect_path,
+                total_budget.saturating_sub(validation_started.elapsed()),
+            )?;
+            attempt.executed_image_ref = Some(verified_image.image_ref.clone());
+            attempt.image_handoff_verified = verified_image.handoff_verified;
+            summary.executed_image_ref = Some(verified_image.image_ref.clone());
+            summary.image_handoff_verified = verified_image.handoff_verified;
+            summary.image_inspect_path = verified_image.inspect_path.clone();
+            if let Some(image_id) = verified_image.image_id.clone() {
+                summary.build_image_id = Some(image_id);
+            }
+
+            if !verified_image.handoff_verified {
+                let combined = if build_logs.is_empty() {
+                    verified_image.inspect_log.clone()
+                } else if verified_image.inspect_log.trim().is_empty() {
+                    build_logs.clone()
+                } else {
+                    format!("{build_logs}\n{}", verified_image.inspect_log)
+                };
+                attempt.status = "runtime-failed".to_string();
+                attempt.log_excerpt = truncate_log(&combined);
+                fs::write(&combined_log_path, &combined)?;
+                fs::write(
+                    &metadata_path,
+                    attempt_metadata(
+                        &attempt,
+                        &build_key,
+                        &build_command,
+                        &run_command,
+                        build_exit_code,
+                        build_duration_ms,
+                        None,
+                        None,
+                    ),
+                )?;
+                summary.attempts.push(attempt);
+                break;
+            }
+            run_command = format!(
+                "docker create --name {container_name} {} && docker start -a {container_name}",
+                verified_image.image_ref
+            );
+            fs::write(&run_command_path, &run_command)?;
 
             let create_timeout = total_budget.saturating_sub(validation_started.elapsed());
             let mut create = Command::new("docker");
@@ -292,7 +382,7 @@ fn validate_requirements_docker_inner(
                 .arg("create")
                 .arg("--name")
                 .arg(&container_name)
-                .arg(&image_tag);
+                .arg(&verified_image.image_ref);
             let create_output = run_command_with_timeout(&mut create, create_timeout)?;
             summary.docker_startup_duration_ms += create_output.duration_ms;
             let _ = context::append_context_log(
@@ -395,7 +485,6 @@ fn validate_requirements_docker_inner(
                 )?;
                 summary.selected_python_version = Some(python_version.clone());
                 summary.build_cache_key = Some(build_key.clone());
-                summary.build_image_id = Some(image_tag.clone());
                 summary.succeeded = true;
                 summary.attempts.push(attempt);
                 cleanup_docker_container(&container_name);
@@ -433,6 +522,82 @@ fn validate_requirements_docker_inner(
     cleanup_docker_dangling();
 
     Ok(summary)
+}
+
+fn load_authored_docker_plan(output_dir: &Path) -> Option<AuthoredDockerPlan> {
+    let docker_plan_path = output_dir.join("docker-plan.json");
+    let raw = fs::read_to_string(docker_plan_path).ok()?;
+    serde_json::from_str::<AuthoredDockerPlan>(&raw).ok()
+}
+
+fn verify_local_image_reference(
+    image_tag: &str,
+    iidfile_path: &Path,
+    inspect_path: &Path,
+    timeout: Duration,
+) -> io::Result<VerifiedImageRef> {
+    let iid = fs::read_to_string(iidfile_path)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let candidates = candidate_image_refs_for_verification(image_tag, iid.as_deref());
+
+    let mut inspect_logs = Vec::new();
+    for candidate in candidates {
+        let mut inspect = Command::new("docker");
+        inspect
+            .arg("image")
+            .arg("inspect")
+            .arg("--format")
+            .arg("{{.Id}}")
+            .arg(&candidate);
+        let output = run_command_with_timeout(&mut inspect, timeout)?;
+        let combined = output.combined_output.trim().to_string();
+        inspect_logs.push(format!(
+            "candidate={candidate}\nsuccess={}\ntimed_out={}\noutput={}\n",
+            output.success,
+            output.timed_out,
+            if combined.is_empty() { "--" } else { &combined }
+        ));
+        if output.success && !output.timed_out {
+            let image_id = combined.lines().last().map(str::trim).unwrap_or("").to_string();
+            let inspect_log = inspect_logs.join("\n");
+            fs::write(inspect_path, &inspect_log)?;
+            return Ok(VerifiedImageRef {
+                image_ref: candidate,
+                image_id: if image_id.is_empty() { iid.clone() } else { Some(image_id) },
+                handoff_verified: true,
+                inspect_path: Some(inspect_path.display().to_string()),
+                inspect_log,
+            });
+        }
+    }
+
+    let inspect_log = inspect_logs.join("\n");
+    fs::write(inspect_path, &inspect_log)?;
+    Ok(VerifiedImageRef {
+        image_ref: iid.clone().unwrap_or_else(|| image_tag.to_string()),
+        image_id: iid,
+        handoff_verified: false,
+        inspect_path: Some(inspect_path.display().to_string()),
+        inspect_log,
+    })
+}
+
+pub(super) fn candidate_image_refs_for_verification(
+    image_tag: &str,
+    iid: Option<&str>,
+) -> Vec<String> {
+    let mut candidates = vec![image_tag.to_string()];
+    if !image_tag.contains('/') {
+        candidates.push(format!("docker.io/library/{image_tag}"));
+    }
+    if let Some(value) = iid.map(str::trim).filter(|value| !value.is_empty()) {
+        if !candidates.iter().any(|item| item == value) {
+            candidates.push(value.to_string());
+        }
+    }
+    candidates
 }
 
 /// Remove a specific Docker image. Errors are silently ignored.

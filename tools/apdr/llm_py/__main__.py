@@ -18,7 +18,7 @@ import sys
 import traceback
 
 from .models import ResolutionRequest, ResolutionResponse
-from .actions import resolve, solvability, recovery, version, single, batch_version
+from .actions import batch_version, docker_plan, recovery, resolve, single, solvability, version
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -32,6 +32,7 @@ _DISPATCH = {
     "resolve": lambda req: resolve.handle(req),
     "solvability": lambda req: solvability.handle(req),
     "recovery": lambda req: recovery.handle(req),
+    "docker_plan": lambda req: docker_plan.handle(req),
     "version": lambda req: version.handle(req),
     "batch_version": lambda req: batch_version.handle(req),
     "single": lambda req: single.handle(req),

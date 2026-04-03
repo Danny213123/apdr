@@ -416,6 +416,7 @@ class BenchmarkWorker(threading.Thread):
                 "snippet_limit": (snippet_limit if not replay_manifest_path else "") or "",
                 "python_command": str(self.run_config.get("python_command", "")),
                 "validation_backend": str(self.run_config.get("validation_backend", "")),
+                "llm_only_mode": bool(self.run_config.get("llm_only_mode")),
                 "llm_validation_policy": normalize_llm_validation_policy(
                     self.run_config.get("llm_validation_policy")
                 ),
@@ -507,7 +508,7 @@ class BenchmarkWorker(threading.Thread):
                     command.extend(
                         [
                             "--validation-backend",
-                            "env" if is_llm_only else vb,
+                            "docker" if is_llm_only else vb,
                         ]
                     )
                     if vb == "llm":
@@ -810,6 +811,29 @@ class BenchmarkWorker(threading.Thread):
             or output_metadata.get("docker_bypass_note_path")
         )
         debug_dir = self._metadata_text(output_metadata.get("debug_dir"))
+        docker_plan_status = self._metadata_text(output_metadata.get("docker_plan_status"))
+        docker_plan_path = self._metadata_text(output_metadata.get("docker_plan_path"))
+        docker_plan_authorship = self._metadata_text(output_metadata.get("docker_plan_authorship"))
+        docker_plan_fallback_sections = self._metadata_text(
+            output_metadata.get("docker_plan_fallback_sections")
+        )
+        authored_dockerfile_path = self._metadata_text(
+            output_metadata.get("authored_dockerfile_path")
+        )
+        executed_dockerfile_path = self._metadata_text(
+            output_metadata.get("executed_dockerfile_path")
+        )
+        docker_build_command_path = self._metadata_text(
+            output_metadata.get("docker_build_command_path")
+        )
+        docker_run_command_path = self._metadata_text(
+            output_metadata.get("docker_run_command_path")
+        )
+        executed_image_ref = self._metadata_text(output_metadata.get("executed_image_ref"))
+        image_handoff_verified = self._metadata_bool(
+            output_metadata.get("image_handoff_verified")
+        )
+        image_inspect_path = self._metadata_text(output_metadata.get("image_inspect_path"))
         escalated_backend = self._metadata_text(output_metadata.get("escalated_backend"))
         failure_family = self._metadata_text(output_metadata.get("failure_family"))
         failure_bucket = self._metadata_text(output_metadata.get("failure_bucket"))
@@ -846,6 +870,17 @@ class BenchmarkWorker(threading.Thread):
             "dockerBypassReason": docker_bypass_reason,
             "dockerBypassNote": docker_bypass_note,
             "debugDir": debug_dir,
+            "dockerPlanStatus": docker_plan_status,
+            "dockerPlanPath": docker_plan_path,
+            "dockerPlanAuthorship": docker_plan_authorship,
+            "dockerPlanFallbackSections": docker_plan_fallback_sections,
+            "authoredDockerfilePath": authored_dockerfile_path,
+            "executedDockerfilePath": executed_dockerfile_path,
+            "dockerBuildCommandPath": docker_build_command_path,
+            "dockerRunCommandPath": docker_run_command_path,
+            "executedImageRef": executed_image_ref,
+            "imageHandoffVerified": image_handoff_verified,
+            "imageInspectPath": image_inspect_path,
             "escalatedBackend": escalated_backend,
             "failureFamily": failure_family,
             "failureBucket": failure_bucket,
@@ -891,6 +926,23 @@ class BenchmarkWorker(threading.Thread):
             event_data["dockerBypassNote"] = docker_bypass_note
         if debug_dir:
             event_data["debugDir"] = debug_dir
+        if docker_plan_status:
+            event_data["dockerPlanStatus"] = docker_plan_status
+        if docker_plan_path:
+            event_data["dockerPlanPath"] = docker_plan_path
+        if authored_dockerfile_path:
+            event_data["authoredDockerfilePath"] = authored_dockerfile_path
+        if executed_dockerfile_path:
+            event_data["executedDockerfilePath"] = executed_dockerfile_path
+        if docker_build_command_path:
+            event_data["dockerBuildCommandPath"] = docker_build_command_path
+        if docker_run_command_path:
+            event_data["dockerRunCommandPath"] = docker_run_command_path
+        if executed_image_ref:
+            event_data["executedImageRef"] = executed_image_ref
+        event_data["imageHandoffVerified"] = image_handoff_verified
+        if image_inspect_path:
+            event_data["imageInspectPath"] = image_inspect_path
         if escalated_backend:
             event_data["escalatedBackend"] = escalated_backend
         if failure_family:

@@ -1,0 +1,48 @@
+{
+  "phase": "27",
+  "mode": "authored",
+  "sample_id": "phase27-scrapy-case",
+  "validation_backend": "docker",
+  "docker_plan_status": "available",
+  "docker_plan_path": "runs/phase27-sample/cases/scrapy/docker-plan.json",
+  "docker_plan_authorship": "llm-authored",
+  "docker_plan_fallback_sections": [
+    "phase26-case-plan"
+  ],
+  "authored_dockerfile_path": "runs/phase27-sample/cases/scrapy/Dockerfile.authored",
+  "docker_plan": {
+    "plan_version": "1",
+    "base_image": "python:3.11-slim",
+    "system_packages": [
+      "libxml2-dev",
+      "libxslt1-dev"
+    ],
+    "environment_variables": [
+      "PIP_DEFAULT_TIMEOUT=100"
+    ],
+    "working_directory": "/app",
+    "command": [
+      "python",
+      "/app/smoke_test.py"
+    ],
+    "smoke_strategy": {
+      "mode": "import",
+      "import_targets": [
+        "scrapy",
+        "lxml"
+      ],
+      "commands": [],
+      "rationale": "Verify imports before broader runtime execution."
+    },
+    "rationale": "Author Docker validation inputs from the Phase 26 case plan while keeping the container minimal.",
+    "section_confidence": {
+      "base_image": 1.0,
+      "system_packages": 0.82,
+      "smoke_strategy": 0.95
+    },
+    "authorship": "llm-authored",
+    "deterministic_fallback_sections": [
+      "phase26-case-plan"
+    ]
+  }
+}

@@ -424,6 +424,15 @@ class TestRunnerEventEmission(unittest.TestCase):
                     "validation_path: env",
                     "requested_llm_validation_policy: docker-first",
                     "llm_validation_route: env-first-docker-bypass",
+                    "docker_plan_status: available",
+                    "docker_plan_path: runs/example/cases/policy-truth/docker-plan.json",
+                    "authored_dockerfile_path: runs/example/cases/policy-truth/Dockerfile.authored",
+                    "executed_dockerfile_path: runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed",
+                    "docker_build_command_path: runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/docker-build.command.txt",
+                    "docker_run_command_path: runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/docker-run.command.txt",
+                    "executed_image_ref: sha256:policytruth",
+                    "image_handoff_verified: true",
+                    "image_inspect_path: runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/docker-image.inspect.txt",
                     "docker_bypass_reason: docker daemon unavailable",
                     "docker_bypass_note: runs/example/.apdr-debug/docker-bypass.txt",
                     "debug_dir: runs/example/.apdr-debug",
@@ -462,6 +471,24 @@ class TestRunnerEventEmission(unittest.TestCase):
             result["dockerBypassNote"],
             "runs/example/.apdr-debug/docker-bypass.txt",
         )
+        self.assertEqual(result["dockerPlanStatus"], "available")
+        self.assertEqual(
+            result["dockerPlanPath"],
+            "runs/example/cases/policy-truth/docker-plan.json",
+        )
+        self.assertEqual(
+            result["authoredDockerfilePath"],
+            "runs/example/cases/policy-truth/Dockerfile.authored",
+        )
+        self.assertEqual(
+            result["executedDockerfilePath"],
+            "runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed",
+        )
+        self.assertEqual(
+            result["executedImageRef"],
+            "sha256:policytruth",
+        )
+        self.assertTrue(result["imageHandoffVerified"])
         self.assertEqual(result["debugDir"], "runs/example/.apdr-debug")
         self.assertEqual(result["validationBackend"], "llm")
         self.assertEqual(result["validationPath"], "env")
@@ -475,6 +502,18 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertEqual(row["dockerStatus"], "bypassed")
         self.assertEqual(row["dockerBypassReason"], result["dockerBypassReason"])
         self.assertEqual(row["dockerBypassNote"], result["dockerBypassNote"])
+        self.assertEqual(row["dockerPlanStatus"], result["dockerPlanStatus"])
+        self.assertEqual(row["dockerPlanPath"], result["dockerPlanPath"])
+        self.assertEqual(
+            row["authoredDockerfilePath"],
+            result["authoredDockerfilePath"],
+        )
+        self.assertEqual(
+            row["executedDockerfilePath"],
+            result["executedDockerfilePath"],
+        )
+        self.assertEqual(row["executedImageRef"], result["executedImageRef"])
+        self.assertTrue(row["imageHandoffVerified"])
         self.assertEqual(row["debugDir"], result["debugDir"])
 
         events = self._drain_events(event_queue)
@@ -486,6 +525,21 @@ class TestRunnerEventEmission(unittest.TestCase):
             case_complete["dockerBypassNote"],
             "runs/example/.apdr-debug/docker-bypass.txt",
         )
+        self.assertEqual(case_complete["dockerPlanStatus"], "available")
+        self.assertEqual(
+            case_complete["dockerPlanPath"],
+            "runs/example/cases/policy-truth/docker-plan.json",
+        )
+        self.assertEqual(
+            case_complete["authoredDockerfilePath"],
+            "runs/example/cases/policy-truth/Dockerfile.authored",
+        )
+        self.assertEqual(
+            case_complete["executedDockerfilePath"],
+            "runs/example/cases/policy-truth/.apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed",
+        )
+        self.assertEqual(case_complete["executedImageRef"], "sha256:policytruth")
+        self.assertTrue(case_complete["imageHandoffVerified"])
         self.assertEqual(case_complete["debugDir"], "runs/example/.apdr-debug")
         self.assertEqual(case_complete["validationPath"], "env")
         self.assertEqual(case_complete["failureFamily"], "environment-specific")

@@ -726,16 +726,32 @@ function kvRows(fields) {
 function validationTruthFields(item) {
   const hasLlmTruth =
     item.validationBackend === "llm" ||
+    item.dockerPlanStatus ||
+    item.dockerPlanPath ||
     item.requestedLlmValidationPolicy ||
     item.llmValidationRoute ||
     item.dockerStatus ||
     item.dockerBypassReason ||
-    item.dockerBypassNote;
+    item.dockerBypassNote ||
+    item.authoredDockerfilePath ||
+    item.executedDockerfilePath ||
+    item.executedImageRef;
   if (!hasLlmTruth) {
     return [];
   }
 
   const fields = [
+    ["Docker plan", item.dockerPlanStatus],
+    ["Docker plan path", item.dockerPlanPath],
+    ["Docker plan authorship", item.dockerPlanAuthorship],
+    ["Docker plan fallback", Array.isArray(item.dockerPlanFallbackSections) ? item.dockerPlanFallbackSections.join(", ") : item.dockerPlanFallbackSections],
+    ["Authored Dockerfile", item.authoredDockerfilePath],
+    ["Executed Dockerfile", item.executedDockerfilePath],
+    ["Build command", item.dockerBuildCommandPath],
+    ["Run command", item.dockerRunCommandPath],
+    ["Executed image", item.executedImageRef],
+    ["Image handoff", item.imageHandoffVerified === true ? "verified" : item.imageHandoffVerified === false && item.executedImageRef ? "not verified" : ""],
+    ["Image inspect", item.imageInspectPath],
     ["Requested policy", item.requestedLlmValidationPolicy],
     ["Validation path", item.validationPath],
     ["LLM route", item.llmValidationRoute],
@@ -880,13 +896,12 @@ function syncValidationBackendDropdown() {
 }
 
 function showLlmValidationPolicyControl() {
-  return state.form?.tool === "apdr" && state.form?.validation_backend === "llm";
+  return false;
 }
 
 function llmValidationPolicyOptions() {
   return [
     { value: "docker-first", label: "docker-first" },
-    { value: "env-first", label: "env-first" },
   ];
 }
 
@@ -894,7 +909,7 @@ function syncLlmValidationPolicyControl() {
   if (!dropdowns.llmValidationPolicy || !ui.llmPolicyRow || !state.form) {
     return;
   }
-  const nextValue = state.form.llm_validation_policy || "docker-first";
+  const nextValue = "docker-first";
   state.form.llm_validation_policy = nextValue;
   setDropdownOptions(dropdowns.llmValidationPolicy, llmValidationPolicyOptions(), nextValue);
   ui.llmPolicyRow.hidden = !showLlmValidationPolicyControl();
@@ -1009,7 +1024,7 @@ function renderProgress() {
     <span class="kv-value">tool=${escapeHtml(config.tool || "-")} loop=${escapeHtml(
       String(config.loop_count ?? "-"),
     )} range=${escapeHtml(String(config.search_range ?? "-"))} backend=${escapeHtml(
-      config.validation_backend || "-",
+      config.llm_only_mode ? "llm-only" : (config.validation_backend || "-"),
     )} rag=${escapeHtml(
       config.rag ? "on" : "off",
     )} verbose=${escapeHtml(config.verbose ? "on" : "off")} solve=${escapeHtml(
@@ -1423,6 +1438,15 @@ function renderLlmCases(filtered = null, options = {}) {
     "failureFamily",
     "resultOrigin",
     "debugDir",
+    "dockerPlanStatus",
+    "dockerPlanPath",
+    "authoredDockerfilePath",
+    "executedDockerfilePath",
+    "dockerBuildCommandPath",
+    "dockerRunCommandPath",
+    "executedImageRef",
+    "imageHandoffVerified",
+    "imageInspectPath",
   ]);
   if (!force && state.renderCache.llmCasesKey === nextKey) {
     return;
@@ -1607,6 +1631,9 @@ function applyLoadoutToForm(loadout) {
   if (!loadout) {
     return;
   }
+  const validationBackend = loadout.llm_only_mode
+    ? "llm-only"
+    : (loadout.validation_backend || state.form.validation_backend || "env");
   state.form = {
     ...state.form,
     tool: loadout.tool || state.form.tool,
@@ -1617,8 +1644,9 @@ function applyLoadoutToForm(loadout) {
     verbose: Boolean(loadout.verbose),
     snippet_limit: loadout.snippet_limit || "",
     python_command: loadout.python_command || "",
-    validation_backend: loadout.validation_backend || state.form.validation_backend || "env",
-    llm_validation_policy: loadout.llm_validation_policy || state.form.llm_validation_policy || "docker-first",
+    validation_backend: validationBackend,
+    llm_validation_policy: "docker-first",
+    llm_only_mode: validationBackend === "llm-only",
     loadout_name: loadout.name || "",
   };
   state.selectedLoadoutSlug = loadout.slug;
@@ -1632,11 +1660,11 @@ function currentConfigPayload() {
   return {
     ...state.form,
     loadout_name: state.form?.loadout_name || "",
-    llm_validation_policy: state.form?.llm_validation_policy || "docker-first",
+    llm_validation_policy: "docker-first",
     llm_only_mode: isLlmOnly,
-    // When llm-only is selected, the actual validation backend is "env" (validation
-    // still needs a backend), but the --llm-only flag handles the resolution logic.
-    validation_backend: isLlmOnly ? "env" : (state.form?.validation_backend || "env"),
+    // When llm-only is selected, keep the special resolver mode but force Docker
+    // validation as the actual backend.
+    validation_backend: isLlmOnly ? "docker" : (state.form?.validation_backend || "env"),
   };
 }
 

@@ -950,6 +950,17 @@ class BenchmarkService:
             "dockerBypassReason": self._result_docker_bypass_reason(result),
             "dockerBypassNote": self._result_docker_bypass_note(result),
             "debugDir": self._result_debug_dir(result),
+            "dockerPlanStatus": self._result_docker_plan_status(result),
+            "dockerPlanPath": self._result_docker_plan_path(result),
+            "dockerPlanAuthorship": self._result_docker_plan_authorship(result),
+            "dockerPlanFallbackSections": self._result_docker_plan_fallback_sections(result),
+            "authoredDockerfilePath": self._result_authored_dockerfile_path(result),
+            "executedDockerfilePath": self._result_executed_dockerfile_path(result),
+            "dockerBuildCommandPath": self._result_docker_build_command_path(result),
+            "dockerRunCommandPath": self._result_docker_run_command_path(result),
+            "executedImageRef": self._result_executed_image_ref(result),
+            "imageHandoffVerified": self._result_image_handoff_verified(result),
+            "imageInspectPath": self._result_image_inspect_path(result),
             "authoredPlanStatus": self._result_authored_plan_status(result),
             "authoredPlanPath": self._result_authored_plan_path(result),
             "authoredPlanAuthorship": self._result_authored_plan_authorship(result),
@@ -1947,6 +1958,110 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("debug_dir") or "").strip()
+
+    def _result_docker_plan_status(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerPlanStatus") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_plan_status") or "").strip()
+
+    def _result_docker_plan_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerPlanPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_plan_path") or "").strip()
+
+    def _result_docker_plan_authorship(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerPlanAuthorship") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_plan_authorship") or "").strip()
+
+    def _result_docker_plan_fallback_sections(self, result: dict[str, Any]) -> list[str]:
+        direct = result.get("dockerPlanFallbackSections")
+        if isinstance(direct, list):
+            return [str(item).strip() for item in direct if str(item).strip()]
+        if isinstance(direct, str) and direct.strip():
+            return [item.strip() for item in direct.split(",") if item.strip()]
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return []
+        raw = str(metadata.get("docker_plan_fallback_sections") or "").strip()
+        if not raw:
+            return []
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    def _result_authored_dockerfile_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("authoredDockerfilePath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("authored_dockerfile_path") or "").strip()
+
+    def _result_executed_dockerfile_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("executedDockerfilePath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("executed_dockerfile_path") or "").strip()
+
+    def _result_docker_build_command_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerBuildCommandPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_build_command_path") or "").strip()
+
+    def _result_docker_run_command_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("dockerRunCommandPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("docker_run_command_path") or "").strip()
+
+    def _result_executed_image_ref(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("executedImageRef") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("executed_image_ref") or "").strip()
+
+    def _result_image_handoff_verified(self, result: dict[str, Any]) -> bool:
+        direct = result.get("imageHandoffVerified")
+        if direct is not None:
+            return self._as_bool(direct)
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return False
+        return self._as_bool(metadata.get("image_handoff_verified"))
+
+    def _result_image_inspect_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("imageInspectPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("image_inspect_path") or "").strip()
 
     def _result_authored_plan_status(self, result: dict[str, Any]) -> str:
         direct = str(result.get("authoredPlanStatus") or "").strip()

@@ -37,6 +37,20 @@ class AuthoredCasePlan(BaseModel):
     deterministic_fallback_sections: list[str] = Field(default_factory=list)
 
 
+class AuthoredDockerPlan(BaseModel):
+    plan_version: str = "1"
+    base_image: str = ""
+    system_packages: list[str] = Field(default_factory=list)
+    environment_variables: list[str] = Field(default_factory=list)
+    working_directory: str = "/app"
+    command: list[str] = Field(default_factory=list)
+    smoke_strategy: SmokeStrategy = Field(default_factory=SmokeStrategy)
+    rationale: str = ""
+    section_confidence: dict[str, float] = Field(default_factory=dict)
+    authorship: str = "llm-authored"
+    deterministic_fallback_sections: list[str] = Field(default_factory=list)
+
+
 class IntakeFailureRecord(BaseModel):
     failure_class: str = ""
     reason: str = ""
@@ -74,6 +88,7 @@ class ResolutionRequest(BaseModel):
 
     # For resolve — tier2 candidates per import
     tier2_candidates: dict[str, list[str]] = Field(default_factory=dict)
+    authored_plan: AuthoredCasePlan | None = None
 
     # LLM config
     provider: str = "ollama"
@@ -101,6 +116,8 @@ class ResolutionResponse(BaseModel):
     authored_plan: AuthoredCasePlan | None = None
     authored_plan_status: str = ""
     intake_failure: IntakeFailureRecord | None = None
+    docker_plan: AuthoredDockerPlan | None = None
+    docker_plan_status: str = ""
 
     # For solvability
     decision: str = ""

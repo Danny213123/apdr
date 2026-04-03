@@ -10,8 +10,8 @@ use crate::cache::store::CacheStore;
 use crate::context;
 use crate::resolver::{kgraph_db, pypi_client, version_sampler};
 use crate::{
-    AuthoredCasePlan, IntakeFailureRecord, ParseResult, ResolveConfig, ResolvedDependency,
-    SolvabilityAssessment,
+    AuthoredCasePlan, AuthoredDockerPlan, IntakeFailureRecord, ParseResult, ResolveConfig,
+    ResolvedDependency, SolvabilityAssessment,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -26,10 +26,28 @@ pub struct StageResult {
     pub intake_failure: Option<IntakeFailureRecord>,
 }
 
+pub struct DockerPlanResult {
+    pub docker_plan: Option<AuthoredDockerPlan>,
+    pub docker_plan_status: String,
+    pub notes: Vec<String>,
+    pub prompts_issued: usize,
+    pub llm_duration_ms: u128,
+}
+
 #[doc(hidden)]
 pub fn parse_authored_plan_response(response: &serde_json::Value) -> Option<AuthoredCasePlan> {
     response
         .get("authored_plan")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
+#[doc(hidden)]
+pub fn parse_authored_docker_plan_response(
+    response: &serde_json::Value,
+) -> Option<AuthoredDockerPlan> {
+    response
+        .get("docker_plan")
         .cloned()
         .and_then(|value| serde_json::from_value(value).ok())
 }
@@ -64,6 +82,23 @@ fn parse_authored_plan_status(
     }
 }
 
+fn parse_docker_plan_status(
+    response: &serde_json::Value,
+    docker_plan: &Option<AuthoredDockerPlan>,
+) -> String {
+    if let Some(status) = response.get("docker_plan_status").and_then(|value| value.as_str()) {
+        let trimmed = status.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if docker_plan.is_some() {
+        "available".to_string()
+    } else {
+        "not-requested".to_string()
+    }
+}
+
 fn protocol_empty_output_failure() -> IntakeFailureRecord {
     IntakeFailureRecord {
         failure_class: "empty-output".to_string(),
@@ -72,6 +107,72 @@ fn protocol_empty_output_failure() -> IntakeFailureRecord {
         raw_response_preview: String::new(),
         authored_plan_status: "unusable".to_string(),
         llm_only_behavior: "fail".to_string(),
+    }
+}
+
+pub fn author_docker_plan(
+    authored_plan: &AuthoredCasePlan,
+    config: &ResolveConfig,
+    python_version: &str,
+) -> DockerPlanResult {
+    let llm_started = Instant::now();
+    let mut request = build_base_request(config);
+    request["action"] = "docker_plan".into();
+    request["python_version"] = python_version.into();
+    request["authored_plan"] =
+        serde_json::to_value(authored_plan).unwrap_or(serde_json::Value::Null);
+
+    persist_trace(config, "docker-plan", &request, None);
+
+    let response = match call_python(&request) {
+        Some(response) => response,
+        None => {
+            return DockerPlanResult {
+                docker_plan: None,
+                docker_plan_status: "unusable".to_string(),
+                notes: vec!["LLM Docker authoring call returned no output.".to_string()],
+                prompts_issued: 1,
+                llm_duration_ms: llm_started.elapsed().as_millis(),
+            };
+        }
+    };
+
+    persist_trace(config, "docker-plan", &request, Some(&response));
+
+    let mut notes: Vec<String> = response
+        .get("notes")
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(|item| item.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(reason) = response.get("failure_reason").and_then(|value| value.as_str()) {
+        if !reason.trim().is_empty() {
+            notes.push(format!("docker authoring failure: {}", reason.trim()));
+        }
+    }
+    if let Some(error) = response.get("error").and_then(|value| value.as_str()) {
+        if !error.trim().is_empty() {
+            notes.push(format!("docker authoring error: {}", error.trim()));
+        }
+    }
+
+    let docker_plan = parse_authored_docker_plan_response(&response);
+    let docker_plan_status = parse_docker_plan_status(&response, &docker_plan);
+    let prompts_issued = response
+        .get("prompts_issued")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(1) as usize;
+
+    DockerPlanResult {
+        docker_plan,
+        docker_plan_status,
+        notes,
+        prompts_issued,
+        llm_duration_ms: llm_started.elapsed().as_millis(),
     }
 }
 // ---------------------------------------------------------------------------

@@ -2405,6 +2405,42 @@ fn phase26_intake_preserves_failure_class() {
     assert_eq!(intake_failure.llm_only_behavior, "fail");
 }
 
+#[test]
+fn phase27_author_preserves_authored_docker_plan() {
+    let response = serde_json::json!({
+        "docker_plan": {
+            "plan_version": "1",
+            "base_image": "python:3.11-slim",
+            "system_packages": ["libxml2-dev", "libxslt1-dev"],
+            "environment_variables": ["PIP_DEFAULT_TIMEOUT=100"],
+            "working_directory": "/app",
+            "command": ["python", "/app/smoke_test.py"],
+            "smoke_strategy": {
+                "mode": "import",
+                "import_targets": ["scrapy"],
+                "commands": [],
+                "rationale": "Verify imports."
+            },
+            "rationale": "Install build deps for lxml-backed validation.",
+            "section_confidence": {
+                "base_image": 1.0,
+                "system_packages": 0.84
+            },
+            "authorship": "llm-authored",
+            "deterministic_fallback_sections": []
+        }
+    });
+
+    let docker_plan =
+        apdr::resolver::tier3_llm::parse_authored_docker_plan_response(&response)
+            .expect("expected authored docker plan");
+
+    assert_eq!(docker_plan.base_image, "python:3.11-slim");
+    assert_eq!(docker_plan.system_packages.len(), 2);
+    assert_eq!(docker_plan.command, vec!["python", "/app/smoke_test.py"]);
+    assert_eq!(docker_plan.smoke_strategy.import_targets, vec!["scrapy"]);
+}
+
 fn phase26_truth_fixture_result(output_name: &str) -> apdr::ResolveResult {
     apdr::ResolveResult {
         snippet_path: PathBuf::from("snippet.py"),
@@ -2472,6 +2508,28 @@ fn phase26_truth_fixture_result(output_name: &str) -> apdr::ResolveResult {
             deterministic_fallback_sections: Vec::new(),
         }),
         authored_plan_status: "available".to_string(),
+        docker_plan: Some(apdr::AuthoredDockerPlan {
+            plan_version: "1".to_string(),
+            base_image: "python:3.11-slim".to_string(),
+            system_packages: vec!["libxml2-dev".to_string()],
+            environment_variables: vec!["PIP_DEFAULT_TIMEOUT=100".to_string()],
+            working_directory: "/app".to_string(),
+            command: vec!["python".to_string(), "/app/smoke_test.py".to_string()],
+            smoke_strategy: apdr::SmokeStrategy {
+                mode: "import".to_string(),
+                import_targets: vec!["sklearn".to_string()],
+                commands: Vec::new(),
+                rationale: "Verify imports.".to_string(),
+            },
+            rationale: "Install build helpers before validation.".to_string(),
+            section_confidence: std::collections::BTreeMap::from([
+                ("base_image".to_string(), 1.0),
+                ("system_packages".to_string(), 0.8),
+            ]),
+            authorship: "llm-authored".to_string(),
+            deterministic_fallback_sections: Vec::new(),
+        }),
+        docker_plan_status: "available".to_string(),
         intake_failure: Some(apdr::IntakeFailureRecord {
             failure_class: "schema-validation-failure".to_string(),
             reason: "LLM package-resolution call returned no output.".to_string(),
@@ -2516,6 +2574,26 @@ fn phase26_truth_write_outputs_include_case_plan_and_intake_failure_artifacts() 
 }
 
 #[test]
+fn phase27_artifact_write_outputs_include_docker_plan_artifact() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase27-truth-artifacts");
+    let result = phase26_truth_fixture_result("phase27-truth-artifacts");
+
+    if output_dir.exists() {
+        std::fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    let (_requirements_path, _report_path) = result.write_outputs(&output_dir).unwrap();
+
+    let docker_plan = std::fs::read_to_string(output_dir.join("docker-plan.json")).unwrap();
+
+    assert!(docker_plan.contains("\"base_image\": \"python:3.11-slim\""));
+    assert!(docker_plan.contains("\"authorship\": \"llm-authored\""));
+
+    std::fs::remove_dir_all(output_dir).unwrap();
+}
+
+#[test]
 fn phase26_truth_summary_lines_include_authorship_metadata() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output_dir = tool_root.join("target/phase26-truth-summary");
@@ -2529,6 +2607,65 @@ fn phase26_truth_summary_lines_include_authorship_metadata() {
     assert!(summary.contains("AUTHORED_PLAN_AUTHORSHIP=llm-authored"));
     assert!(summary.contains("INTAKE_FAILURE_CLASS=schema-validation-failure"));
     assert!(summary.contains("INTAKE_FAILURE_PATH="));
+}
+
+#[test]
+fn phase27_artifact_summary_lines_include_docker_plan_metadata() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase27-truth-summary");
+    let result = phase26_truth_fixture_result("phase27-truth-summary");
+    let requirements_path = output_dir.join("requirements.txt");
+    let report_path = output_dir.join("report.txt");
+    let summary = result.summary_lines(&requirements_path, &report_path);
+
+    assert!(summary.contains("DOCKER_PLAN_STATUS=available"));
+    assert!(summary.contains("DOCKER_PLAN_PATH="));
+    assert!(summary.contains("DOCKER_PLAN_AUTHORSHIP=llm-authored"));
+    assert!(summary.contains("DOCKER_PLAN_FALLBACK_SECTIONS="));
+}
+
+#[test]
+fn phase27_handoff_summary_lines_include_executed_docker_truth() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase27-handoff-summary");
+    let mut result = phase26_truth_fixture_result("phase27-handoff-summary");
+    result.validation.executed_dockerfile_path = Some(
+        output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed")
+            .display()
+            .to_string(),
+    );
+    result.validation.docker_build_command_path = Some(
+        output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-build.command.txt")
+            .display()
+            .to_string(),
+    );
+    result.validation.docker_run_command_path = Some(
+        output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-run.command.txt")
+            .display()
+            .to_string(),
+    );
+    result.validation.executed_image_ref = Some("sha256:deadbeef".to_string());
+    result.validation.image_handoff_verified = true;
+    result.validation.image_inspect_path = Some(
+        output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-image.inspect.txt")
+            .display()
+            .to_string(),
+    );
+    let requirements_path = output_dir.join("requirements.txt");
+    let report_path = output_dir.join("report.txt");
+    let summary = result.summary_lines(&requirements_path, &report_path);
+
+    assert!(summary.contains("AUTHORED_DOCKERFILE_PATH="));
+    assert!(summary.contains("EXECUTED_DOCKERFILE_PATH="));
+    assert!(summary.contains("DOCKER_BUILD_COMMAND_PATH="));
+    assert!(summary.contains("DOCKER_RUN_COMMAND_PATH="));
+    assert!(summary.contains("EXECUTED_IMAGE_REF=sha256:deadbeef"));
+    assert!(summary.contains("IMAGE_HANDOFF_VERIFIED=true"));
+    assert!(summary.contains("IMAGE_INSPECT_PATH="));
 }
 
 #[test]

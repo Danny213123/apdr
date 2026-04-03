@@ -122,6 +122,10 @@ use self::agent_backend::{
     parse_agent_result, LlmValidationRoute,
 };
 #[cfg(test)]
+use self::docker_backend::{
+    candidate_image_refs_for_verification, should_attempt_docker_agent_fallback,
+};
+#[cfg(test)]
 use self::env_backend::prepare_env_validation_attempt;
 #[cfg(test)]
 use self::env_backend::validated_env_archive_path;
@@ -617,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn phase22_policy_llm_env_first_control_preserved() {
+    fn phase22_policy_legacy_env_first_input_normalizes_to_docker_first() {
         let mut config = ResolveConfig::for_tool_root(Path::new("."));
         config.llm_validation_policy = "env-first".to_string();
 
@@ -628,7 +632,7 @@ mod tests {
                 "requests==2.31.0",
                 DockerValidationAvailability::Available
             ),
-            LlmValidationRoute::EnvFirstControl
+            LlmValidationRoute::DockerFirst
         );
     }
 
@@ -847,5 +851,39 @@ mod tests {
             .path()
             .join("out/.apdr-debug/docker-bypass.txt")
             .exists());
+    }
+
+    #[test]
+    fn llm_only_docker_validation_skips_agent_first_hop() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
+        config.allow_llm = true;
+        config.llm_only_mode = true;
+
+        assert!(!should_attempt_docker_agent_fallback(&config));
+    }
+
+    #[test]
+    fn regular_docker_validation_can_still_attempt_agent_fallback() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.validation_backend = VALIDATION_BACKEND_DOCKER.to_string();
+        config.allow_llm = true;
+        config.llm_only_mode = false;
+
+        assert!(should_attempt_docker_agent_fallback(&config));
+    }
+
+    #[test]
+    fn phase27_handoff_verification_candidates_include_iid_and_registry_variant() {
+        let candidates = candidate_image_refs_for_verification(
+            "apdr-validate:py3_11-deadbeef",
+            Some("sha256:1234abcd"),
+        );
+
+        assert_eq!(candidates[0], "apdr-validate:py3_11-deadbeef");
+        assert!(candidates
+            .iter()
+            .any(|item| item == "docker.io/library/apdr-validate:py3_11-deadbeef"));
+        assert!(candidates.iter().any(|item| item == "sha256:1234abcd"));
     }
 }

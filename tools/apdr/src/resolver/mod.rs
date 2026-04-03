@@ -47,9 +47,10 @@ use crate::docker;
 use crate::parser;
 use crate::recovery::classifier;
 use crate::{
-    AuthoredCasePlan, AuthoredPlanPackageMapping, IntakeFailureRecord, ResolutionReport,
-    ResolveConfig, ResolveResult, ResolvedDependency, SmokeStrategy, SolvabilityAssessment,
-    UnsolvableModuleRecord, ValidationSummary, VALIDATION_BACKEND_LLM,
+    AuthoredCasePlan, AuthoredDockerPlan, AuthoredPlanPackageMapping, IntakeFailureRecord,
+    ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, SmokeStrategy,
+    SolvabilityAssessment, UnsolvableModuleRecord, ValidationSummary,
+    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_LLM,
 };
 
 pub fn resolve_path(
@@ -79,6 +80,8 @@ pub fn resolve_path(
     let mut pre_validation_llm_duration_ms = 0u128;
     let mut authored_plan = None;
     let mut authored_plan_status = "not-requested".to_string();
+    let mut docker_plan = None;
+    let mut docker_plan_status = "not-requested".to_string();
     let mut intake_failure = None;
     write_parse_artifacts(
         &config.output_dir,
@@ -124,6 +127,8 @@ pub fn resolve_path(
                 build_image_id: None,
                 authored_plan: None,
                 authored_plan_status: "not-requested".to_string(),
+                docker_plan: None,
+                docker_plan_status: "not-requested".to_string(),
                 intake_failure: None,
                 validation,
                 resolution_report: report,
@@ -182,6 +187,8 @@ pub fn resolve_path(
                 build_image_id: None,
                 authored_plan: None,
                 authored_plan_status: "not-requested".to_string(),
+                docker_plan: None,
+                docker_plan_status: "not-requested".to_string(),
                 intake_failure: None,
                 validation,
                 resolution_report: report,
@@ -238,6 +245,8 @@ pub fn resolve_path(
                 build_image_id: None,
                 authored_plan: None,
                 authored_plan_status: "not-requested".to_string(),
+                docker_plan: None,
+                docker_plan_status: "not-requested".to_string(),
                 intake_failure: None,
                 validation,
                 resolution_report: report,
@@ -344,6 +353,8 @@ pub fn resolve_path(
                     build_image_id: None,
                     authored_plan: None,
                     authored_plan_status: "not-requested".to_string(),
+                    docker_plan: None,
+                    docker_plan_status: "not-requested".to_string(),
                     intake_failure: None,
                     validation,
                     resolution_report: report,
@@ -518,10 +529,42 @@ pub fn resolve_path(
             build_image_id: None,
             authored_plan: None,
             authored_plan_status: "unusable".to_string(),
+            docker_plan: None,
+            docker_plan_status: "not-requested".to_string(),
             intake_failure: Some(failure),
             validation,
             resolution_report: report,
         });
+    }
+
+    if let Some(plan) = authored_plan.as_ref() {
+        if should_author_docker_plan(config) {
+            let docker_stage =
+                tier3_llm::author_docker_plan(plan, config, &selected_python);
+            report.llm_calls += docker_stage.prompts_issued;
+            pre_validation_llm_duration_ms += docker_stage.llm_duration_ms;
+            report.notes.extend(docker_stage.notes);
+            docker_plan = docker_stage.docker_plan;
+            docker_plan_status = docker_stage.docker_plan_status;
+        }
+        if docker_plan.is_none() {
+            docker_plan = Some(synthesize_deterministic_authored_docker_plan(
+                plan,
+                &selected_python,
+            ));
+            docker_plan_status = "deterministic-fallback".to_string();
+        }
+    }
+    if let Some(plan) = docker_plan.as_ref() {
+        let docker_plan_path = config.output_dir.join("docker-plan.json");
+        let docker_plan_json =
+            serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+        fs::write(&docker_plan_path, docker_plan_json)?;
+        let authored_dockerfile_path = config.output_dir.join("Dockerfile.authored");
+        fs::write(
+            &authored_dockerfile_path,
+            docker::templates::authored_docker_template(plan, &selected_python, &[]),
+        )?;
     }
 
     dedupe_dependencies(&mut resolved);
@@ -944,6 +987,8 @@ pub fn resolve_path(
         build_image_id: validation.build_image_id.clone(),
         authored_plan,
         authored_plan_status,
+        docker_plan,
+        docker_plan_status,
         intake_failure,
         validation,
         resolution_report: report,
@@ -1063,6 +1108,40 @@ fn synthesize_deterministic_authored_plan(
         section_confidence,
         authorship: "deterministic-fallback".to_string(),
         deterministic_fallback_sections,
+    }
+}
+
+fn should_author_docker_plan(config: &ResolveConfig) -> bool {
+    config.llm_only_mode
+        || config.allow_llm
+        || matches!(
+            config.validation_backend(),
+            VALIDATION_BACKEND_DOCKER | VALIDATION_BACKEND_LLM
+        )
+}
+
+fn synthesize_deterministic_authored_docker_plan(
+    authored_plan: &AuthoredCasePlan,
+    selected_python: &str,
+) -> AuthoredDockerPlan {
+    let mut section_confidence = BTreeMap::new();
+    section_confidence.insert("base_image".to_string(), 1.0);
+    section_confidence.insert("system_packages".to_string(), 1.0);
+    section_confidence.insert("smoke_strategy".to_string(), 1.0);
+
+    AuthoredDockerPlan {
+        plan_version: "1".to_string(),
+        base_image: format!("python:{selected_python}-slim"),
+        system_packages: authored_plan.system_dependency_hints.clone(),
+        environment_variables: Vec::new(),
+        working_directory: "/app".to_string(),
+        command: vec!["python".to_string(), "/app/smoke_test.py".to_string()],
+        smoke_strategy: authored_plan.smoke_strategy.clone(),
+        rationale: "Docker plan synthesized deterministically from the authored case plan."
+            .to_string(),
+        section_confidence,
+        authorship: "deterministic-fallback".to_string(),
+        deterministic_fallback_sections: vec!["phase26-case-plan".to_string()],
     }
 }
 

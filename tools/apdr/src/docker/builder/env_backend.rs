@@ -1215,7 +1215,7 @@ pub(super) fn attempt_metadata(
     run_duration_ms: Option<u128>,
 ) -> String {
     format!(
-        "attempt_index: {}\npython_version: {}\nvalidation_backend: {}\nstatus: {}\nenv_label: {}\nenv_dir: {}\nenv_create_duration_ms: {}\nbuild_key: {}\nused_cached_env: {}\nvalidated_env_cache_hit: {}\nused_cached_lockfile: {}\nerror_type: {}\nconflict_class: {}\nfix_applied: {}\nbuild_command: {}\nbuild_exit_code: {}\nbuild_duration_ms: {}\nrun_command: {}\nrun_exit_code: {}\nrun_duration_ms: {}\nartifact_dir: {}\n",
+        "attempt_index: {}\npython_version: {}\nvalidation_backend: {}\nstatus: {}\nenv_label: {}\nenv_dir: {}\nenv_create_duration_ms: {}\nbuild_key: {}\nused_cached_env: {}\nvalidated_env_cache_hit: {}\nused_cached_lockfile: {}\nerror_type: {}\nconflict_class: {}\nfix_applied: {}\nbuild_command: {}\nbuild_exit_code: {}\nbuild_duration_ms: {}\nrun_command: {}\nrun_exit_code: {}\nrun_duration_ms: {}\nartifact_dir: {}\nexecuted_dockerfile_path: {}\ndocker_build_command_path: {}\ndocker_run_command_path: {}\nexecuted_image_ref: {}\nimage_handoff_verified: {}\nimage_inspect_path: {}\n",
         attempt.attempt_index,
         attempt.python_version,
         if attempt.validation_backend.is_empty() { "env" } else { &attempt.validation_backend },
@@ -1243,5 +1243,11 @@ pub(super) fn attempt_metadata(
             .map(|value| value.to_string())
             .unwrap_or_else(|| "--".to_string()),
         attempt.artifact_dir.as_deref().unwrap_or("--"),
+        attempt.executed_dockerfile_path.as_deref().unwrap_or("--"),
+        attempt.docker_build_command_path.as_deref().unwrap_or("--"),
+        attempt.docker_run_command_path.as_deref().unwrap_or("--"),
+        attempt.executed_image_ref.as_deref().unwrap_or("--"),
+        attempt.image_handoff_verified,
+        attempt.image_inspect_path.as_deref().unwrap_or("--"),
     )
 }

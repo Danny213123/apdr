@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -10,14 +11,26 @@ import time
 from pathlib import Path
 
 
-def generate_dockerfile(python_version: str, system_deps: list[str]) -> str:
-    """Generate a Dockerfile string. Mirrors templates.rs."""
+def _base_system_packages(python_version: str) -> list[str]:
     packages = ["build-essential"]
     if python_version.startswith("2."):
         packages.append("python-dev")
     else:
         packages.append("python3-dev")
     packages.append("pkg-config")
+    return packages
+
+
+def _render_dockerfile(
+    *,
+    base_image: str,
+    python_version: str,
+    system_deps: list[str],
+    environment_variables: list[str],
+    working_directory: str,
+    command: list[str],
+) -> str:
+    packages = _base_system_packages(python_version)
     for dep in system_deps:
         if dep not in packages:
             packages.append(dep)
@@ -38,18 +51,60 @@ def generate_dockerfile(python_version: str, system_deps: list[str]) -> str:
             "&& rm -rf /var/lib/apt/lists/*"
         )
 
+    env_block = "".join(f"ENV {item}\n" for item in environment_variables if item.strip())
+    cmd = json.dumps(command or ["python", "/app/smoke_test.py"])
+
     return (
         f"# syntax=docker/dockerfile:1\n"
-        f"FROM python:{python_version}-slim\n"
-        f"WORKDIR /app\n"
+        f"FROM {base_image}\n"
+        f"WORKDIR {working_directory or '/app'}\n"
         f"{apt_install}\n"
+        f"{env_block}"
         f"COPY requirements.txt /app/requirements.txt\n"
         f"RUN --mount=type=cache,target=/root/.cache/pip "
         f"python -m pip install --upgrade pip setuptools wheel && "
         f"pip install --default-timeout=100 -r /app/requirements.txt\n"
         f"COPY smoke_test.py /app/smoke_test.py\n"
         f"COPY snippet.py /app/snippet.py\n"
-        f'CMD ["python", "/app/smoke_test.py"]\n'
+        f"CMD {cmd}\n"
+    )
+
+
+def generate_dockerfile(python_version: str, system_deps: list[str]) -> str:
+    """Generate a Dockerfile string. Mirrors templates.rs."""
+    return _render_dockerfile(
+        base_image=f"python:{python_version}-slim",
+        python_version=python_version,
+        system_deps=system_deps,
+        environment_variables=[],
+        working_directory="/app",
+        command=["python", "/app/smoke_test.py"],
+    )
+
+
+def generate_dockerfile_from_plan(
+    python_version: str,
+    system_deps: list[str],
+    docker_plan: dict | None,
+) -> str:
+    """Generate a Dockerfile string from an authored Docker plan when available."""
+    if not docker_plan:
+        return generate_dockerfile(python_version, system_deps)
+    merged_system_deps = list(docker_plan.get("system_packages") or [])
+    for dep in system_deps:
+        if dep not in merged_system_deps:
+            merged_system_deps.append(dep)
+    return _render_dockerfile(
+        base_image=str(docker_plan.get("base_image") or f"python:{python_version}-slim"),
+        python_version=python_version,
+        system_deps=merged_system_deps,
+        environment_variables=[
+            str(item).strip()
+            for item in (docker_plan.get("environment_variables") or [])
+            if str(item).strip()
+        ],
+        working_directory=str(docker_plan.get("working_directory") or "/app"),
+        command=[str(item) for item in (docker_plan.get("command") or ["python", "/app/smoke_test.py"])],
     )
 
 

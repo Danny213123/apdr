@@ -530,6 +530,17 @@ class TestRunContract(unittest.TestCase):
                         "validation_path": "env->docker",
                         "requested_llm_validation_policy": "docker-first",
                         "llm_validation_route": "env-first-docker-bypass",
+                        "docker_plan_status": "available",
+                        "docker_plan_path": "cases/routed/docker-plan.json",
+                        "docker_plan_authorship": "llm-authored",
+                        "docker_plan_fallback_sections": "phase26-case-plan",
+                        "authored_dockerfile_path": "cases/routed/Dockerfile.authored",
+                        "executed_dockerfile_path": "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed",
+                        "docker_build_command_path": "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-build.command.txt",
+                        "docker_run_command_path": "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-run.command.txt",
+                        "executed_image_ref": "sha256:abc123",
+                        "image_handoff_verified": "true",
+                        "image_inspect_path": "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-image.inspect.txt",
                         "docker_bypass_reason": "docker cli unavailable",
                         "docker_bypass_note": "cases/routed/.apdr-debug/docker-bypass.txt",
                         "debug_dir": "cases/routed/.apdr-debug",
@@ -558,6 +569,29 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(row["requestedLlmValidationPolicy"], "docker-first")
             self.assertEqual(row["llmValidationRoute"], "env-first-docker-bypass")
             self.assertEqual(row["dockerStatus"], "bypassed")
+            self.assertEqual(row["dockerPlanStatus"], "available")
+            self.assertEqual(row["dockerPlanPath"], "cases/routed/docker-plan.json")
+            self.assertEqual(row["dockerPlanAuthorship"], "llm-authored")
+            self.assertEqual(row["dockerPlanFallbackSections"], ["phase26-case-plan"])
+            self.assertEqual(row["authoredDockerfilePath"], "cases/routed/Dockerfile.authored")
+            self.assertEqual(
+                row["executedDockerfilePath"],
+                "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed",
+            )
+            self.assertEqual(
+                row["dockerBuildCommandPath"],
+                "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-build.command.txt",
+            )
+            self.assertEqual(
+                row["dockerRunCommandPath"],
+                "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-run.command.txt",
+            )
+            self.assertEqual(row["executedImageRef"], "sha256:abc123")
+            self.assertTrue(row["imageHandoffVerified"])
+            self.assertEqual(
+                row["imageInspectPath"],
+                "cases/routed/.apdr-debug/attempts/attempt-001-py-3_11/docker-image.inspect.txt",
+            )
             self.assertEqual(row["dockerBypassReason"], "docker cli unavailable")
             self.assertEqual(
                 row["dockerBypassNote"],
