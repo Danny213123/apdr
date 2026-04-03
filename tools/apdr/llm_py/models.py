@@ -60,6 +60,18 @@ class IntakeFailureRecord(BaseModel):
     llm_only_behavior: str = "fail"
 
 
+class RecoveryArtifactPointers(BaseModel):
+    authored_plan_path: str = ""
+    docker_plan_path: str = ""
+    intake_failure_path: str = ""
+    combined_log_path: str = ""
+    executed_dockerfile_path: str = ""
+    docker_build_command_path: str = ""
+    docker_run_command_path: str = ""
+    image_inspect_path: str = ""
+    executed_image_ref: str = ""
+
+
 class ResolutionRequest(BaseModel):
     """JSON-line request sent from Rust to Python over stdin."""
 
@@ -78,6 +90,9 @@ class ResolutionRequest(BaseModel):
     error_log: str = ""
     error_type: str = ""
     previous_attempts: list[list[str]] = Field(default_factory=list)
+    docker_plan: AuthoredDockerPlan | None = None
+    intake_failure: IntakeFailureRecord | None = None
+    recovery_artifacts: RecoveryArtifactPointers | None = None
 
     # For version
     package_name: str = ""
@@ -131,6 +146,9 @@ class ResolutionResponse(BaseModel):
     correct_package: str = ""
     add_package: str = ""       # new transitive dep to add (e.g. "protobuf==3.20.3")
     remove_package: str = ""    # package to remove entirely (local module / wrong package)
+    recovery_outcome: str = ""
+    failure_class: str = ""
+    diagnostic_preview: str = ""
 
     # For version
     version: str = ""

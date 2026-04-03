@@ -11,7 +11,7 @@ use crate::context;
 use crate::resolver::{kgraph_db, pypi_client, version_sampler};
 use crate::{
     AuthoredCasePlan, AuthoredDockerPlan, IntakeFailureRecord, ParseResult, ResolveConfig,
-    ResolvedDependency, SolvabilityAssessment,
+    ResolvedDependency, SolvabilityAssessment, ValidationAttempt,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -786,6 +786,7 @@ pub fn single_package_hint(
 
 /// Recovery hint from LLM: swap a package and/or add a new transitive dep.
 pub struct RecoveryHint {
+    pub fix_possible: bool,
     pub wrong_pkg: String,
     pub correct_pkg: String,
     pub version: Option<String>,
@@ -793,6 +794,9 @@ pub struct RecoveryHint {
     pub add_package: Option<(String, Option<String>)>,
     /// Optional package to remove entirely (local module / wrong package).
     pub remove_pkg: Option<String>,
+    pub recovery_outcome: String,
+    pub failure_class: String,
+    pub diagnostic_preview: String,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -805,6 +809,10 @@ pub fn recovery_package_hint(
     python_version: &str,
     error_type: &str,
     previous_attempts: &[(String, String, String)],
+    authored_plan: Option<&AuthoredCasePlan>,
+    docker_plan: Option<&AuthoredDockerPlan>,
+    intake_failure: Option<&IntakeFailureRecord>,
+    latest_attempt: Option<&ValidationAttempt>,
 ) -> Option<RecoveryHint> {
     // Phase 9: skip LLM recovery when the module already has a deterministic
     // targeted_recovery stop-reason classification (removed-runtime, project-local,
@@ -843,19 +851,93 @@ pub fn recovery_package_hint(
     request["python_version"] = python_version.into();
     request["error_type"] = error_type.into();
     request["previous_attempts"] = serde_json::json!(attempts_json);
+    request["authored_plan"] =
+        serde_json::to_value(authored_plan).unwrap_or(serde_json::Value::Null);
+    request["docker_plan"] =
+        serde_json::to_value(docker_plan).unwrap_or(serde_json::Value::Null);
+    request["intake_failure"] =
+        serde_json::to_value(intake_failure).unwrap_or(serde_json::Value::Null);
+    request["recovery_artifacts"] = serde_json::json!({
+        "authored_plan_path": authored_plan
+            .map(|_| config.output_dir.join("case-plan.json").display().to_string())
+            .unwrap_or_default(),
+        "docker_plan_path": docker_plan
+            .map(|_| config.output_dir.join("docker-plan.json").display().to_string())
+            .unwrap_or_default(),
+        "intake_failure_path": intake_failure
+            .map(|_| config.output_dir.join("intake-failure.json").display().to_string())
+            .unwrap_or_default(),
+        "combined_log_path": latest_attempt
+            .and_then(|attempt| attempt.combined_log_path.as_deref())
+            .unwrap_or(""),
+        "executed_dockerfile_path": latest_attempt
+            .and_then(|attempt| attempt.executed_dockerfile_path.as_deref())
+            .unwrap_or(""),
+        "docker_build_command_path": latest_attempt
+            .and_then(|attempt| attempt.docker_build_command_path.as_deref())
+            .unwrap_or(""),
+        "docker_run_command_path": latest_attempt
+            .and_then(|attempt| attempt.docker_run_command_path.as_deref())
+            .unwrap_or(""),
+        "image_inspect_path": latest_attempt
+            .and_then(|attempt| attempt.image_inspect_path.as_deref())
+            .unwrap_or(""),
+        "executed_image_ref": latest_attempt
+            .and_then(|attempt| attempt.executed_image_ref.as_deref())
+            .unwrap_or(""),
+    });
 
     persist_trace(config, "recovery-fix", &request, None);
 
-    let response = call_python(&request)?;
+    let response = match call_python(&request) {
+        Some(response) => response,
+        None => {
+            return Some(RecoveryHint {
+                fix_possible: false,
+                wrong_pkg: String::new(),
+                correct_pkg: String::new(),
+                version: None,
+                add_package: None,
+                remove_pkg: None,
+                recovery_outcome: "no-output".to_string(),
+                failure_class: "empty-output".to_string(),
+                diagnostic_preview: "LLM recovery call returned no output.".to_string(),
+            });
+        }
+    };
     persist_trace(config, "recovery-fix", &request, Some(&response));
 
     let fix_possible = response
         .get("fix_possible")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    if !fix_possible {
-        return None;
+    let mut recovery_outcome = response
+        .get("recovery_outcome")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if recovery_outcome.is_empty() {
+        recovery_outcome = if fix_possible {
+            "applied".to_string()
+        } else {
+            "abstained".to_string()
+        };
     }
+    let failure_class = response
+        .get("failure_class")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let diagnostic_preview = response
+        .get("diagnostic_preview")
+        .and_then(|v| v.as_str())
+        .or_else(|| response.get("failure_reason").and_then(|v| v.as_str()))
+        .or_else(|| response.get("error").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     let wrong_pkg = response
         .get("wrong_package")
@@ -895,6 +977,20 @@ pub fn recovery_package_hint(
         .filter(|s| !s.is_empty())
         .map(|s| s.trim().to_string());
 
+    if !fix_possible {
+        return Some(RecoveryHint {
+            fix_possible: false,
+            wrong_pkg,
+            correct_pkg,
+            version: llm_version,
+            add_package,
+            remove_pkg,
+            recovery_outcome,
+            failure_class,
+            diagnostic_preview,
+        });
+    }
+
     let has_swap = !wrong_pkg.is_empty() && !correct_pkg.is_empty() && wrong_pkg != correct_pkg;
     let has_version_pin = !wrong_pkg.is_empty()
         && !correct_pkg.is_empty()
@@ -902,14 +998,45 @@ pub fn recovery_package_hint(
         && llm_version.is_some();
 
     if !has_swap && !has_version_pin && add_package.is_none() && remove_pkg.is_none() {
-        return None;
+        return Some(RecoveryHint {
+            fix_possible: false,
+            wrong_pkg,
+            correct_pkg,
+            version: llm_version,
+            add_package,
+            remove_pkg,
+            recovery_outcome: "abstained".to_string(),
+            failure_class,
+            diagnostic_preview,
+        });
     }
 
     let version = if has_swap {
         // For package swaps, verify the new package exists on PyPI and pick a version
         let versions = pypi_client::compatible_versions(store, &correct_pkg, python_version);
         if versions.is_empty() && add_package.is_none() {
-            return None;
+            let no_version_detail = if diagnostic_preview.is_empty() {
+                format!(
+                    "No compatible versions found for replacement package `{correct_pkg}` on Python {python_version}."
+                )
+            } else {
+                diagnostic_preview.clone()
+            };
+            return Some(RecoveryHint {
+                fix_possible: false,
+                wrong_pkg,
+                correct_pkg,
+                version: None,
+                add_package,
+                remove_pkg,
+                recovery_outcome: "abstained".to_string(),
+                failure_class: if failure_class.is_empty() {
+                    "version-not-found".to_string()
+                } else {
+                    failure_class
+                },
+                diagnostic_preview: no_version_detail,
+            });
         }
         if !versions.is_empty() {
             version_sampler::equally_distanced_sample(&versions, &[])
@@ -924,11 +1051,15 @@ pub fn recovery_package_hint(
     };
 
     Some(RecoveryHint {
+        fix_possible: true,
         wrong_pkg,
         correct_pkg,
         version,
         add_package,
         remove_pkg,
+        recovery_outcome,
+        failure_class,
+        diagnostic_preview,
     })
 }
 

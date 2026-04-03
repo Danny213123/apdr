@@ -215,6 +215,29 @@ pub struct ValidationAttempt {
     pub image_inspect_path: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RecoveryAttemptRecord {
+    pub attempt_index: usize,
+    pub recovery_outcome: String,
+    pub failure_class: String,
+    pub diagnostic_preview: String,
+    pub authored_plan_path: String,
+    pub docker_plan_path: String,
+    pub intake_failure_path: String,
+    pub combined_log_path: String,
+    pub executed_dockerfile_path: String,
+    pub docker_build_command_path: String,
+    pub docker_run_command_path: String,
+    pub image_inspect_path: String,
+    pub executed_image_ref: String,
+    pub wrong_package: String,
+    pub correct_package: String,
+    pub version: String,
+    pub add_package: String,
+    pub remove_package: String,
+    pub notes: Vec<String>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ValidationSummary {
     pub succeeded: bool,
@@ -225,10 +248,13 @@ pub struct ValidationSummary {
     pub fallback_reason: Option<String>,
     pub failure_bucket: String,
     pub failure_family: Option<String>,
+    pub failure_truth_class: Option<String>,
+    pub failure_truth_detail: Option<String>,
     pub root_cause: Option<String>,
     pub missing_module: Option<String>,
     pub failing_package: Option<String>,
     pub repair_strategy_applied: Option<String>,
+    pub recovery_outcome: Option<String>,
     pub skip_candidate: bool,
     pub escalated_backend: Option<String>,
     pub validation_path: Option<String>,
@@ -256,6 +282,8 @@ pub struct ValidationSummary {
     pub image_inspect_path: Option<String>,
     pub lockfile_key: Option<String>,
     pub build_cache_key: Option<String>,
+    pub recovery_attempts_path: Option<String>,
+    pub recovery_attempts: Vec<RecoveryAttemptRecord>,
     pub attempts: Vec<ValidationAttempt>,
     pub iteration_history: Vec<String>,
     pub debug_dir: Option<String>,
@@ -688,6 +716,14 @@ impl ResolveResult {
                 serde_json::to_string_pretty(intake_failure).map_err(io::Error::other)?;
             fs::write(&intake_failure_path, failure_json)?;
         }
+        if !self.validation.recovery_attempts.is_empty() {
+            let recovery_attempts_path = output_dir.join("recovery-attempts.json");
+            let recovery_attempts_json = serde_json::to_string_pretty(
+                &self.validation.recovery_attempts,
+            )
+            .map_err(io::Error::other)?;
+            fs::write(&recovery_attempts_path, recovery_attempts_json)?;
+        }
         fs::write(&requirements_path, &self.requirements_txt)?;
         fs::write(&report_path, self.report_text())?;
         Ok((requirements_path, report_path))
@@ -752,6 +788,11 @@ impl ResolveResult {
         } else {
             "--"
         };
+        let recovery_attempts_path = if self.validation.recovery_attempts.is_empty() {
+            "--"
+        } else {
+            "recovery-attempts.json"
+        };
         let resolved_rows = self
             .resolved
             .iter()
@@ -813,7 +854,7 @@ impl ResolveResult {
         };
 
         format!(
-            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nauthored_plan_status: {}\nauthored_plan_path: {}\nauthored_plan_authorship: {}\nauthored_plan_fallback_sections: {}\ndocker_plan_status: {}\ndocker_plan_path: {}\ndocker_plan_authorship: {}\ndocker_plan_fallback_sections: {}\nauthored_dockerfile_path: {}\nintake_failure_class: {}\nintake_failure_path: {}\nvalidation_backend: {}\nvalidation_path: {}\nrequested_llm_validation_policy: {}\nllm_validation_route: {}\ndocker_bypass_reason: {}\ndocker_bypass_note: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nfailure_bucket: {}\nfailure_family: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nexecuted_dockerfile_path: {}\ndocker_build_command_path: {}\ndocker_run_command_path: {}\nexecuted_image_ref: {}\nimage_handoff_verified: {}\nimage_inspect_path: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
+            "snippet: {}\npython_version: {}\nsolvability_decision: {}\nsolvability_confidence: {:.2}\nsolvability_reason: {}\nsolvability_source: {}\ncache_hits: {}\nheuristic_hits: {}\nllm_calls: {}\nenv_builds: {}\nretries: {}\nmin_confidence: {:.2}\nmean_confidence: {:.2}\nduration_ms: {}\nsolve_duration_ms: {}\nvalidation_duration_ms: {}\nllm_duration_ms: {}\nenv_create_duration_ms: {}\ninstall_duration_ms: {}\ndocker_startup_duration_ms: {}\nsmoke_duration_ms: {}\nrun_contract_version: {}\nmodel_name: {}\nbase_url: {}\nrun_intent: {}\nexecution_mode: {}\ncache_state: {}\nhost_architecture: {}\napdr_binary_architecture: {}\npython_architecture: {}\nllm_context_window: {}\ninference_policy: {}\nbuild_profile: {}\nauthored_plan_status: {}\nauthored_plan_path: {}\nauthored_plan_authorship: {}\nauthored_plan_fallback_sections: {}\ndocker_plan_status: {}\ndocker_plan_path: {}\ndocker_plan_authorship: {}\ndocker_plan_fallback_sections: {}\nauthored_dockerfile_path: {}\nintake_failure_class: {}\nintake_failure_path: {}\nrecovery_attempts_path: {}\nvalidation_backend: {}\nvalidation_path: {}\nrequested_llm_validation_policy: {}\nllm_validation_route: {}\ndocker_bypass_reason: {}\ndocker_bypass_note: {}\nvalidation_succeeded: {}\nvalidation_status: {}\nvalidation_reason: {}\nfallback_invoked: {}\nfallback_outcome: {}\nfallback_reason: {}\nrecovery_outcome: {}\nfailure_bucket: {}\nfailure_family: {}\nfailure_truth_class: {}\nfailure_truth_detail: {}\nroot_cause: {}\nmissing_module: {}\nfailing_package: {}\nrepair_strategy_applied: {}\nskip_candidate: {}\nescalated_backend: {}\nrepeat_failure_signature: {}\nvalidation_python: {}\nbuild_image_id: {}\nexecuted_dockerfile_path: {}\ndocker_build_command_path: {}\ndocker_run_command_path: {}\nexecuted_image_ref: {}\nimage_handoff_verified: {}\nimage_inspect_path: {}\nlockfile_key: {}\ndebug_dir: {}\nattempts_dir: {}\nllm_trace_dir: {}\ncontext_log: {}\niterations_dir: {}\n\nresolved_dependencies:\n{}\n\nconfig_dependencies:\n{}\n\nunresolved:\n{}\n\nnotes:\n{}\n\nvalidation_attempts:\n{}\n",
             self.snippet_path.display(),
             self.python_version,
             self.solvability
@@ -870,6 +911,7 @@ impl ResolveResult {
             authored_dockerfile_path,
             intake_failure_class,
             intake_failure_path,
+            recovery_attempts_path,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             validation_path.as_deref().unwrap_or("--"),
             self.validation
@@ -908,12 +950,24 @@ impl ResolveResult {
                 .fallback_reason
                 .as_deref()
                 .unwrap_or("--"),
+            self.validation
+                .recovery_outcome
+                .as_deref()
+                .unwrap_or("--"),
             if self.validation.failure_bucket.is_empty() {
                 "--"
             } else {
                 &self.validation.failure_bucket
             },
             self.validation.failure_family.as_deref().unwrap_or("--"),
+            self.validation
+                .failure_truth_class
+                .as_deref()
+                .unwrap_or("--"),
+            self.validation
+                .failure_truth_detail
+                .as_deref()
+                .unwrap_or("--"),
             self.validation.root_cause.as_deref().unwrap_or("--"),
             self.validation.missing_module.as_deref().unwrap_or("--"),
             self.validation.failing_package.as_deref().unwrap_or("--"),
@@ -1088,8 +1142,16 @@ impl ResolveResult {
             .as_ref()
             .map(|_| output_dir.join("intake-failure.json").display().to_string())
             .unwrap_or_default();
+        let recovery_attempts_path = if self.validation.recovery_attempts.is_empty() {
+            String::new()
+        } else {
+            output_dir
+                .join("recovery-attempts.json")
+                .display()
+                .to_string()
+        };
         format!(
-            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nAUTHORED_PLAN_STATUS={}\nAUTHORED_PLAN_PATH={}\nAUTHORED_PLAN_AUTHORSHIP={}\nAUTHORED_PLAN_FALLBACK_SECTIONS={}\nDOCKER_PLAN_STATUS={}\nDOCKER_PLAN_PATH={}\nDOCKER_PLAN_AUTHORSHIP={}\nDOCKER_PLAN_FALLBACK_SECTIONS={}\nAUTHORED_DOCKERFILE_PATH={}\nINTAKE_FAILURE_CLASS={}\nINTAKE_FAILURE_PATH={}\nVALIDATION_BACKEND={}\nVALIDATION_PATH={}\nREQUESTED_LLM_VALIDATION_POLICY={}\nLLM_VALIDATION_ROUTE={}\nDOCKER_BYPASS_REASON={}\nDOCKER_BYPASS_NOTE={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nFAILURE_BUCKET={}\nFAILURE_FAMILY={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nEXECUTED_DOCKERFILE_PATH={}\nDOCKER_BUILD_COMMAND_PATH={}\nDOCKER_RUN_COMMAND_PATH={}\nEXECUTED_IMAGE_REF={}\nIMAGE_HANDOFF_VERIFIED={}\nIMAGE_INSPECT_PATH={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
+            "PYTHON_VERSION={}\nREQUIREMENTS_PATH={}\nREPORT_PATH={}\nRESOLVED_COUNT={}\nUNRESOLVED_COUNT={}\nSOLVABILITY_DECISION={}\nSOLVABILITY_CONFIDENCE={:.2}\nSOLVABILITY_REASON={}\nSOLVABILITY_SOURCE={}\nLLM_CALLS={}\nENV_BUILDS={}\nRETRIES={}\nSOLVE_DURATION_MS={}\nVALIDATION_DURATION_MS={}\nLLM_DURATION_MS={}\nENV_CREATE_DURATION_MS={}\nINSTALL_DURATION_MS={}\nDOCKER_STARTUP_DURATION_MS={}\nSMOKE_DURATION_MS={}\nRUN_CONTRACT_VERSION={}\nMODEL_NAME={}\nBASE_URL={}\nRUN_INTENT={}\nEXECUTION_MODE={}\nCACHE_STATE={}\nHOST_ARCHITECTURE={}\nAPDR_BINARY_ARCHITECTURE={}\nPYTHON_ARCHITECTURE={}\nLLM_CONTEXT_WINDOW={}\nINFERENCE_POLICY={}\nBUILD_PROFILE={}\nAUTHORED_PLAN_STATUS={}\nAUTHORED_PLAN_PATH={}\nAUTHORED_PLAN_AUTHORSHIP={}\nAUTHORED_PLAN_FALLBACK_SECTIONS={}\nDOCKER_PLAN_STATUS={}\nDOCKER_PLAN_PATH={}\nDOCKER_PLAN_AUTHORSHIP={}\nDOCKER_PLAN_FALLBACK_SECTIONS={}\nAUTHORED_DOCKERFILE_PATH={}\nINTAKE_FAILURE_CLASS={}\nINTAKE_FAILURE_PATH={}\nRECOVERY_ATTEMPTS_PATH={}\nVALIDATION_BACKEND={}\nVALIDATION_PATH={}\nREQUESTED_LLM_VALIDATION_POLICY={}\nLLM_VALIDATION_ROUTE={}\nDOCKER_BYPASS_REASON={}\nDOCKER_BYPASS_NOTE={}\nVALIDATION_SUCCEEDED={}\nVALIDATION_STATUS={}\nVALIDATION_REASON={}\nfallback_invoked={}\nfallback_outcome={}\nfallback_reason={}\nRECOVERY_OUTCOME={}\nFAILURE_BUCKET={}\nFAILURE_FAMILY={}\nFAILURE_TRUTH_CLASS={}\nFAILURE_TRUTH_DETAIL={}\nROOT_CAUSE={}\nMISSING_MODULE={}\nFAILING_PACKAGE={}\nREPAIR_STRATEGY_APPLIED={}\nSKIP_CANDIDATE={}\nESCALATED_BACKEND={}\nREPEAT_FAILURE_SIGNATURE={}\nVALIDATION_PYTHON={}\nBUILD_IMAGE_ID={}\nEXECUTED_DOCKERFILE_PATH={}\nDOCKER_BUILD_COMMAND_PATH={}\nDOCKER_RUN_COMMAND_PATH={}\nEXECUTED_IMAGE_REF={}\nIMAGE_HANDOFF_VERIFIED={}\nIMAGE_INSPECT_PATH={}\nLOCKFILE_KEY={}\nDEBUG_DIR={}\nATTEMPTS_DIR={}\nLLM_TRACE_DIR={}\nCONTEXT_LOG={}\nITERATIONS_DIR={}\n",
             self.python_version,
             requirements_path.display(),
             report_path.display(),
@@ -1144,6 +1206,7 @@ impl ResolveResult {
             authored_dockerfile_path,
             intake_failure_class,
             intake_failure_path,
+            recovery_attempts_path,
             if self.validation.validation_backend.is_empty() { "env" } else { &self.validation.validation_backend },
             validation_path.as_deref().unwrap_or(""),
             self.validation
@@ -1182,8 +1245,20 @@ impl ResolveResult {
                 .fallback_reason
                 .as_deref()
                 .unwrap_or(""),
+            self.validation
+                .recovery_outcome
+                .as_deref()
+                .unwrap_or(""),
             self.validation.failure_bucket.as_str(),
             self.validation.failure_family.as_deref().unwrap_or(""),
+            self.validation
+                .failure_truth_class
+                .as_deref()
+                .unwrap_or(""),
+            self.validation
+                .failure_truth_detail
+                .as_deref()
+                .unwrap_or(""),
             self.validation.root_cause.as_deref().unwrap_or(""),
             self.validation.missing_module.as_deref().unwrap_or(""),
             self.validation.failing_package.as_deref().unwrap_or(""),

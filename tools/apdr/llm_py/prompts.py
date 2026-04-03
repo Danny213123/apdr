@@ -12,6 +12,8 @@ Improvements:
 
 from __future__ import annotations
 
+from typing import Any
+
 # ---------------------------------------------------------------------------
 # #11: Import-pattern taxonomy — teaches underlying PATTERNS, not just examples
 # ---------------------------------------------------------------------------
@@ -259,6 +261,10 @@ correct but needs an older version (e.g. for Python 2.7 compatibility, or to get
 - add_package: (optional) a NEW dependency to add, with version pin, e.g. "protobuf==3.20.3"
 - remove_package: (optional) a package to REMOVE from the resolved list because it's a local module \
 or wrong package that should not be installed at all
+- recovery_outcome: "applied", "abstained", "provider-failure", or "no-output"
+- failure_class: short reason class such as "timeout", "invalid-json", "schema-validation-failure", \
+  "provider-tooling-failure", or "wrong-package"
+- diagnostic_preview: one short line summarizing the key diagnostic or why you abstained
 - reasoning: brief explanation
 
 You can:
@@ -376,6 +382,75 @@ def _extract_failing_package(error_log: str) -> str:
         if m:
             return m.group(1).split("==")[0].split(">=")[0].split("<=")[0]
     return ""
+
+
+def _plan_summary(plan: Any) -> str:
+    if plan is None:
+        return "- none"
+    imports = list(getattr(plan, "extracted_imports", []) or [])
+    mappings = list(getattr(plan, "package_mappings", []) or [])
+    runtime_assumptions = list(getattr(plan, "runtime_assumptions", []) or [])
+    smoke_strategy = getattr(plan, "smoke_strategy", None)
+    smoke_mode = getattr(smoke_strategy, "mode", "") if smoke_strategy else ""
+    smoke_targets = list(getattr(smoke_strategy, "import_targets", []) or []) if smoke_strategy else []
+    unresolved = list(getattr(plan, "unresolved_imports", []) or [])
+    return (
+        f"- extracted_imports: {', '.join(imports) or 'none'}\n"
+        f"- package_mappings: {len(mappings)}\n"
+        f"- unresolved_imports: {', '.join(unresolved) or 'none'}\n"
+        f"- runtime_assumptions: {', '.join(runtime_assumptions) or 'none'}\n"
+        f"- smoke_strategy: mode={smoke_mode or 'none'} targets={', '.join(smoke_targets) or 'none'}"
+    )
+
+
+def _docker_plan_summary(plan: Any) -> str:
+    if plan is None:
+        return "- none"
+    base_image = getattr(plan, "base_image", "") or "none"
+    system_packages = list(getattr(plan, "system_packages", []) or [])
+    env_vars = list(getattr(plan, "environment_variables", []) or [])
+    command = list(getattr(plan, "command", []) or [])
+    return (
+        f"- base_image: {base_image}\n"
+        f"- system_packages: {', '.join(system_packages) or 'none'}\n"
+        f"- environment_variables: {', '.join(env_vars) or 'none'}\n"
+        f"- command: {' '.join(command) or 'none'}"
+    )
+
+
+def _intake_failure_summary(failure: Any) -> str:
+    if failure is None:
+        return "- none"
+    failure_class = getattr(failure, "failure_class", "") or "unknown"
+    reason = getattr(failure, "reason", "") or "none"
+    preview = getattr(failure, "diagnostic_preview", "") or "none"
+    return (
+        f"- failure_class: {failure_class}\n"
+        f"- reason: {reason}\n"
+        f"- diagnostic_preview: {preview}"
+    )
+
+
+def _artifact_pointer_summary(recovery_artifacts: Any) -> str:
+    if recovery_artifacts is None:
+        return "- none"
+    pointer_fields = (
+        "authored_plan_path",
+        "docker_plan_path",
+        "intake_failure_path",
+        "combined_log_path",
+        "executed_dockerfile_path",
+        "docker_build_command_path",
+        "docker_run_command_path",
+        "image_inspect_path",
+        "executed_image_ref",
+    )
+    lines = []
+    for field in pointer_fields:
+        value = str(getattr(recovery_artifacts, field, "") or "").strip()
+        if value:
+            lines.append(f"- {field}: {value}")
+    return "\n".join(lines) if lines else "- none"
 
 
 def _build_error_specific_hint(
@@ -588,6 +663,10 @@ def recovery_user(
     python_version: str,
     error_type: str,
     previous_attempts: list[list[str]],
+    authored_plan: Any = None,
+    docker_plan: Any = None,
+    intake_failure: Any = None,
+    recovery_artifacts: Any = None,
 ) -> str:
     pkg_list = "\n".join(resolved_packages)
 
@@ -616,11 +695,19 @@ def recovery_user(
                 "\nPrevious attempts (DO NOT repeat — try something different):\n"
                 + "\n".join(lines) + "\n"
             )
+    authored_plan_summary = _plan_summary(authored_plan)
+    docker_plan_summary = _docker_plan_summary(docker_plan)
+    intake_failure_summary = _intake_failure_summary(intake_failure)
+    artifact_pointer_summary = _artifact_pointer_summary(recovery_artifacts)
     return (
         f"Target Python version: {python_version}\n"
         f"Error type: {error_type}\n"
         f"{structured_hint}\n"
         f"Currently resolved packages:\n{pkg_list}\n\n"
+        f"Authored case plan:\n{authored_plan_summary}\n\n"
+        f"Authored Docker plan:\n{docker_plan_summary}\n\n"
+        f"Prior intake failure truth:\n{intake_failure_summary}\n\n"
+        f"Executed artifact pointers:\n{artifact_pointer_summary}\n\n"
         f"Installation/import error:\n```\n{log_excerpt}\n```\n\n"
         f"Python snippet imports:\n```python\n{snippet_excerpt}\n```\n"
         f"{history}"

@@ -102,13 +102,53 @@ class RecoveryResult(BaseModel):
     version: str = ""           # specific version pin (e.g. "1.8.3")
     add_package: str = ""       # new transitive dep to add (e.g. "protobuf==3.20.3")
     remove_package: str = ""    # package to remove entirely (local module / wrong package)
+    recovery_outcome: str = ""
+    failure_class: str = ""
+    diagnostic_preview: str = ""
     reasoning: str = ""
+
+
+def _truncate_preview(value: str, limit: int = 240) -> str:
+    text = str(value or "").strip().replace("\n", "\\n")
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def _provider_failure_outcome(failure_class: str) -> str:
+    if failure_class in {
+        "empty-output",
+        "invalid-json",
+        "schema-validation-failure",
+    }:
+        return "no-output"
+    return "provider-failure"
+
+
+def _response_failure_details(
+    client: LlmClient,
+    fallback_reason: str,
+) -> tuple[str, str]:
+    failure_details = client.failure_details()
+    failure_class = str(failure_details.get("failure_class") or "").strip()
+    diagnostic_preview = str(failure_details.get("diagnostic_preview") or "").strip()
+    diagnostics = str(fallback_reason or "").strip()
+    if not diagnostic_preview and diagnostics:
+        diagnostic_preview = _truncate_preview(diagnostics, limit=400)
+    if not failure_class:
+        failure_class = "empty-output"
+    return failure_class, diagnostic_preview
 
 
 def handle(req: ResolutionRequest) -> ResolutionResponse:
     client = LlmClient(req.provider, req.model, req.base_url)
     if not client.is_available():
-        return ResolutionResponse(error="LLM provider not available")
+        return ResolutionResponse(
+            error="LLM provider not available",
+            recovery_outcome="provider-failure",
+            failure_class="provider-tooling-failure",
+            diagnostic_preview="LLM provider not available",
+        )
 
     notes: list[str] = []
     import_map = _extract_import_map(req.resolved_packages)
@@ -141,6 +181,10 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         python_version=req.python_version,
         error_type=req.error_type,
         previous_attempts=req.previous_attempts,
+        authored_plan=req.authored_plan,
+        docker_plan=req.docker_plan,
+        intake_failure=req.intake_failure,
+        recovery_artifacts=req.recovery_artifacts,
     )
 
     # Prepend error pattern context if we have matches
@@ -157,10 +201,19 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     )
 
     if result is None:
+        diagnostics_raw = client.last_failure_reason()
+        diagnostics = diagnostics_raw.strip() if isinstance(diagnostics_raw, str) else ""
+        notes = [f"LLM diagnostics: {diagnostics}"] if diagnostics else []
+        failure_class, diagnostic_preview = _response_failure_details(client, diagnostics)
         return ResolutionResponse(
             fix_possible=False,
             error="LLM recovery returned no output",
+            failure_reason=diagnostics,
+            notes=notes,
             prompts_issued=1,
+            recovery_outcome=_provider_failure_outcome(failure_class),
+            failure_class=failure_class,
+            diagnostic_preview=diagnostic_preview,
         )
 
     # Post-hoc PyPI validation
@@ -221,6 +274,14 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         # remove_package is always valid — it just removes from the resolved list
         pass
 
+    recovery_outcome = (result.recovery_outcome or "").strip()
+    if not recovery_outcome:
+        recovery_outcome = "applied" if result.fix_possible else "abstained"
+    failure_class = (result.failure_class or "").strip()
+    diagnostic_preview = (result.diagnostic_preview or "").strip()
+    if not diagnostic_preview:
+        diagnostic_preview = _truncate_preview(result.reasoning or "", limit=240)
+
     if not result.fix_possible:
         # Even if swap isn't possible, adding a dep or removing one might help
         if result.add_package or result.remove_package:
@@ -232,8 +293,18 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
                 remove_package=result.remove_package,
                 notes=notes,
                 prompts_issued=1,
+                recovery_outcome="applied",
+                failure_class=failure_class,
+                diagnostic_preview=diagnostic_preview,
             )
-        return ResolutionResponse(fix_possible=False, notes=notes, prompts_issued=1)
+        return ResolutionResponse(
+            fix_possible=False,
+            notes=notes,
+            prompts_issued=1,
+            recovery_outcome=recovery_outcome,
+            failure_class=failure_class,
+            diagnostic_preview=diagnostic_preview,
+        )
 
     # Allow same-package version pin: wrong_package == correct_package + version
     has_swap = (
@@ -259,8 +330,18 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
                 remove_package=result.remove_package,
                 notes=notes,
                 prompts_issued=1,
+                recovery_outcome="applied",
+                failure_class=failure_class,
+                diagnostic_preview=diagnostic_preview,
             )
-        return ResolutionResponse(fix_possible=False, notes=notes, prompts_issued=1)
+        return ResolutionResponse(
+            fix_possible=False,
+            notes=notes,
+            prompts_issued=1,
+            recovery_outcome="abstained",
+            failure_class=failure_class,
+            diagnostic_preview=diagnostic_preview,
+        )
 
     if result.reasoning:
         notes.append(result.reasoning)
@@ -274,4 +355,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         remove_package=result.remove_package,
         notes=notes,
         prompts_issued=1,
+        recovery_outcome="applied",
+        failure_class=failure_class,
+        diagnostic_preview=diagnostic_preview,
     )

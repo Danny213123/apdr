@@ -65,6 +65,7 @@ def test_swap_package(mock_client_cls, mock_pypi):
     assert resp.fix_possible is True
     assert resp.wrong_package == "psycopg2"
     assert resp.correct_package == "psycopg2-binary"
+    assert resp.recovery_outcome == "applied"
     assert resp.prompts_issued == 1
 
 
@@ -193,6 +194,7 @@ def test_llm_no_output(mock_client_cls):
     mock_client = MagicMock()
     mock_client.is_available.return_value = True
     mock_client.complete_json.return_value = None
+    mock_client.last_failure_reason.return_value = "attempt 1: ollama json mode returned empty message.content"
     mock_client_cls.return_value = mock_client
 
     req = _make_request()
@@ -200,6 +202,10 @@ def test_llm_no_output(mock_client_cls):
 
     assert resp.fix_possible is False
     assert "no output" in resp.error.lower()
+    assert resp.recovery_outcome == "no-output"
+    assert resp.failure_class == "empty-output"
+    assert "empty message.content" in resp.failure_reason
+    assert any("LLM diagnostics:" in note for note in resp.notes)
 
 
 # ---------------------------------------------------------------------------

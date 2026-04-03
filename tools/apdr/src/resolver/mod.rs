@@ -538,6 +538,10 @@ pub fn resolve_path(
     }
 
     if let Some(plan) = authored_plan.as_ref() {
+        let authored_plan_path = config.output_dir.join("case-plan.json");
+        let authored_plan_json =
+            serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+        fs::write(&authored_plan_path, authored_plan_json)?;
         if should_author_docker_plan(config) {
             let docker_stage =
                 tier3_llm::author_docker_plan(plan, config, &selected_python);
@@ -565,6 +569,12 @@ pub fn resolve_path(
             &authored_dockerfile_path,
             docker::templates::authored_docker_template(plan, &selected_python, &[]),
         )?;
+    }
+    if let Some(failure) = intake_failure.as_ref() {
+        let intake_failure_path = config.output_dir.join("intake-failure.json");
+        let intake_failure_json =
+            serde_json::to_string_pretty(failure).map_err(io::Error::other)?;
+        fs::write(&intake_failure_path, intake_failure_json)?;
     }
 
     dedupe_dependencies(&mut resolved);
@@ -763,6 +773,9 @@ pub fn resolve_path(
                         &mut store,
                         config,
                         &mut report,
+                        authored_plan.as_ref(),
+                        docker_plan.as_ref(),
+                        intake_failure.as_ref(),
                     )?
                 }
             } else if config.force_validate {
@@ -780,6 +793,9 @@ pub fn resolve_path(
                     &mut store,
                     config,
                     &mut report,
+                    authored_plan.as_ref(),
+                    docker_plan.as_ref(),
+                    intake_failure.as_ref(),
                 )?
             } else {
                 let note = format!(
@@ -831,6 +847,9 @@ pub fn resolve_path(
                     &mut store,
                     config,
                     &mut report,
+                    authored_plan.as_ref(),
+                    docker_plan.as_ref(),
+                    intake_failure.as_ref(),
                 )?
             } else if config.force_validate {
                 // --force-validate: attempt validation even when pre-solve says UNSAT
@@ -848,6 +867,9 @@ pub fn resolve_path(
                     &mut store,
                     config,
                     &mut report,
+                    authored_plan.as_ref(),
+                    docker_plan.as_ref(),
+                    intake_failure.as_ref(),
                 )?
             } else {
                 ValidationSummary {
@@ -878,6 +900,9 @@ pub fn resolve_path(
                 &mut store,
                 config,
                 &mut report,
+                authored_plan.as_ref(),
+                docker_plan.as_ref(),
+                intake_failure.as_ref(),
             )?
         }
     } else {

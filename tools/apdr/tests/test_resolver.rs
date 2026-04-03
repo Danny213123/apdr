@@ -2669,6 +2669,114 @@ fn phase27_handoff_summary_lines_include_executed_docker_truth() {
 }
 
 #[test]
+fn phase28_recovery_write_outputs_include_recovery_attempts_artifact() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase28-recovery-artifacts");
+    let mut result = phase26_truth_fixture_result("phase28-recovery-artifacts");
+    result.validation.recovery_outcome = Some("no-output".to_string());
+    result.validation.recovery_attempts = vec![apdr::RecoveryAttemptRecord {
+        attempt_index: 1,
+        recovery_outcome: "no-output".to_string(),
+        failure_class: "invalid-json".to_string(),
+        diagnostic_preview: "attempt 1: provider returned malformed JSON".to_string(),
+        authored_plan_path: output_dir.join("case-plan.json").display().to_string(),
+        docker_plan_path: output_dir.join("docker-plan.json").display().to_string(),
+        intake_failure_path: String::new(),
+        combined_log_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/combined.log")
+            .display()
+            .to_string(),
+        executed_dockerfile_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/Dockerfile.executed")
+            .display()
+            .to_string(),
+        docker_build_command_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-build.command.txt")
+            .display()
+            .to_string(),
+        docker_run_command_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-run.command.txt")
+            .display()
+            .to_string(),
+        image_inspect_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/docker-image.inspect.txt")
+            .display()
+            .to_string(),
+        executed_image_ref: "sha256:phase28".to_string(),
+        wrong_package: "scrapy".to_string(),
+        correct_package: String::new(),
+        version: String::new(),
+        add_package: String::new(),
+        remove_package: String::new(),
+        notes: vec!["LLM recovery diagnostics captured.".to_string()],
+    }];
+    result.validation.failure_truth_class = Some("llm-no-output".to_string());
+    result.validation.failure_truth_detail =
+        Some("invalid-json: attempt 1: provider returned malformed JSON".to_string());
+
+    if output_dir.exists() {
+        std::fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    let (_requirements_path, _report_path) = result.write_outputs(&output_dir).unwrap();
+
+    let recovery_attempts =
+        std::fs::read_to_string(output_dir.join("recovery-attempts.json")).unwrap();
+    let report = std::fs::read_to_string(output_dir.join("resolution-report.txt")).unwrap();
+
+    assert!(recovery_attempts.contains("\"recovery_outcome\": \"no-output\""));
+    assert!(recovery_attempts.contains("\"failure_class\": \"invalid-json\""));
+    assert!(report.contains("recovery_attempts_path: recovery-attempts.json"));
+    assert!(report.contains("failure_truth_class: llm-no-output"));
+
+    std::fs::remove_dir_all(output_dir).unwrap();
+}
+
+#[test]
+fn phase28_recovery_summary_lines_include_recovery_truth_fields() {
+    let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = tool_root.join("target/phase28-recovery-summary");
+    let mut result = phase26_truth_fixture_result("phase28-recovery-summary");
+    result.validation.recovery_outcome = Some("provider-failure".to_string());
+    result.validation.failure_truth_class =
+        Some("provider-tooling-failure".to_string());
+    result.validation.failure_truth_detail =
+        Some("timeout: attempt 1 timed out waiting for structured JSON".to_string());
+    result.validation.recovery_attempts = vec![apdr::RecoveryAttemptRecord {
+        attempt_index: 1,
+        recovery_outcome: "provider-failure".to_string(),
+        failure_class: "timeout".to_string(),
+        diagnostic_preview: "attempt 1 timed out waiting for structured JSON".to_string(),
+        authored_plan_path: output_dir.join("case-plan.json").display().to_string(),
+        docker_plan_path: output_dir.join("docker-plan.json").display().to_string(),
+        intake_failure_path: String::new(),
+        combined_log_path: output_dir
+            .join(".apdr-debug/attempts/attempt-001-py-3_11/combined.log")
+            .display()
+            .to_string(),
+        executed_dockerfile_path: String::new(),
+        docker_build_command_path: String::new(),
+        docker_run_command_path: String::new(),
+        image_inspect_path: String::new(),
+        executed_image_ref: String::new(),
+        wrong_package: String::new(),
+        correct_package: String::new(),
+        version: String::new(),
+        add_package: String::new(),
+        remove_package: String::new(),
+        notes: Vec::new(),
+    }];
+    let requirements_path = output_dir.join("requirements.txt");
+    let report_path = output_dir.join("report.txt");
+    let summary = result.summary_lines(&requirements_path, &report_path);
+
+    assert!(summary.contains("RECOVERY_ATTEMPTS_PATH="));
+    assert!(summary.contains("RECOVERY_OUTCOME=provider-failure"));
+    assert!(summary.contains("FAILURE_TRUTH_CLASS=provider-tooling-failure"));
+    assert!(summary.contains("FAILURE_TRUTH_DETAIL=timeout: attempt 1 timed out waiting for structured JSON"));
+}
+
+#[test]
 fn phase26_truth_llm_only_no_output_becomes_intake_failure() {
     let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let snippet = tool_root.join("tests/fixtures/sample_snippet.py");

@@ -1,6 +1,7 @@
 use super::artifacts::*;
 use super::recovery_diagnostics::*;
 use super::*;
+use crate::{RecoveryAttemptRecord, ValidationAttempt};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::Path;
@@ -16,6 +17,9 @@ pub(super) fn validate_with_retries(
     store: &mut CacheStore,
     config: &ResolveConfig,
     report: &mut ResolutionReport,
+    authored_plan: Option<&AuthoredCasePlan>,
+    docker_plan: Option<&AuthoredDockerPlan>,
+    intake_failure: Option<&IntakeFailureRecord>,
 ) -> io::Result<ValidationSummary> {
     let mut effective_config = config.clone();
     if effective_config.execute_snippet {
@@ -29,8 +33,10 @@ pub(super) fn validate_with_retries(
     let mut retry_state = RetryLoopState::new(requirements_txt.clone());
     let mut pending_pattern_learning: Option<(String, String, String, String)> = None;
     let mut llm_recovery_history: Vec<(String, String, String)> = Vec::new();
+    let mut recovery_attempts: Vec<RecoveryAttemptRecord> = Vec::new();
     let mut seed_llm_fallback_attempted = false;
     let mut consecutive_llm_failures: usize = 0;
+    let mut consecutive_provider_failures: usize = 0;
     let mut failed_import_package_pairs: BTreeSet<(String, String)> = BTreeSet::new();
     let mut failure_signature_requirements: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut module_requirement_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -48,6 +54,9 @@ pub(super) fn validate_with_retries(
     // Buffered iteration snapshots: accumulate writes and flush at end of each iteration.
     // This reduces per-iteration I/O from 8-12 writes to 1 batched write.
     let mut iteration_snapshots: Vec<(usize, String, String)> = Vec::new();
+    let recovery_attempts_path = config.output_dir.join("recovery-attempts.json");
+    validation.recovery_attempts_path =
+        Some(recovery_attempts_path.display().to_string());
 
     for attempt_index in 0..=config.max_retries {
         // Check overall wall-time budget before starting another retry iteration
@@ -91,7 +100,7 @@ pub(super) fn validate_with_retries(
             // The oscillation often means a package keeps flipping between
             // versions that both fail (e.g. python-memcached on Py2.7).
             // Give the LLM a chance to suggest an alternative package.
-            if config.allow_llm && !seed_llm_fallback_attempted {
+            if config.allow_llm && !seed_llm_fallback_attempted && consecutive_provider_failures < 2 {
                 seed_llm_fallback_attempted = true; // prevent infinite loop
                 report.notes.push(
                     "Requirements oscillating â€” attempting LLM recovery before giving up."
@@ -102,6 +111,7 @@ pub(super) fn validate_with_retries(
                     failing repeatedly. One or more packages may need to be replaced with \
                     an alternative. Consider pure-Python alternatives or different packages.";
                 let llm_started = std::time::Instant::now();
+                let latest_attempt = validation.attempts.last().cloned();
                 if let Some(hint) = tier3_llm::recovery_package_hint(
                     resolved,
                     synthetic_log,
@@ -111,16 +121,36 @@ pub(super) fn validate_with_retries(
                     selected_python,
                     "Oscillation",
                     &llm_recovery_history,
+                    authored_plan,
+                    docker_plan,
+                    intake_failure,
+                    latest_attempt.as_ref(),
                 ) {
-                    let (applied, notes) = apply_llm_recovery_hint(
+                    let (applied, notes) = if hint.fix_possible {
+                        apply_llm_recovery_hint(
+                            &hint,
+                            resolved,
+                            store,
+                            &failed_import_package_pairs,
+                            &mut retry_state.llm_removed_imports,
+                            "LLM oscillation recovery",
+                            "oscillation",
+                        )
+                    } else {
+                        (false, Vec::new())
+                    };
+                    write_recovery_attempt_record(
+                        &mut validation,
+                        &config.output_dir,
+                        &mut recovery_attempts,
                         &hint,
-                        resolved,
-                        store,
-                        &failed_import_package_pairs,
-                        &mut retry_state.llm_removed_imports,
-                        "LLM oscillation recovery",
-                        "oscillation",
-                    );
+                        latest_attempt.as_ref(),
+                        authored_plan,
+                        docker_plan,
+                        intake_failure,
+                        &notes,
+                        applied,
+                    )?;
                     if applied && !hint.wrong_pkg.is_empty() && !hint.correct_pkg.is_empty() {
                         llm_recovery_history.push((
                             hint.wrong_pkg.clone(),
@@ -128,12 +158,24 @@ pub(super) fn validate_with_retries(
                             "oscillation-fix".to_string(),
                         ));
                     }
+                    if !applied
+                        && !hint.diagnostic_preview.trim().is_empty()
+                        && is_provider_failure_class(&hint.failure_class)
+                    {
+                        let note = format!(
+                            "LLM oscillation recovery {}: {}",
+                            hint.failure_class, hint.diagnostic_preview
+                        );
+                        report.notes.push(note.clone());
+                        validation.iteration_history.push(note);
+                    }
                     for note in notes {
                         report.notes.push(note.clone());
                         validation.iteration_history.push(note.clone());
                         set_repair_strategy(&mut validation, &note);
                     }
                     if applied {
+                        consecutive_provider_failures = 0;
                         retry_state.seen_requirements.clear();
                         retry_state.requirements_dirty = true;
                         render_requirements_if_dirty(&mut retry_state, resolved, requirements_txt);
@@ -141,6 +183,17 @@ pub(super) fn validate_with_retries(
                             .seen_requirements
                             .insert(requirements_txt.clone());
                         continue;
+                    }
+                    if is_provider_failure_class(&hint.failure_class) {
+                        consecutive_provider_failures += 1;
+                        if consecutive_provider_failures == 2 {
+                            let note = format!(
+                                "Stopped retrying LLM recovery after repeated provider/no-output failures (latest class: {}).",
+                                hint.failure_class
+                            );
+                            report.notes.push(note.clone());
+                            validation.iteration_history.push(note);
+                        }
                     }
                 }
                 validation.llm_duration_ms += llm_started.elapsed().as_millis();
@@ -252,10 +305,11 @@ pub(super) fn validate_with_retries(
         if last_log.is_empty() {
             // No error output â€” try LLM recovery with a synthetic description
             // before giving up, so every failing case gets at least one LLM attempt.
-            if config.allow_llm && consecutive_llm_failures < 3 {
+            if config.allow_llm && consecutive_llm_failures < 3 && consecutive_provider_failures < 2 {
                 let synthetic_log = "Validation failed with no error output. The environment may have failed to install or the smoke test produced no stderr/stdout.";
                 report.llm_calls += 1;
                 let llm_started = std::time::Instant::now();
+                let latest_attempt = validation.attempts.last().cloned();
                 if let Some(hint) = tier3_llm::recovery_package_hint(
                     resolved,
                     synthetic_log,
@@ -265,80 +319,53 @@ pub(super) fn validate_with_retries(
                     selected_python,
                     "Unknown",
                     &llm_recovery_history,
+                    authored_plan,
+                    docker_plan,
+                    intake_failure,
+                    latest_attempt.as_ref(),
                 ) {
-                    let (mut applied, llm_notes): (bool, Vec<String>) = (false, Vec::new());
-                    let norm_wrong = normalize_package_key(&hint.wrong_pkg);
-                    if !norm_wrong.is_empty() {
-                        if let Some(dep_index) = dependency_index_by_package(resolved, &norm_wrong)
-                        {
-                            let dep = &mut resolved[dep_index];
-                            let old_pkg = dep.package_name.clone();
-                            let import_name = dep.import_name.clone();
-                            dep.package_name = hint.correct_pkg.clone();
-                            dep.version = hint.version.clone();
-                            dep.strategy = "recovery:llm-fix".to_string();
-                            dep.confidence = 0.65;
-                            llm_recovery_history.push((
-                                old_pkg.clone(),
-                                hint.correct_pkg.clone(),
-                                "retrying".to_string(),
-                            ));
-                            let _ = store.save_import_mapping(
-                                &import_name,
-                                &hint.correct_pkg,
-                                hint.version.as_deref(),
-                                "recovery:llm-fix",
-                            );
-                            let note = format!(
-                                "LLM recovery (empty log): replaced `{old_pkg}` with `{}`.",
-                                hint.correct_pkg
-                            );
-                            report.notes.push(note.clone());
-                            validation.iteration_history.push(note.clone());
-                            if let Some(last_attempt) = validation.attempts.last_mut() {
-                                last_attempt.fix_applied = Some(note);
-                            }
-                            applied = true;
-                        }
-                    }
-                    if let Some((add_name, add_ver)) = &None::<(String, Option<String>)> {
-                        upsert_dependency(
+                    let (applied, llm_notes) = if hint.fix_possible {
+                        apply_llm_recovery_hint(
+                            &hint,
                             resolved,
-                            add_name,
-                            add_name,
-                            add_ver.clone(),
-                            "recovery:llm-add-dep",
-                        );
+                            store,
+                            &failed_import_package_pairs,
+                            &mut retry_state.llm_removed_imports,
+                            "LLM recovery (empty log)",
+                            "missing validation output",
+                        )
+                    } else {
+                        (false, Vec::new())
+                    };
+                    if applied && !hint.wrong_pkg.is_empty() && !hint.correct_pkg.is_empty() {
+                        llm_recovery_history.push((
+                            hint.wrong_pkg.clone(),
+                            hint.correct_pkg.clone(),
+                            "retrying".to_string(),
+                        ));
+                    }
+                    write_recovery_attempt_record(
+                        &mut validation,
+                        &config.output_dir,
+                        &mut recovery_attempts,
+                        &hint,
+                        latest_attempt.as_ref(),
+                        authored_plan,
+                        docker_plan,
+                        intake_failure,
+                        &llm_notes,
+                        applied,
+                    )?;
+                    if !applied
+                        && !hint.diagnostic_preview.trim().is_empty()
+                        && is_provider_failure_class(&hint.failure_class)
+                    {
                         let note = format!(
-                            "LLM recovery: added transitive dep `{add_name}{}`.",
-                            add_ver
-                                .as_deref()
-                                .map(|v| format!("=={v}"))
-                                .unwrap_or_default()
+                            "LLM recovery empty-log failure ({}): {}",
+                            hint.failure_class, hint.diagnostic_preview
                         );
                         report.notes.push(note.clone());
-                        validation.iteration_history.push(note.clone());
-                        if let Some(last_attempt) = validation.attempts.last_mut() {
-                            last_attempt.fix_applied = Some(note);
-                        }
-                        applied = true;
-                    }
-                    if let Some(ref remove_name) = None::<String> {
-                        let norm_remove = normalize_package_key(remove_name);
-                        if let Some(pos) = dependency_index_by_package(resolved, &norm_remove) {
-                            let removed = resolved.remove(pos);
-                            retry_state.remember_removed_import(&removed.import_name);
-                            let note = format!(
-                                "LLM recovery: removed `{}` (import `{}`) â€” not a real PyPI package.",
-                                removed.package_name, removed.import_name
-                            );
-                            report.notes.push(note.clone());
-                            validation.iteration_history.push(note.clone());
-                            if let Some(last_attempt) = validation.attempts.last_mut() {
-                                last_attempt.fix_applied = Some(note);
-                            }
-                            applied = true;
-                        }
+                        validation.iteration_history.push(note);
                     }
                     for note in llm_notes {
                         report.notes.push(note.clone());
@@ -364,7 +391,19 @@ pub(super) fn validate_with_retries(
                             requirements_txt.clone(),
                         ));
                         consecutive_llm_failures = 0;
+                        consecutive_provider_failures = 0;
                         continue;
+                    }
+                    if is_provider_failure_class(&hint.failure_class) {
+                        consecutive_provider_failures += 1;
+                        if consecutive_provider_failures == 2 {
+                            let note = format!(
+                                "Stopped retrying LLM recovery after repeated provider/no-output failures (latest class: {}).",
+                                hint.failure_class
+                            );
+                            report.notes.push(note.clone());
+                            validation.iteration_history.push(note);
+                        }
                     }
                 }
                 validation.llm_duration_ms += llm_started.elapsed().as_millis();
@@ -736,9 +775,10 @@ pub(super) fn validate_with_retries(
         // LLM-powered recovery as last resort when built-in recovery fails.
         // Ask the LLM which resolved package is wrong and what the correct
         // PyPI name should be. Stop after 3 consecutive LLM failures.
-        if config.allow_llm && consecutive_llm_failures < 3 {
+        if config.allow_llm && consecutive_llm_failures < 3 && consecutive_provider_failures < 2 {
             report.llm_calls += 1;
             let llm_started = std::time::Instant::now();
+            let latest_attempt = validation.attempts.last().cloned();
             if let Some(hint) = tier3_llm::recovery_package_hint(
                 resolved,
                 &last_log,
@@ -748,16 +788,24 @@ pub(super) fn validate_with_retries(
                 selected_python,
                 &classified.error_type,
                 &llm_recovery_history,
+                authored_plan,
+                docker_plan,
+                intake_failure,
+                latest_attempt.as_ref(),
             ) {
-                let (applied, llm_notes) = apply_llm_recovery_hint(
-                    &hint,
-                    resolved,
-                    store,
-                    &failed_import_package_pairs,
-                    &mut retry_state.llm_removed_imports,
-                    "LLM recovery",
-                    &format!("{} error", classified.error_type),
-                );
+                let (applied, llm_notes) = if hint.fix_possible {
+                    apply_llm_recovery_hint(
+                        &hint,
+                        resolved,
+                        store,
+                        &failed_import_package_pairs,
+                        &mut retry_state.llm_removed_imports,
+                        "LLM recovery",
+                        &format!("{} error", classified.error_type),
+                    )
+                } else {
+                    (false, Vec::new())
+                };
                 if applied && !hint.wrong_pkg.is_empty() && !hint.correct_pkg.is_empty() {
                     llm_recovery_history.push((
                         hint.wrong_pkg.clone(),
@@ -765,46 +813,28 @@ pub(super) fn validate_with_retries(
                         "retrying".to_string(),
                     ));
                 }
-                if let Some((add_name, add_ver)) = &None::<(String, Option<String>)> {
-                    upsert_dependency(
-                        resolved,
-                        add_name,
-                        add_name,
-                        add_ver.clone(),
-                        "recovery:llm-add-dep",
-                    );
+                write_recovery_attempt_record(
+                    &mut validation,
+                    &config.output_dir,
+                    &mut recovery_attempts,
+                    &hint,
+                    latest_attempt.as_ref(),
+                    authored_plan,
+                    docker_plan,
+                    intake_failure,
+                    &llm_notes,
+                    applied,
+                )?;
+                if !applied
+                    && !hint.diagnostic_preview.trim().is_empty()
+                    && is_provider_failure_class(&hint.failure_class)
+                {
                     let note = format!(
-                        "LLM recovery: added transitive dep `{add_name}{}` after {} error.",
-                        add_ver
-                            .as_deref()
-                            .map(|v| format!("=={v}"))
-                            .unwrap_or_default(),
-                        classified.error_type
+                        "LLM recovery failure ({}): {}",
+                        hint.failure_class, hint.diagnostic_preview
                     );
-                    report.retries += 1;
                     report.notes.push(note.clone());
-                    validation.iteration_history.push(note.clone());
-                    if let Some(last_attempt) = validation.attempts.last_mut() {
-                        last_attempt.fix_applied = Some(note);
-                    }
-                }
-                // Handle remove_package: remove a package that shouldn't be installed
-                if let Some(ref remove_name) = None::<String> {
-                    let norm_remove = normalize_package_key(remove_name);
-                    if let Some(pos) = dependency_index_by_package(resolved, &norm_remove) {
-                        let removed = resolved.remove(pos);
-                        retry_state.remember_removed_import(&removed.import_name);
-                        let note = format!(
-                            "LLM recovery: removed `{}` (import `{}`) â€” likely a local/project module, not a PyPI package.",
-                            removed.package_name, removed.import_name
-                        );
-                        report.retries += 1;
-                        report.notes.push(note.clone());
-                        validation.iteration_history.push(note.clone());
-                        if let Some(last_attempt) = validation.attempts.last_mut() {
-                            last_attempt.fix_applied = Some(note);
-                        }
-                    }
+                    validation.iteration_history.push(note);
                 }
                 for note in llm_notes {
                     report.notes.push(note.clone());
@@ -836,7 +866,19 @@ pub(super) fn validate_with_retries(
                         requirements_txt.clone(),
                     ));
                     consecutive_llm_failures = 0;
+                    consecutive_provider_failures = 0;
                     continue;
+                }
+                if is_provider_failure_class(&hint.failure_class) {
+                    consecutive_provider_failures += 1;
+                    if consecutive_provider_failures == 2 {
+                        let note = format!(
+                            "Stopped retrying LLM recovery after repeated provider/no-output failures (latest class: {}).",
+                            hint.failure_class
+                        );
+                        report.notes.push(note.clone());
+                        validation.iteration_history.push(note);
+                    }
                 }
             }
             validation.llm_duration_ms += llm_started.elapsed().as_millis();
@@ -1075,6 +1117,101 @@ pub(super) fn validate_with_retries(
     update_failure_metadata(&mut validation, config, resolved, repeat_failure_signature);
 
     Ok(validation)
+}
+
+fn is_provider_failure_class(value: &str) -> bool {
+    matches!(
+        value.trim(),
+        "empty-output"
+            | "invalid-json"
+            | "schema-validation-failure"
+            | "provider-tooling-failure"
+            | "timeout"
+            | "transport-failure"
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_recovery_attempt_record(
+    validation: &mut ValidationSummary,
+    output_dir: &Path,
+    recovery_attempts: &mut Vec<RecoveryAttemptRecord>,
+    hint: &tier3_llm::RecoveryHint,
+    latest_attempt: Option<&ValidationAttempt>,
+    authored_plan: Option<&AuthoredCasePlan>,
+    docker_plan: Option<&AuthoredDockerPlan>,
+    intake_failure: Option<&IntakeFailureRecord>,
+    applied_notes: &[String],
+    applied: bool,
+) -> io::Result<()> {
+    let attempt_index = recovery_attempts.len() + 1;
+    let recovery_outcome = if applied {
+        "applied".to_string()
+    } else if hint.recovery_outcome.trim().is_empty() {
+        "abstained".to_string()
+    } else {
+        hint.recovery_outcome.trim().to_string()
+    };
+    let record = RecoveryAttemptRecord {
+        attempt_index,
+        recovery_outcome: recovery_outcome.clone(),
+        failure_class: hint.failure_class.trim().to_string(),
+        diagnostic_preview: hint.diagnostic_preview.trim().to_string(),
+        authored_plan_path: authored_plan
+            .map(|_| output_dir.join("case-plan.json").display().to_string())
+            .unwrap_or_default(),
+        docker_plan_path: docker_plan
+            .map(|_| output_dir.join("docker-plan.json").display().to_string())
+            .unwrap_or_default(),
+        intake_failure_path: intake_failure
+            .map(|_| output_dir.join("intake-failure.json").display().to_string())
+            .unwrap_or_default(),
+        combined_log_path: latest_attempt
+            .and_then(|attempt| attempt.combined_log_path.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        executed_dockerfile_path: latest_attempt
+            .and_then(|attempt| attempt.executed_dockerfile_path.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        docker_build_command_path: latest_attempt
+            .and_then(|attempt| attempt.docker_build_command_path.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        docker_run_command_path: latest_attempt
+            .and_then(|attempt| attempt.docker_run_command_path.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        image_inspect_path: latest_attempt
+            .and_then(|attempt| attempt.image_inspect_path.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        executed_image_ref: latest_attempt
+            .and_then(|attempt| attempt.executed_image_ref.as_deref())
+            .map(str::to_string)
+            .unwrap_or_default(),
+        wrong_package: hint.wrong_pkg.clone(),
+        correct_package: hint.correct_pkg.clone(),
+        version: hint.version.clone().unwrap_or_default(),
+        add_package: hint
+            .add_package
+            .as_ref()
+            .map(|(name, version)| {
+                version
+                    .as_deref()
+                    .map(|value| format!("{name}=={value}"))
+                    .unwrap_or_else(|| name.clone())
+            })
+            .unwrap_or_default(),
+        remove_package: hint.remove_pkg.clone().unwrap_or_default(),
+        notes: applied_notes.to_vec(),
+    };
+    recovery_attempts.push(record);
+    validation.recovery_attempts = recovery_attempts.clone();
+    validation.recovery_outcome = Some(recovery_outcome);
+    let serialized = serde_json::to_string_pretty(recovery_attempts).map_err(io::Error::other)?;
+    std::fs::write(output_dir.join("recovery-attempts.json"), serialized)?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1774,11 +1911,6 @@ impl RetryLoopState {
             cached_requirements: initial_requirements,
             requirements_dirty: false,
         }
-    }
-
-    fn remember_removed_import(&mut self, import_name: &str) {
-        self.llm_removed_imports
-            .insert(normalize_package_key(import_name));
     }
 
     fn has_removed_import(&self, import_name: &str) -> bool {
