@@ -80,10 +80,10 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] Docker-first `llm` policy now exists with env-first control, exact unusable-Docker fallback reasons, and a deterministic proof contract - validated in Phase 22: docker-first-policy-and-safe-degradation
 - [x] The repo now ships a matched env-first versus docker-first comparison harness with frozen artifacts, delta reporting, and a deterministic proof checker - validated in Phase 24: env-first-vs-docker-first-comparison-harness
 - [x] The milestone now has a reviewer-readable docker-first verdict, deterministic closeout checker, and bounded proof pack - validated in Phase 25: docker-first-decision-closeout
+- [x] `llm` and `llm-only` now produce an authored intake plan or a structured intake failure before validation starts, with explicit authorship and deterministic-fallback truth - validated in Phase 26: llm-case-intake-and-plan-authoring
 
 ### Active
 
-- [ ] `llm` and `llm-only` can use the LLM to extract snippet modules, package intent, system dependencies, and runtime context before validation starts.
 - [ ] `llm` and `llm-only` can use the LLM to author Docker-oriented validation inputs and bounded recovery steps, with those artifacts preserved per case.
 - [ ] Latest-run failures no longer collapse into blank requirements, misleading `SystemDependency`, or generic `Unknown` when the real issue is LLM no-output or Docker infrastructure.
 - [ ] Fixed-slice and live-run evidence show whether end-to-end LLM execution improves pass rate and reliability for both `llm` and `llm-only`.
@@ -111,6 +111,7 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
 - The latest local priority is to make the LLM itself do more of the start-to-finish work: extract modules, plan dependencies, author Docker validation inputs, and own recovery loops for `llm` and `llm-only`.
 - Current April 2 local runs show two benchmark-visible blockers that this milestone must address together: repeated `LLM package-resolution call returned no output` cases and Docker build-to-run handoff failures where `docker create` cannot see the just-built image tag.
+- Phase 26 is now complete, so downstream work no longer has to infer intent from raw mappings or empty `requirements.txt`; authored intake truth is frozen in a deterministic proof package.
 - The shipped v2.3 closeout is intentionally fixed-slice scoped; future work must not overstate it as a full-corpus benchmark claim.
 - Phase 21.1 finished the repo-footprint reduction pass first, so the remaining v2.4 work can evaluate docker-first routing from a materially smaller checkout and a supported cleanup baseline.
 
@@ -138,8 +139,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 | Skip optional external research for v2.4 | This is a local runtime-policy and evidence question, not a new external product domain | Good |
 | Build a fixed-slice paired comparison harness before publishing the docker-first verdict | The recommendation needs matched env-first versus docker-first evidence, not intuition or incomparable saved runs | Good |
 | Keep the final v2.4 verdict at `optional` unless stronger live paired replay evidence or cleared Phase 23 browser UAT justifies a stronger claim | The current fixed-slice evidence is positive, but the remaining human-verification debt still bounds what can be claimed honestly | Good |
-| Start v2.5 from the April 2 local regressions instead of archiving v2.4 first | The active pain moved from policy choice to real `llm` / `llm-only` execution failures on current runs | Pending |
-| Treat the LLM as the primary case author for `llm` and `llm-only` | The user wants the model to extract modules, author Docker validation inputs, and drive recovery end-to-end | Pending |
+| Start v2.5 from the April 2 local regressions instead of archiving v2.4 first | The active pain moved from policy choice to real `llm` / `llm-only` execution failures on current runs | Good |
+| Treat the LLM as the primary case author for `llm` and `llm-only` | The user wants the model to extract modules, author Docker validation inputs, and drive recovery end-to-end | Good |
 | Skip optional external research for v2.5 | The milestone is driven by current repo behavior and fresh local benchmark evidence, not a new external domain | Good |
 
 ## Shipped Milestone Snapshot
@@ -188,4 +189,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after starting milestone v2.5*
+*Last updated: 2026-04-03 after completing Phase 26*
