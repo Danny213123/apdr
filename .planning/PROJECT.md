@@ -15,6 +15,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - The latest docker-backed `llm-only` runs on 2026-04-02 exposed real regressions: empty LLM package plans, low pass counts, and Docker attempts that sometimes fail after a successful build because `docker create` cannot see the freshly built `apdr-validate:*` image tag.
 - Phase 27 completed on 2026-04-03: the repo now persists LLM-authored Docker plans, writes authored and executed Dockerfile artifacts, and verifies a usable local image reference after build before runtime.
 - Phase 28 completed on 2026-04-03: the repo now persists bounded `recovery-attempts.json` artifacts, separates provider/Docker/dependency failure truth with additive fields, and exports that truth through benchmark rows and live events.
+- Phase 29 completed on 2026-04-03: the repo now ships a fixed-slice benchmark harness, paired frozen artifacts for `llm` and `llm-only`, a deterministic delta checker, and a reviewer-facing runbook/proof pack anchored to the April 2 before-state runs.
+- The fixed Phase 29 slice currently shows a split result: `llm-only` improves from `1/6` passes to `4/6`, while `llm` regresses from `5/6` passes to `4/6` and exposes one provider-tooling failure instead of hiding it.
 - The April 2 missing-image regression from `runs/20260402-184821-apdr` is now frozen as before-state evidence rather than the current Docker execution contract.
 - The user wants the next milestone to make the LLM responsible for the whole APDR path for `llm` and `llm-only`: extract modules, infer packages and system deps, author Docker validation inputs, drive recovery, and leave enough artifacts to explain every decision.
 - The fixed live slice used for closeout moved from `0/9` baseline passes to `2/9` candidate passes, with `module-not-found`, `version-not-found`, and `environment-build-failed` each reduced by 3 on that slice.
@@ -85,10 +87,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] `llm` and `llm-only` now produce an authored intake plan or a structured intake failure before validation starts, with explicit authorship and deterministic-fallback truth - validated in Phase 26: llm-case-intake-and-plan-authoring
 - [x] `llm` and `llm-only` now preserve authored Docker intent, executed Docker artifacts, and verified image-handoff truth per case - validated in Phase 27: llm-authored-docker-validation-and-artifact-truth
 - [x] `llm` and `llm-only` now use bounded recovery attempts plus additive failure truth so model/provider instability and Docker infrastructure failures stop collapsing into generic dependency misses - validated in Phase 28: llm-recovery-loop-and-failure-semantics
+- [x] Fixed-slice comparison artifacts now show separate `llm` and `llm-only` pass, timing, and failure-truth deltas against the April 2 before-state runs - validated in Phase 29: llm-benchmark-gains-and-regression-harness
 
 ### Active
 
-- [ ] Fixed-slice and live-run evidence show whether end-to-end LLM execution improves pass rate and reliability for both `llm` and `llm-only`.
+- [ ] Live evidence and a final milestone recommendation show whether end-to-end LLM execution is ready to ship for both `llm` and `llm-only`.
 
 ### Out of Scope
 
@@ -192,4 +195,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after completing Phase 28*
+*Last updated: 2026-04-03 after completing Phase 29*
