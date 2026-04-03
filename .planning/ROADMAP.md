@@ -22,7 +22,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 
 - [x] **Phase 26: LLM Case Intake and Plan Authoring** - Turn snippet analysis into an explicit LLM-authored case plan with dependency, system-dependency, and runtime intent artifacts
 - [x] **Phase 27: LLM-Authored Docker Validation and Artifact Truth** - Let the LLM author Docker-oriented validation inputs, fix build-to-run handoff reliability, and preserve executed Docker artifacts per case
-- [ ] **Phase 28: LLM Recovery Loop and Failure Semantics** - Feed install, build, and runtime logs back into the LLM for bounded recovery while making non-pass failure truth explicit
+- [x] **Phase 28: LLM Recovery Loop and Failure Semantics** - Feed install, build, and runtime logs back into the LLM for bounded recovery while making non-pass failure truth explicit
 - [ ] **Phase 29: LLM Benchmark Gains and Regression Harness** - Compare current versus candidate `llm` and `llm-only` behavior on a fixed slice with pass, timing, and failure-rate deltas
 - [ ] **Phase 30: Live Evidence and Closeout for LLM-Led Validation** - Publish reviewer-readable before/after evidence and a final recommendation on shipping the new end-to-end LLM path
 
@@ -56,7 +56,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. Recovery prompts can consume prior build, install, and runtime logs together with the authored case plan.
   2. APDR distinguishes LLM no-output, provider/tooling failure, Docker infrastructure failure, and genuine dependency/runtime failure in final case artifacts.
   3. A failed case explains whether the LLM abstained, timed out, produced invalid output, or exhausted bounded recovery attempts.
-**Plans**: 3 planned
+**Plans**: 3 completed
 
 ### Phase 29: LLM Benchmark Gains and Regression Harness
 **Goal**: The repo can compare baseline and candidate `llm` and `llm-only` behavior on the same slice and report whether the stronger LLM-led path helps or hurts correctness and cost
@@ -84,7 +84,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 |-------|----------------|--------|-----------|
 | 26. LLM Case Intake and Plan Authoring | 3/3 | Complete | 2026-04-02 |
 | 27. LLM-Authored Docker Validation and Artifact Truth | 3/3 | Complete | 2026-04-03 |
-| 28. LLM Recovery Loop and Failure Semantics | 0/3 | Planned | — |
+| 28. LLM Recovery Loop and Failure Semantics | 3/3 | Complete | 2026-04-03 |
 | 29. LLM Benchmark Gains and Regression Harness | 0/0 | Pending | — |
 | 30. Live Evidence and Closeout for LLM-Led Validation | 0/0 | Pending | — |
 
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 (Phase 28 planned)*
+*Last updated: 2026-04-03 (Phase 28 complete)*

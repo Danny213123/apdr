@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
-status: Ready for execution
-stopped_at: Phase 28 planned
-last_updated: "2026-04-03T01:24:39Z"
+status: ready
+stopped_at: Phase 28 complete
+last_updated: "2026-04-03T02:04:39Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 12
-  completed_plans: 6
-  percent: 40
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 9
+  percent: 60
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-03
-**Status:** Ready for execution
-**Progress:** [████░░░░░░] 40%
+**Status:** Ready for Phase 29 Planning
+**Progress:** [██████░░░░] 60%
 **Last Activity:** 2026-04-03
-**Last Activity Description:** Phase 28 was researched and split into three execution waves around artifact-aware recovery, additive failure truth, and deterministic proof coverage
-**Resume File:** .planning/phases/28-llm-recovery-loop-and-failure-semantics/28-01-PLAN.md
+**Last Activity Description:** Phase 28 completed
+**Resume File:** .planning/ROADMAP.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone v2.5 — Phase 28 is ready to execute
+**Current Focus:** Phase 29 — LLM Benchmark Gains and Regression Harness
 
 ---
 
 ## Current Position
 
-Phase: Phase 28 planned
-Plan: 28-01 next
-Status: Ready for Phase 28 execution
-Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 execution plans around recovery contract, failure truth, and deterministic proof
+Phase: 29 (LLM Benchmark Gains and Regression Harness) — NEXT
+Plan: Not started
+Status: Ready for planning Phase 29
+Last activity: 2026-04-03 -- Phase 28 completed
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 e
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 3
+- Active phase plan count: 0
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -57,7 +57,7 @@ Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 e
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Frozen before-state Docker regression example: case `005bbad123ef309a5bef` previously built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces no usable end-to-end recovery path and generic failure labels when the model returns empty or unstable output
-- Current phase plan count: 3
+- Current phase plan count: 0
 - Next phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
@@ -129,6 +129,7 @@ Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 e
 - [Phase 27 complete]: APDR now writes `docker-plan.json` plus `Dockerfile.authored`, preserves executed Docker artifacts and image-inspect traces per attempt, and verifies a usable local image reference before runtime.
 - [Phase 28-llm-recovery-loop-and-failure-semantics]: Recovery should consume authored plan plus authored/executed Docker artifacts and persist bounded recovery outcomes instead of relying on a flattened last-log string.
 - [Phase 28-llm-recovery-loop-and-failure-semantics]: Final case truth should additively distinguish `llm-no-output`, `provider-tooling-failure`, `docker-infrastructure-failure`, and `dependency-runtime-failure` without removing the existing coarse `failure_family`.
+- [Phase 28 complete]: APDR now writes `recovery-attempts.json`, exports `recovery_outcome` plus additive `failure_truth_*` fields, and surfaces those values through benchmark saved/live metadata.
 
 ### Roadmap Evolution
 
@@ -152,9 +153,9 @@ Last activity: 2026-04-03 -- Phase 28 planned with research, validation, and 3 e
 ## Session Continuity
 
 Last session: 2026-04-03T01:24:39Z
-Stopped at: Phase 28 planned
-Resume file: .planning/phases/28-llm-recovery-loop-and-failure-semantics/28-01-PLAN.md
+Stopped at: Phase 28 complete
+Resume file: .planning/ROADMAP.md
 
 ---
 
-*State updated after planning Phase 28 on 2026-04-03*
+*State updated after completing Phase 28 on 2026-04-03*
