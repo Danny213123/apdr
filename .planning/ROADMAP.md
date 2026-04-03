@@ -56,7 +56,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. Recovery prompts can consume prior build, install, and runtime logs together with the authored case plan.
   2. APDR distinguishes LLM no-output, provider/tooling failure, Docker infrastructure failure, and genuine dependency/runtime failure in final case artifacts.
   3. A failed case explains whether the LLM abstained, timed out, produced invalid output, or exhausted bounded recovery attempts.
-**Plans**: Not started
+**Plans**: 3 planned
 
 ### Phase 29: LLM Benchmark Gains and Regression Harness
 **Goal**: The repo can compare baseline and candidate `llm` and `llm-only` behavior on the same slice and report whether the stronger LLM-led path helps or hurts correctness and cost
@@ -84,7 +84,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 |-------|----------------|--------|-----------|
 | 26. LLM Case Intake and Plan Authoring | 3/3 | Complete | 2026-04-02 |
 | 27. LLM-Authored Docker Validation and Artifact Truth | 3/3 | Complete | 2026-04-03 |
-| 28. LLM Recovery Loop and Failure Semantics | 0/0 | Pending | — |
+| 28. LLM Recovery Loop and Failure Semantics | 0/3 | Planned | — |
 | 29. LLM Benchmark Gains and Regression Harness | 0/0 | Pending | — |
 | 30. Live Evidence and Closeout for LLM-Led Validation | 0/0 | Pending | — |
 
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 (Phase 27 complete)*
+*Last updated: 2026-04-03 (Phase 28 planned)*
