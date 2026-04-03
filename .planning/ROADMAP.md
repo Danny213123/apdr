@@ -66,7 +66,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. APDR can generate paired baseline-versus-candidate artifacts for both `llm` and `llm-only` on a locked slice.
   2. Comparison outputs report pass delta, LLM no-output delta, Docker handoff failure delta, and solve/validate timing deltas.
   3. A deterministic checker fails if the comparison drifts from the locked slice or omits required regression signals.
-**Plans**: Not started
+**Plans**: 3 planned
 
 ### Phase 30: Live Evidence and Closeout for LLM-Led Validation
 **Goal**: v2.5 closes with a reviewer-readable answer on whether the new end-to-end LLM path is ready to ship for `llm` and `llm-only`
@@ -85,7 +85,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 | 26. LLM Case Intake and Plan Authoring | 3/3 | Complete | 2026-04-02 |
 | 27. LLM-Authored Docker Validation and Artifact Truth | 3/3 | Complete | 2026-04-03 |
 | 28. LLM Recovery Loop and Failure Semantics | 3/3 | Complete | 2026-04-03 |
-| 29. LLM Benchmark Gains and Regression Harness | 0/0 | Pending | — |
+| 29. LLM Benchmark Gains and Regression Harness | 0/3 | Planned | — |
 | 30. Live Evidence and Closeout for LLM-Led Validation | 0/0 | Pending | — |
 
 ## Dependencies
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 (Phase 28 complete)*
+*Last updated: 2026-04-03 (Phase 29 planned)*
