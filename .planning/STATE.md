@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
 status: ready
-stopped_at: Phase 29 planned
-last_updated: "2026-04-03T02:23:17Z"
+stopped_at: Phase 29 complete
+last_updated: "2026-04-03T03:40:00Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 9
-  percent: 60
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-03
-**Status:** Ready for Phase 29 Execution
-**Progress:** [██████░░░░] 60%
+**Status:** Ready for Phase 30 Planning
+**Progress:** [████████░░] 80%
 **Last Activity:** 2026-04-03
-**Last Activity Description:** Phase 29 planned
+**Last Activity Description:** Phase 29 complete
 **Resume File:** .planning/ROADMAP.md
 
 ---
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Phase 29 — LLM Benchmark Gains and Regression Harness
+**Current Focus:** Phase 30 — Live Evidence and Closeout for LLM-Led Validation
 
 ---
 
 ## Current Position
 
-Phase: 29 (LLM Benchmark Gains and Regression Harness) — NEXT
-Plan: 3 plans in 3 waves
-Status: Ready for execution Phase 29
-Last activity: 2026-04-03 -- Phase 29 planned
+Phase: 30 (Live Evidence and Closeout for LLM-Led Validation) — NEXT
+Plan: No plans yet
+Status: Ready for planning Phase 30
+Last activity: 2026-04-03 -- Phase 29 complete
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-03 -- Phase 29 planned
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 3
+- Active phase plan count: 0
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -57,7 +57,9 @@ Last activity: 2026-04-03 -- Phase 29 planned
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Frozen before-state Docker regression example: case `005bbad123ef309a5bef` previously built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces no usable end-to-end recovery path and generic failure labels when the model returns empty or unstable output
-- Current phase plan count: 3
+- Fixed-slice `llm` comparison: baseline `5/6` passes -> candidate `4/6` passes with `provider-tooling-failure +1`
+- Fixed-slice `llm-only` comparison: baseline `1/6` passes -> candidate `4/6` passes with `llm-no-output -1` and `docker-infrastructure-failure -3`
+- Current phase plan count: 0
 - Next phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
@@ -132,6 +134,8 @@ Last activity: 2026-04-03 -- Phase 29 planned
 - [Phase 28 complete]: APDR now writes `recovery-attempts.json`, exports `recovery_outcome` plus additive `failure_truth_*` fields, and surfaces those values through benchmark saved/live metadata.
 - [Phase 29 planning]: Compare baseline versus candidate `llm` and `llm-only` behavior on a locked slice using the April 2, 2026 pre-v2.5 runs as the before-state anchors.
 - [Phase 29 planning]: Keep Phase 29 focused on the regression harness and deterministic delta contract; Phase 30 owns the live evidence pack and final recommendation.
+- [Phase 29 complete]: The repo now ships a fixed-slice harness, paired frozen artifacts for `llm` and `llm-only`, a deterministic delta checker, and a reviewer-facing delta/runbook/proof pack anchored to the April 2 before-state runs.
+- [Phase 29 complete]: The fixed slice shows a split result: `llm-only` improves strongly on the contract, while `llm` still regresses by one pass and exposes a provider-tooling failure instead of hiding it.
 
 ### Roadmap Evolution
 
@@ -155,9 +159,9 @@ Last activity: 2026-04-03 -- Phase 29 planned
 ## Session Continuity
 
 Last session: 2026-04-03T01:24:39Z
-Stopped at: Phase 28 complete
+Stopped at: Phase 29 complete
 Resume file: .planning/ROADMAP.md
 
 ---
 
-*State updated after planning Phase 29 on 2026-04-03*
+*State updated after completing Phase 29 on 2026-04-03*

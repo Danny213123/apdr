@@ -25,8 +25,8 @@ Requirements for the v2.5 milestone. Each will map to exactly one roadmap phase.
 
 ### Benchmark Evidence
 
-- [ ] **BEN-01**: Fixed-slice comparison artifacts show whether the new LLM-led path improves pass rate for both `llm` and `llm-only` against the April 2, 2026 baseline runs
-- [ ] **BEN-02**: Comparison artifacts track solve or validate timing, LLM no-output rate, and Docker handoff failures so gains are not hidden behind new regressions
+- [x] **BEN-01**: Fixed-slice comparison artifacts show whether the new LLM-led path improves pass rate for both `llm` and `llm-only` against the April 2, 2026 baseline runs
+- [x] **BEN-02**: Comparison artifacts track solve or validate timing, LLM no-output rate, and Docker handoff failures so gains are not hidden behind new regressions
 
 ### Closeout Evidence
 
@@ -65,8 +65,8 @@ Deferred until the end-to-end LLM path is stable.
 | DKR-02 | Phase 27 | Complete |
 | TRU-01 | Phase 28 | Complete |
 | TRU-02 | Phase 26 | Complete |
-| BEN-01 | Phase 29 | Pending |
-| BEN-02 | Phase 29 | Pending |
+| BEN-01 | Phase 29 | Complete |
+| BEN-02 | Phase 29 | Complete |
 | EVD-11 | Phase 30 | Pending |
 
 **Coverage:**
@@ -76,4 +76,4 @@ Deferred until the end-to-end LLM path is stable.
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-03 after completing Phase 28*
+*Last updated: 2026-04-03 after completing Phase 29*

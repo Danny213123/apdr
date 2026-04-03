@@ -23,7 +23,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 - [x] **Phase 26: LLM Case Intake and Plan Authoring** - Turn snippet analysis into an explicit LLM-authored case plan with dependency, system-dependency, and runtime intent artifacts
 - [x] **Phase 27: LLM-Authored Docker Validation and Artifact Truth** - Let the LLM author Docker-oriented validation inputs, fix build-to-run handoff reliability, and preserve executed Docker artifacts per case
 - [x] **Phase 28: LLM Recovery Loop and Failure Semantics** - Feed install, build, and runtime logs back into the LLM for bounded recovery while making non-pass failure truth explicit
-- [ ] **Phase 29: LLM Benchmark Gains and Regression Harness** - Compare current versus candidate `llm` and `llm-only` behavior on a fixed slice with pass, timing, and failure-rate deltas
+- [x] **Phase 29: LLM Benchmark Gains and Regression Harness** - Compare current versus candidate `llm` and `llm-only` behavior on a fixed slice with pass, timing, and failure-rate deltas
 - [ ] **Phase 30: Live Evidence and Closeout for LLM-Led Validation** - Publish reviewer-readable before/after evidence and a final recommendation on shipping the new end-to-end LLM path
 
 ## Phase Details
@@ -66,7 +66,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. APDR can generate paired baseline-versus-candidate artifacts for both `llm` and `llm-only` on a locked slice.
   2. Comparison outputs report pass delta, LLM no-output delta, Docker handoff failure delta, and solve/validate timing deltas.
   3. A deterministic checker fails if the comparison drifts from the locked slice or omits required regression signals.
-**Plans**: 3 planned
+**Plans**: 3 completed
 
 ### Phase 30: Live Evidence and Closeout for LLM-Led Validation
 **Goal**: v2.5 closes with a reviewer-readable answer on whether the new end-to-end LLM path is ready to ship for `llm` and `llm-only`
@@ -85,7 +85,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 | 26. LLM Case Intake and Plan Authoring | 3/3 | Complete | 2026-04-02 |
 | 27. LLM-Authored Docker Validation and Artifact Truth | 3/3 | Complete | 2026-04-03 |
 | 28. LLM Recovery Loop and Failure Semantics | 3/3 | Complete | 2026-04-03 |
-| 29. LLM Benchmark Gains and Regression Harness | 0/3 | Planned | — |
+| 29. LLM Benchmark Gains and Regression Harness | 3/3 | Complete | 2026-04-03 |
 | 30. Live Evidence and Closeout for LLM-Led Validation | 0/0 | Pending | — |
 
 ## Dependencies
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 (Phase 29 planned)*
+*Last updated: 2026-04-03 (Phase 29 complete)*
