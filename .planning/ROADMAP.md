@@ -46,7 +46,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
   1. Each LLM-driven case can preserve the authored Dockerfile or equivalent build/runtime plan that APDR actually executed.
   2. Docker validation no longer fails because `docker create` cannot see the just-built image in supported environments.
   3. Case debug folders preserve both authored Docker inputs and executed Docker artifacts so failures are reproducible and inspectable.
-**Plans**: Not started
+**Plans**: 3 planned
 
 ### Phase 28: LLM Recovery Loop and Failure Semantics
 **Goal**: Non-pass `llm` and `llm-only` cases get bounded, log-aware LLM recovery attempts and truthful final failure labeling instead of generic `Unknown` or misleading infrastructure hints
@@ -83,7 +83,7 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 26. LLM Case Intake and Plan Authoring | 3/3 | Complete | 2026-04-02 |
-| 27. LLM-Authored Docker Validation and Artifact Truth | 0/0 | Pending | — |
+| 27. LLM-Authored Docker Validation and Artifact Truth | 0/3 | Planned | — |
 | 28. LLM Recovery Loop and Failure Semantics | 0/0 | Pending | — |
 | 29. LLM Benchmark Gains and Regression Harness | 0/0 | Pending | — |
 | 30. Live Evidence and Closeout for LLM-Led Validation | 0/0 | Pending | — |
@@ -93,4 +93,4 @@ The docker-first policy question is no longer the main problem. Fresh April 2 be
 `Phase 26 -> Phase 27 -> Phase 28 -> Phase 29 -> Phase 30`
 
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 (Phase 26 completed)*
+*Last updated: 2026-04-03 (Phase 27 planned)*
