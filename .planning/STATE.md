@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
-status: Ready for execution
-stopped_at: Phase 27 planned
-last_updated: "2026-04-03T00:38:20Z"
+status: Ready for planning
+stopped_at: Phase 27 complete
+last_updated: "2026-04-03T01:05:44Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 3
-  percent: 20
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 6
+  percent: 40
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-03
-**Status:** Ready for execution
-**Progress:** [██░░░░░░░░] 20%
+**Status:** Ready for planning
+**Progress:** [████░░░░░░] 40%
 **Last Activity:** 2026-04-03
-**Last Activity Description:** Phase 27 was researched and split into three execution waves around Docker authoring, image handoff truth, and deterministic proof
-**Resume File:** .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-01-PLAN.md
+**Last Activity Description:** Phase 27 completed with authored Docker-plan artifacts, executed Docker truth, and deterministic handoff proof coverage
+**Resume File:** .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-VERIFICATION.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone v2.5 — Phase 27 is ready to execute
+**Current Focus:** Milestone v2.5 — Phase 28 is ready to plan
 
 ---
 
 ## Current Position
 
-Phase: Phase 27 planned
-Plan: 27-01 next
-Status: Ready for Phase 27 execution
-Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 execution plans
+Phase: Phase 27 complete
+Plan: None active
+Status: Ready for Phase 28 planning
+Last activity: 2026-04-03 -- Phase 27 completed and verified with authored Docker-plan truth, executed Docker artifacts, and a deterministic handoff proof package
 
 ---
 
@@ -46,7 +46,7 @@ Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 e
 
 - Active milestone: `v2.5 LLM End-to-End Resolver and Validation`
 - Planned phases: 5
-- Active phase plan count: 3
+- Active phase plan count: 0
 - Last shipped milestone: `v2.3 Tier3 Validation Recovery and Reliability`
 - Shipped scope: 5 phases, 15 plans, 30 tasks
 - Fixed-slice live evidence: baseline `0/9` passes -> candidate `2/9` passes
@@ -55,9 +55,10 @@ Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 e
 - Final live evidence candidate: `runs/20260401-173232-apdr` resumed from `runs/20260401-162919-apdr`
 - Most recent docker-backed `llm-only` run under active investigation: `runs/20260402-184821-apdr`
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
-- Known Docker regression example: case `005bbad123ef309a5bef` built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
-- Known orchestration gap: `llm-only` still too often produces empty `requirements.txt` and generic failure labels instead of a usable start-to-finish case plan
-- Current phase plan count: 3
+- Frozen before-state Docker regression example: case `005bbad123ef309a5bef` previously built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
+- Known orchestration gap: `llm-only` still too often produces no usable end-to-end recovery path and generic failure labels when the model returns empty or unstable output
+- Current phase plan count: 0
+- Next phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
 ---
@@ -125,6 +126,7 @@ Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 e
 - [Phase 27-llm-authored-docker-validation-and-artifact-truth]: Docker authoring should be a second structured step derived from the authored case plan, not a fresh opaque prompt from raw snippet text.
 - [Phase 27-llm-authored-docker-validation-and-artifact-truth]: The build-to-run seam must capture and verify a locally usable image reference after build before `docker create` or `docker start`.
 - [Phase 27-llm-authored-docker-validation-and-artifact-truth]: Saved artifacts must preserve authored Docker intent, executed Docker inputs, and the exact image reference used so later recovery work can consume real Docker truth.
+- [Phase 27 complete]: APDR now writes `docker-plan.json` plus `Dockerfile.authored`, preserves executed Docker artifacts and image-inspect traces per attempt, and verifies a usable local image reference before runtime.
 
 ### Roadmap Evolution
 
@@ -147,10 +149,10 @@ Last activity: 2026-04-03 -- Phase 27 planned with research, validation, and 3 e
 
 ## Session Continuity
 
-Last session: 2026-04-03T00:24:30Z
-Stopped at: Phase 27 planned
-Resume file: .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-01-PLAN.md
+Last session: 2026-04-03T01:05:44Z
+Stopped at: Phase 27 complete
+Resume file: .planning/phases/27-llm-authored-docker-validation-and-artifact-truth/27-VERIFICATION.md
 
 ---
 
-*State updated after planning Phase 27 on 2026-04-03*
+*State updated after completing Phase 27 on 2026-04-03*

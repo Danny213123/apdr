@@ -13,7 +13,8 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - v2.3 shipped on 2026-04-01 after 5 phases, 15 plans, and 30 tasks.
 - v2.4 was superseded unfinished on 2026-04-02 after Phases 21.1, 22, 24, and 25 completed; its policy-proof artifacts remain useful context, but the milestone was overtaken before archival because the user pivoted to end-to-end LLM execution quality.
 - The latest docker-backed `llm-only` runs on 2026-04-02 exposed real regressions: empty LLM package plans, low pass counts, and Docker attempts that sometimes fail after a successful build because `docker create` cannot see the freshly built `apdr-validate:*` image tag.
-- In `runs/20260402-184821-apdr`, case `hard-gists/005bbad123ef309a5bef/snippet.py` shows both active failure seams at once: the LLM returned no package mapping, and the Docker path then failed after a successful build with `Unable to find image 'apdr-validate:...' locally`.
+- Phase 27 completed on 2026-04-03: the repo now persists LLM-authored Docker plans, writes authored and executed Dockerfile artifacts, and verifies a usable local image reference after build before runtime.
+- The April 2 missing-image regression from `runs/20260402-184821-apdr` is now frozen as before-state evidence rather than the current Docker execution contract.
 - The user wants the next milestone to make the LLM responsible for the whole APDR path for `llm` and `llm-only`: extract modules, infer packages and system deps, author Docker validation inputs, drive recovery, and leave enough artifacts to explain every decision.
 - The fixed live slice used for closeout moved from `0/9` baseline passes to `2/9` candidate passes, with `module-not-found`, `version-not-found`, and `environment-build-failed` each reduced by 3 on that slice.
 - `llm` validation now preserves truthful `fallback_*`, `validation_path`, `escalated_backend`, `failure_family`, and `resultOrigin` surfaces through APDR artifacts and benchmark readers.
@@ -81,10 +82,11 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - [x] The repo now ships a matched env-first versus docker-first comparison harness with frozen artifacts, delta reporting, and a deterministic proof checker - validated in Phase 24: env-first-vs-docker-first-comparison-harness
 - [x] The milestone now has a reviewer-readable docker-first verdict, deterministic closeout checker, and bounded proof pack - validated in Phase 25: docker-first-decision-closeout
 - [x] `llm` and `llm-only` now produce an authored intake plan or a structured intake failure before validation starts, with explicit authorship and deterministic-fallback truth - validated in Phase 26: llm-case-intake-and-plan-authoring
+- [x] `llm` and `llm-only` now preserve authored Docker intent, executed Docker artifacts, and verified image-handoff truth per case - validated in Phase 27: llm-authored-docker-validation-and-artifact-truth
 
 ### Active
 
-- [ ] `llm` and `llm-only` can use the LLM to author Docker-oriented validation inputs and bounded recovery steps, with those artifacts preserved per case.
+- [ ] `llm` and `llm-only` can use the LLM to propose and apply bounded recovery steps using the authored plan plus real build/runtime artifacts.
 - [ ] Latest-run failures no longer collapse into blank requirements, misleading `SystemDependency`, or generic `Unknown` when the real issue is LLM no-output or Docker infrastructure.
 - [ ] Fixed-slice and live-run evidence show whether end-to-end LLM execution improves pass rate and reliability for both `llm` and `llm-only`.
 
@@ -110,8 +112,9 @@ APDR must stay correct under benchmark pressure while the Rust core remains fast
 - Benchmark case rows, runtime guidance, and proof artifacts now keep requested backend mode separate from actual routed backend path, which gives Phase 19 a trustworthy routing surface to build on.
 - The user wants the next milestone to focus on live benchmark reliability and real recovery gains instead of more sample-proof packaging or wide deterministic patch growth.
 - The latest local priority is to make the LLM itself do more of the start-to-finish work: extract modules, plan dependencies, author Docker validation inputs, and own recovery loops for `llm` and `llm-only`.
-- Current April 2 local runs show two benchmark-visible blockers that this milestone must address together: repeated `LLM package-resolution call returned no output` cases and Docker build-to-run handoff failures where `docker create` cannot see the just-built image tag.
+- The April 2 baseline runs surfaced two benchmark-visible blockers that this milestone must address together: repeated `LLM package-resolution call returned no output` cases and Docker build-to-run handoff failures where `docker create` could not see the just-built image tag.
 - Phase 26 is now complete, so downstream work no longer has to infer intent from raw mappings or empty `requirements.txt`; authored intake truth is frozen in a deterministic proof package.
+- Phase 27 is now complete, so downstream recovery work can rely on authored Docker plans, executed Docker artifacts, and machine-readable image-handoff truth instead of reconstructing the Docker path from logs.
 - The shipped v2.3 closeout is intentionally fixed-slice scoped; future work must not overstate it as a full-corpus benchmark claim.
 - Phase 21.1 finished the repo-footprint reduction pass first, so the remaining v2.4 work can evaluate docker-first routing from a materially smaller checkout and a supported cleanup baseline.
 
@@ -189,4 +192,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after completing Phase 26*
+*Last updated: 2026-04-03 after completing Phase 27*

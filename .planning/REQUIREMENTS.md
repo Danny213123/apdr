@@ -10,13 +10,13 @@ Requirements for the v2.5 milestone. Each will map to exactly one roadmap phase.
 ### LLM Case Authoring
 
 - [x] **LLM-01**: In both `llm` and `llm-only` modes, APDR can ask the LLM to extract snippet modules, runtime intent, and initial dependency candidates before validation starts
-- [ ] **LLM-02**: In both `llm` and `llm-only` modes, APDR can ask the LLM to author Docker-oriented validation inputs, including build/runtime guidance and reproducible per-case artifacts
+- [x] **LLM-02**: In both `llm` and `llm-only` modes, APDR can ask the LLM to author Docker-oriented validation inputs, including build/runtime guidance and reproducible per-case artifacts
 - [ ] **LLM-03**: After install, build, or runtime failures, APDR can ask the LLM to propose and apply bounded recovery changes using prior attempt logs and artifacts
 
 ### Docker Execution Reliability
 
-- [ ] **DKR-01**: Docker validation can reliably run the image it just built in `llm` and `llm-only` modes without image-handoff or tag-visibility regressions
-- [ ] **DKR-02**: Each LLM-driven case debug folder records the authored plan, Docker inputs, recovery prompts/responses, and final executed artifacts needed to explain the case path
+- [x] **DKR-01**: Docker validation can reliably run the image it just built in `llm` and `llm-only` modes without image-handoff or tag-visibility regressions
+- [x] **DKR-02**: Each LLM-driven case debug folder records the authored plan, Docker inputs, recovery prompts/responses, and final executed artifacts needed to explain the case path
 
 ### Failure Truth
 
@@ -59,10 +59,10 @@ Deferred until the end-to-end LLM path is stable.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | LLM-01 | Phase 26 | Complete |
-| LLM-02 | Phase 27 | Pending |
+| LLM-02 | Phase 27 | Complete |
 | LLM-03 | Phase 28 | Pending |
-| DKR-01 | Phase 27 | Pending |
-| DKR-02 | Phase 27 | Pending |
+| DKR-01 | Phase 27 | Complete |
+| DKR-02 | Phase 27 | Complete |
 | TRU-01 | Phase 28 | Pending |
 | TRU-02 | Phase 26 | Complete |
 | BEN-01 | Phase 29 | Pending |
@@ -76,4 +76,4 @@ Deferred until the end-to-end LLM path is stable.
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-03 after completing Phase 26*
+*Last updated: 2026-04-03 after completing Phase 27*
