@@ -1,0 +1,36 @@
+{
+  "phase": "28",
+  "mode": "failure-truth",
+  "sample_id": "phase28-sample-001",
+  "validation_backend": "docker",
+  "failure_family": "dependency-resolution",
+  "recovery_outcome": "provider-failure",
+  "failure_truth_class": "provider-tooling-failure",
+  "failure_truth_detail": "timeout: structured recovery call timed out",
+  "recovery_attempts_path": "runs/phase28/cases/sample/recovery-attempts.json",
+  "recovery_attempts": [
+    {
+      "attempt_index": 1,
+      "recovery_outcome": "provider-failure",
+      "failure_class": "timeout",
+      "diagnostic_preview": "structured recovery call timed out",
+      "authored_plan_path": "runs/phase28/cases/sample/case-plan.json",
+      "docker_plan_path": "runs/phase28/cases/sample/docker-plan.json",
+      "intake_failure_path": "",
+      "combined_log_path": "runs/phase28/cases/sample/.apdr-debug/attempts/attempt-002-py-2_7/combined.log",
+      "executed_dockerfile_path": "runs/phase28/cases/sample/.apdr-debug/attempts/attempt-002-py-2_7/Dockerfile.executed",
+      "docker_build_command_path": "runs/phase28/cases/sample/.apdr-debug/attempts/attempt-002-py-2_7/docker-build.command.txt",
+      "docker_run_command_path": "runs/phase28/cases/sample/.apdr-debug/attempts/attempt-002-py-2_7/docker-run.command.txt",
+      "image_inspect_path": "runs/phase28/cases/sample/.apdr-debug/attempts/attempt-002-py-2_7/docker-image.inspect.txt",
+      "executed_image_ref": "sha256:phase28-timeout",
+      "wrong_package": "",
+      "correct_package": "",
+      "version": "",
+      "add_package": "",
+      "remove_package": "",
+      "notes": [
+        "LLM recovery failure (timeout): structured recovery call timed out"
+      ]
+    }
+  ]
+}
