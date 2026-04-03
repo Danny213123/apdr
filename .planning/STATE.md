@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: LLM End-to-End Resolver and Validation
-status: Ready for execution
-stopped_at: Phase 26 planned
-last_updated: "2026-04-02T23:52:11Z"
+status: Ready for planning
+stopped_at: Phase 26 complete
+last_updated: "2026-04-03T00:24:30Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State: APDR
 
 **Last Updated:** 2026-04-02
-**Status:** Ready for execution
-**Progress:** [░░░░░░░░░░] 0%
+**Status:** Ready for planning
+**Progress:** [██░░░░░░░░] 20%
 **Last Activity:** 2026-04-02
-**Last Activity Description:** Phase 26 was researched and split into three execution waves around authored intake plans, artifact truth, and deterministic proof
-**Resume File:** .planning/phases/26-llm-case-intake-and-plan-authoring/26-01-PLAN.md
+**Last Activity Description:** Phase 26 completed with an authored intake-plan contract, strict `llm-only` intake failures, and a deterministic proof package
+**Resume File:** .planning/ROADMAP.md
 
 ---
 
@@ -29,16 +29,16 @@ progress:
 
 **Core Value:** APDR must stay correct under benchmark pressure while the Rust core remains fast enough and clear enough to evolve without fighting the codebase.
 
-**Current Focus:** Milestone v2.5 — Phase 26 is next
+**Current Focus:** Milestone v2.5 — Phase 27 is next
 
 ---
 
 ## Current Position
 
-Phase: Phase 26 planned
-Plan: 26-01 next
-Status: Ready for Phase 26 execution
-Last activity: 2026-04-02 -- Phase 26 planning completed with research, validation, and 3 execution plans
+Phase: Phase 26 complete
+Plan: Phase 27 next
+Status: Ready for Phase 27 planning
+Last activity: 2026-04-03 -- Phase 26 completed with authored intake truth, runtime artifacts, and proof fixtures
 
 ---
 
@@ -57,7 +57,7 @@ Last activity: 2026-04-02 -- Phase 26 planning completed with research, validati
 - Early April 2 local evidence: the latest run has only `3` successes in its first `13` results, and at least `12` case reports already show `LLM package-resolution call returned no output`
 - Known Docker regression example: case `005bbad123ef309a5bef` built successfully, then failed because `docker create` could not find the freshly built `apdr-validate:*` image tag
 - Known orchestration gap: `llm-only` still too often produces empty `requirements.txt` and generic failure labels instead of a usable start-to-finish case plan
-- Current phase plan count: 3
+- Current phase plan count: 0
 - Pending upstream verification debt from prior milestone: Phase 23 browser UAT still has 2 unresolved items, but it no longer blocks the active roadmap
 
 ---
@@ -120,6 +120,8 @@ Last activity: 2026-04-02 -- Phase 26 planning completed with research, validati
 - [Phase 26-llm-case-intake-and-plan-authoring]: The authored case plan must include extracted modules or imports, package mappings, unresolved imports, system-dependency hints, runtime assumptions, section-level confidence, and an authored smoke strategy.
 - [Phase 26-llm-case-intake-and-plan-authoring]: `llm-only` shares the authored-plan pipeline with `llm`, but it fails truthfully when no usable intake plan exists instead of silently dropping into heuristic reconstruction.
 - [Phase 26-llm-case-intake-and-plan-authoring]: No-output paths must persist a structured intake-failure record that distinguishes empty output, invalid JSON, schema failure, timeout or transport failure, and provider or tooling incompatibility.
+- [Phase 26 complete]: Runtime case outputs now write `case-plan.json` and `intake-failure.json`, plus authored-plan metadata in summary lines and benchmark output metadata.
+- [Phase 26 complete]: The deterministic proof package is frozen in `.planning/phases/26-llm-case-intake-and-plan-authoring/` and should remain the source of truth for later Docker-authoring and recovery work.
 
 ### Roadmap Evolution
 
@@ -142,10 +144,10 @@ Last activity: 2026-04-02 -- Phase 26 planning completed with research, validati
 
 ## Session Continuity
 
-Last session: 2026-04-02T23:28:45.067Z
-Stopped at: Phase 26 planned
-Resume file: .planning/phases/26-llm-case-intake-and-plan-authoring/26-01-PLAN.md
+Last session: 2026-04-03T00:24:30Z
+Stopped at: Phase 26 complete
+Resume file: .planning/ROADMAP.md
 
 ---
 
-*State updated after planning Phase 26 on 2026-04-02*
+*State updated after completing Phase 26 on 2026-04-03*
