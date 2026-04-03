@@ -550,7 +550,11 @@ class TestRunContract(unittest.TestCase):
                         "authored_plan_fallback_sections": "tier1-cache,tier2-heuristic",
                         "intake_failure_class": "",
                         "intake_failure_path": "",
+                        "recovery_attempts_path": "cases/routed/recovery-attempts.json",
+                        "recovery_outcome": "provider-failure",
                         "escalated_backend": "docker",
+                        "failure_truth_class": "provider-tooling-failure",
+                        "failure_truth_detail": "timeout: structured recovery call timed out",
                         "validation_status": "environment-build-failed",
                         "validation_reason": "env build failed",
                         "llm_calls": "1",
@@ -609,7 +613,18 @@ class TestRunContract(unittest.TestCase):
                 ["tier1-cache", "tier2-heuristic"],
             )
             self.assertEqual(row["intakeFailureClass"], "")
+            self.assertEqual(
+                row["recoveryAttemptsPath"], "cases/routed/recovery-attempts.json"
+            )
+            self.assertEqual(row["recoveryOutcome"], "provider-failure")
             self.assertEqual(row["escalatedBackend"], "docker")
+            self.assertEqual(
+                row["failureTruthClass"], "provider-tooling-failure"
+            )
+            self.assertEqual(
+                row["failureTruthDetail"],
+                "timeout: structured recovery call timed out",
+            )
             self.assertNotEqual(row["requestedLlmValidationPolicy"], row["validationBackend"])
             self.assertNotEqual(row["llmValidationRoute"], row["validationPath"])
 

@@ -436,7 +436,11 @@ class TestRunnerEventEmission(unittest.TestCase):
                     "docker_bypass_reason: docker daemon unavailable",
                     "docker_bypass_note: runs/example/.apdr-debug/docker-bypass.txt",
                     "debug_dir: runs/example/.apdr-debug",
+                    "recovery_attempts_path: runs/example/cases/policy-truth/recovery-attempts.json",
+                    "recovery_outcome: provider-failure",
                     "failure_family: environment-specific",
+                    "failure_truth_class: provider-tooling-failure",
+                    "failure_truth_detail: timeout: structured recovery call timed out",
                     "resolution_tier: tier3",
                     "llm_calls: 1",
                     "env_builds: 1",
@@ -490,8 +494,18 @@ class TestRunnerEventEmission(unittest.TestCase):
         )
         self.assertTrue(result["imageHandoffVerified"])
         self.assertEqual(result["debugDir"], "runs/example/.apdr-debug")
+        self.assertEqual(
+            result["recoveryAttemptsPath"],
+            "runs/example/cases/policy-truth/recovery-attempts.json",
+        )
+        self.assertEqual(result["recoveryOutcome"], "provider-failure")
         self.assertEqual(result["validationBackend"], "llm")
         self.assertEqual(result["validationPath"], "env")
+        self.assertEqual(result["failureTruthClass"], "provider-tooling-failure")
+        self.assertEqual(
+            result["failureTruthDetail"],
+            "timeout: structured recovery call timed out",
+        )
 
         row = service._build_case_row(result, {"tool": "apdr", "loop_count": 1})
         self.assertEqual(
@@ -515,6 +529,10 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertEqual(row["executedImageRef"], result["executedImageRef"])
         self.assertTrue(row["imageHandoffVerified"])
         self.assertEqual(row["debugDir"], result["debugDir"])
+        self.assertEqual(row["recoveryAttemptsPath"], result["recoveryAttemptsPath"])
+        self.assertEqual(row["recoveryOutcome"], result["recoveryOutcome"])
+        self.assertEqual(row["failureTruthClass"], result["failureTruthClass"])
+        self.assertEqual(row["failureTruthDetail"], result["failureTruthDetail"])
 
         events = self._drain_events(event_queue)
         case_complete = next(event for event in events if event["type"] == "case_complete")
@@ -541,8 +559,20 @@ class TestRunnerEventEmission(unittest.TestCase):
         self.assertEqual(case_complete["executedImageRef"], "sha256:policytruth")
         self.assertTrue(case_complete["imageHandoffVerified"])
         self.assertEqual(case_complete["debugDir"], "runs/example/.apdr-debug")
+        self.assertEqual(
+            case_complete["recoveryAttemptsPath"],
+            "runs/example/cases/policy-truth/recovery-attempts.json",
+        )
+        self.assertEqual(case_complete["recoveryOutcome"], "provider-failure")
         self.assertEqual(case_complete["validationPath"], "env")
         self.assertEqual(case_complete["failureFamily"], "environment-specific")
+        self.assertEqual(
+            case_complete["failureTruthClass"], "provider-tooling-failure"
+        )
+        self.assertEqual(
+            case_complete["failureTruthDetail"],
+            "timeout: structured recovery call timed out",
+        )
         self.assertEqual(case_complete["resultOrigin"], "live")
 
 

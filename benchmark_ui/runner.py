@@ -834,9 +834,13 @@ class BenchmarkWorker(threading.Thread):
             output_metadata.get("image_handoff_verified")
         )
         image_inspect_path = self._metadata_text(output_metadata.get("image_inspect_path"))
+        recovery_attempts_path = self._metadata_text(output_metadata.get("recovery_attempts_path"))
+        recovery_outcome = self._metadata_text(output_metadata.get("recovery_outcome"))
         escalated_backend = self._metadata_text(output_metadata.get("escalated_backend"))
         failure_family = self._metadata_text(output_metadata.get("failure_family"))
         failure_bucket = self._metadata_text(output_metadata.get("failure_bucket"))
+        failure_truth_class = self._metadata_text(output_metadata.get("failure_truth_class"))
+        failure_truth_detail = self._metadata_text(output_metadata.get("failure_truth_detail"))
         skip_candidate = self._metadata_bool(output_metadata.get("skip_candidate"))
 
         result = {
@@ -881,9 +885,13 @@ class BenchmarkWorker(threading.Thread):
             "executedImageRef": executed_image_ref,
             "imageHandoffVerified": image_handoff_verified,
             "imageInspectPath": image_inspect_path,
+            "recoveryAttemptsPath": recovery_attempts_path,
+            "recoveryOutcome": recovery_outcome,
             "escalatedBackend": escalated_backend,
             "failureFamily": failure_family,
             "failureBucket": failure_bucket,
+            "failureTruthClass": failure_truth_class,
+            "failureTruthDetail": failure_truth_detail,
             "skipCandidate": skip_candidate,
             "resultOrigin": "live",
         }
@@ -943,10 +951,18 @@ class BenchmarkWorker(threading.Thread):
         event_data["imageHandoffVerified"] = image_handoff_verified
         if image_inspect_path:
             event_data["imageInspectPath"] = image_inspect_path
+        if recovery_attempts_path:
+            event_data["recoveryAttemptsPath"] = recovery_attempts_path
+        if recovery_outcome:
+            event_data["recoveryOutcome"] = recovery_outcome
         if escalated_backend:
             event_data["escalatedBackend"] = escalated_backend
         if failure_family:
             event_data["failureFamily"] = failure_family
+        if failure_truth_class:
+            event_data["failureTruthClass"] = failure_truth_class
+        if failure_truth_detail:
+            event_data["failureTruthDetail"] = failure_truth_detail
         event_data["resultOrigin"] = "live"
         emit_event("case_complete", **event_data)
 

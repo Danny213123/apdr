@@ -961,6 +961,8 @@ class BenchmarkService:
             "executedImageRef": self._result_executed_image_ref(result),
             "imageHandoffVerified": self._result_image_handoff_verified(result),
             "imageInspectPath": self._result_image_inspect_path(result),
+            "recoveryAttemptsPath": self._result_recovery_attempts_path(result),
+            "recoveryOutcome": self._result_recovery_outcome(result),
             "authoredPlanStatus": self._result_authored_plan_status(result),
             "authoredPlanPath": self._result_authored_plan_path(result),
             "authoredPlanAuthorship": self._result_authored_plan_authorship(result),
@@ -970,6 +972,8 @@ class BenchmarkService:
             "escalatedBackend": self._result_escalated_backend(result),
             "failureFamily": self._result_failure_family(result),
             "failureBucket": self._result_failure_bucket(result),
+            "failureTruthClass": self._result_failure_truth_class(result),
+            "failureTruthDetail": self._result_failure_truth_detail(result),
             "skipCandidate": self._result_skip_candidate(result),
             "resultOrigin": self._result_origin(result),
         }
@@ -1829,6 +1833,24 @@ class BenchmarkService:
             return ""
         return str(metadata.get("failure_bucket") or "").strip()
 
+    def _result_failure_truth_class(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("failureTruthClass") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("failure_truth_class") or "").strip()
+
+    def _result_failure_truth_detail(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("failureTruthDetail") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("failure_truth_detail") or "").strip()
+
     def _result_skip_candidate(self, result: dict[str, Any]) -> bool:
         direct = result.get("skipCandidate")
         if direct is not None:
@@ -1870,6 +1892,24 @@ class BenchmarkService:
         if not isinstance(metadata, dict):
             return ""
         return str(metadata.get("fallback_reason") or "").strip()
+
+    def _result_recovery_attempts_path(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("recoveryAttemptsPath") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("recovery_attempts_path") or "").strip()
+
+    def _result_recovery_outcome(self, result: dict[str, Any]) -> str:
+        direct = str(result.get("recoveryOutcome") or "").strip()
+        if direct:
+            return direct
+        metadata = result.get("output_metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return str(metadata.get("recovery_outcome") or "").strip()
 
     def _result_validation_backend(self, result: dict[str, Any]) -> str:
         direct = str(result.get("validationBackend") or "").strip()

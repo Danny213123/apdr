@@ -6,6 +6,10 @@ use std::collections::BTreeSet;
 
 const FAILURE_FAMILY_ENVIRONMENT_SPECIFIC: &str = "environment-specific";
 const FAILURE_FAMILY_DEPENDENCY_RESOLUTION: &str = "dependency-resolution";
+const FAILURE_TRUTH_LLM_NO_OUTPUT: &str = "llm-no-output";
+const FAILURE_TRUTH_PROVIDER_TOOLING: &str = "provider-tooling-failure";
+const FAILURE_TRUTH_DOCKER_INFRA: &str = "docker-infrastructure-failure";
+const FAILURE_TRUTH_DEPENDENCY_RUNTIME: &str = "dependency-runtime-failure";
 
 pub(super) fn normalize_package_key(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace(['_', '.'], "-")
@@ -255,10 +259,156 @@ pub(super) fn update_failure_metadata(
     if validation.failing_package.is_none() {
         validation.failing_package = resolved.iter().last().map(|dep| dep.package_name.clone());
     }
+    if validation.recovery_outcome.is_none() {
+        validation.recovery_outcome = validation
+            .recovery_attempts
+            .last()
+            .map(|attempt| attempt.recovery_outcome.clone())
+            .filter(|value| !value.trim().is_empty());
+    }
     update_fallback_metadata(validation);
     if validation.failure_family.is_none() {
         validation.failure_family = classify_failure_family(validation);
     }
+    if let Some((truth_class, truth_detail)) = infer_failure_truth(validation) {
+        validation.failure_truth_class = Some(truth_class);
+        validation.failure_truth_detail = Some(truth_detail);
+    }
+}
+
+fn infer_failure_truth(validation: &ValidationSummary) -> Option<(String, String)> {
+    if validation.succeeded {
+        return None;
+    }
+
+    if let Some(attempt) = validation
+        .recovery_attempts
+        .iter()
+        .rev()
+        .find(|attempt| !attempt.failure_class.trim().is_empty())
+    {
+        let detail = if !attempt.diagnostic_preview.trim().is_empty() {
+            format!(
+                "{}: {}",
+                attempt.failure_class.trim(),
+                attempt.diagnostic_preview.trim()
+            )
+        } else {
+            attempt.failure_class.trim().to_string()
+        };
+        match attempt.failure_class.trim() {
+            "empty-output" | "invalid-json" | "schema-validation-failure" => {
+                return Some((FAILURE_TRUTH_LLM_NO_OUTPUT.to_string(), detail));
+            }
+            "provider-tooling-failure" | "timeout" | "transport-failure" => {
+                return Some((FAILURE_TRUTH_PROVIDER_TOOLING.to_string(), detail));
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(detail) = docker_infrastructure_detail(validation) {
+        return Some((FAILURE_TRUTH_DOCKER_INFRA.to_string(), detail));
+    }
+
+    let detail = validation
+        .reason
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            validation
+                .attempts
+                .last()
+                .and_then(|attempt| attempt.error_type.as_deref())
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            validation
+                .attempts
+                .last()
+                .map(|attempt| attempt.status.clone())
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(|| {
+            Some(
+                validation
+                    .failure_bucket
+                    .trim()
+                    .to_string(),
+            )
+            .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "validation failed".to_string());
+
+    Some((FAILURE_TRUTH_DEPENDENCY_RUNTIME.to_string(), detail))
+}
+
+fn docker_infrastructure_detail(validation: &ValidationSummary) -> Option<String> {
+    if validation
+        .status
+        .trim()
+        .starts_with("docker-")
+    {
+        return Some(
+            validation
+                .reason
+                .clone()
+                .unwrap_or_else(|| validation.status.clone()),
+        );
+    }
+
+    if let Some(attempt) = validation.attempts.iter().rev().find(|attempt| {
+        attempt
+            .error_type
+            .as_deref()
+            .is_some_and(|value| {
+                matches!(
+                    value,
+                    "DockerPermissionDenied" | "DockerDaemonUnavailable"
+                )
+            })
+            || docker_log_suggests_infrastructure(&attempt.log_excerpt)
+    }) {
+        if let Some(error_type) = attempt.error_type.as_deref() {
+            if !error_type.trim().is_empty() {
+                return Some(error_type.trim().to_string());
+            }
+        }
+        if !attempt.log_excerpt.trim().is_empty() {
+            return Some(extract_key_error_lines(&attempt.log_excerpt));
+        }
+    }
+
+    validation
+        .reason
+        .as_deref()
+        .filter(|value| docker_log_suggests_infrastructure(value))
+        .map(str::to_string)
+        .or_else(|| {
+            validation
+                .root_cause
+                .as_deref()
+                .filter(|value| docker_log_suggests_infrastructure(value))
+                .map(str::to_string)
+        })
+}
+
+fn docker_log_suggests_infrastructure(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "cannot connect to the docker daemon",
+        "permission denied while trying to connect to the docker api",
+        "no such image",
+        "unable to find image",
+        "docker api",
+        "docker daemon",
+        "image inspect",
+        "image handoff",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 pub(super) fn classify_failure_family(validation: &ValidationSummary) -> Option<String> {
@@ -1439,7 +1589,7 @@ pub(super) fn check_unsolvable_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ValidationAttempt, VALIDATION_BACKEND_ENV};
+    use crate::{RecoveryAttemptRecord, ValidationAttempt, VALIDATION_BACKEND_ENV};
     use std::path::Path;
 
     #[test]
@@ -1628,6 +1778,64 @@ mod tests {
         assert_eq!(
             classify_failure_family(&validation).as_deref(),
             Some("dependency-resolution")
+        );
+    }
+
+    #[test]
+    fn phase28_truth_recovery_invalid_json_becomes_llm_no_output() {
+        let mut validation = ValidationSummary {
+            status: "failed".to_string(),
+            failure_bucket: "failed".to_string(),
+            recovery_attempts: vec![RecoveryAttemptRecord {
+                attempt_index: 1,
+                recovery_outcome: "no-output".to_string(),
+                failure_class: "invalid-json".to_string(),
+                diagnostic_preview: "attempt 1: provider returned malformed JSON".to_string(),
+                ..RecoveryAttemptRecord::default()
+            }],
+            ..ValidationSummary::default()
+        };
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        update_failure_metadata(&mut validation, &config, &[], None);
+
+        assert_eq!(validation.recovery_outcome.as_deref(), Some("no-output"));
+        assert_eq!(
+            validation.failure_truth_class.as_deref(),
+            Some("llm-no-output")
+        );
+        assert_eq!(
+            validation.failure_truth_detail.as_deref(),
+            Some("invalid-json: attempt 1: provider returned malformed JSON")
+        );
+    }
+
+    #[test]
+    fn phase28_truth_docker_handoff_error_becomes_docker_infrastructure_failure() {
+        let mut validation = ValidationSummary {
+            status: "environment-build-failed".to_string(),
+            failure_bucket: "environment-build-failed".to_string(),
+            attempts: vec![ValidationAttempt {
+                attempt_index: 1,
+                validation_backend: crate::VALIDATION_BACKEND_DOCKER.to_string(),
+                status: "build-failed".to_string(),
+                log_excerpt: "docker create failed: No such image: apdr:test-case".to_string(),
+                ..ValidationAttempt::default()
+            }],
+            reason: Some("docker create failed after build".to_string()),
+            ..ValidationSummary::default()
+        };
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+
+        update_failure_metadata(&mut validation, &config, &[], None);
+
+        assert_eq!(
+            validation.failure_truth_class.as_deref(),
+            Some("docker-infrastructure-failure")
+        );
+        assert_eq!(
+            validation.failure_truth_detail.as_deref(),
+            Some("docker create failed: No such image: apdr:test-case")
         );
     }
 }
