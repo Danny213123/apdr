@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.19 - 2026-04-04
+
+- Expanded APDR's LLM resolution and recovery guidance with stricter solvability triage for macOS frameworks, Windows and hardware-only imports, private or defunct modules, local-project helpers, TensorFlow 1-era APIs, and OpenCV headless builds, backed by broader live-LLM fixture coverage for the new mapping cases.
+- Hardened APDR's resolver runtime with curated family-knowledge routing for legacy TensorFlow and johnny-cache stacks, preferred initial Python selection for legacy bundles, better wrong-package and local-module recovery diagnostics, and automatic reset/respawn of the `llm_py` sidecar when startup or request timeouts occur.
+- Improved the benchmark control plane by allowing bounded parallelism for `llm-only` runs and caching dataset snippet counts when loading saved-run history, reducing unnecessary rescans while preserving replay-worker guardrails.
+
 ## 0.2.18 - 2026-04-03
 
 - Reduced APDR repo footprint by untracking bulky `target-*` trees, moving cache and Cargo build defaults out of the repo, and shipping cleanup/footprint guard tooling so clones and local workspaces no longer accumulate tens of gigabytes under `tools/apdr`.

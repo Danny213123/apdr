@@ -719,9 +719,7 @@ mod tests {
                     DockerUnavailabilityReason::DaemonUnavailable
                 )
             ),
-            LlmValidationRoute::EnvFirstDockerBypass(
-                DockerUnavailabilityReason::DaemonUnavailable
-            )
+            LlmValidationRoute::EnvFirstDockerBypass(DockerUnavailabilityReason::DaemonUnavailable)
         );
     }
 
@@ -737,9 +735,7 @@ mod tests {
         apply_llm_route_metadata(
             &mut summary,
             &config,
-            LlmValidationRoute::EnvFirstDockerBypass(
-                DockerUnavailabilityReason::DaemonUnavailable,
-            ),
+            LlmValidationRoute::EnvFirstDockerBypass(DockerUnavailabilityReason::DaemonUnavailable),
         )
         .expect("route metadata");
 
@@ -810,9 +806,7 @@ mod tests {
         apply_llm_route_metadata(
             &mut summary,
             &config,
-            LlmValidationRoute::EnvFirstDockerBypass(
-                DockerUnavailabilityReason::DaemonUnavailable,
-            ),
+            LlmValidationRoute::EnvFirstDockerBypass(DockerUnavailabilityReason::DaemonUnavailable),
         )
         .expect("route metadata");
 

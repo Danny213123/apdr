@@ -36,10 +36,10 @@ pub(super) fn validate_requirements_llm(
     store: &mut CacheStore,
 ) -> io::Result<ValidationSummary> {
     let docker_availability = if llm_case_requires_host_runtime(imports, requirements_txt) {
-            DockerValidationAvailability::Available
-        } else {
-            probe_docker_validation_availability()
-        };
+        DockerValidationAvailability::Available
+    } else {
+        probe_docker_validation_availability()
+    };
     let route = llm_validation_route(config, imports, requirements_txt, docker_availability);
     let mut summary = match route {
         LlmValidationRoute::DockerFirst => validate_requirements_llm_docker_first(

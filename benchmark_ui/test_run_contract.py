@@ -37,6 +37,16 @@ class _FakeBenchmarkState(AppState):
         return (["qwen3.5:9b"], "api", "")
 
 
+class _CountingBenchmarkState(_FakeBenchmarkState):
+    def __init__(self, repo_root: Path) -> None:
+        super().__init__(repo_root)
+        self.snippet_scan_calls = 0
+
+    def snippet_files(self, dataset_dir: str | Path) -> list[Path]:
+        self.snippet_scan_calls += 1
+        return super().snippet_files(dataset_dir)
+
+
 class _CommandCapturingWorker(BenchmarkWorker):
     def __init__(self, state: AppState, run_config: dict[str, object], message_queue: Queue[dict[str, object]]) -> None:
         super().__init__(state, run_config, message_queue)
@@ -434,6 +444,39 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(info_fields["Build profile"], "release")
             self.assertEqual(info_fields["Workers"], "1")
             self.assertIn("Rosetta 2", info_fields["Replay warnings"])
+
+    def test_saved_run_history_reuses_cached_dataset_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            state = _CountingBenchmarkState(repo_root)
+            dataset_root = repo_root / "hard-gists"
+            snippet_dir = dataset_root / "case-001"
+            snippet_dir.mkdir(parents=True, exist_ok=True)
+            (snippet_dir / "snippet.py").write_text("print('ok')\n", encoding="utf-8")
+
+            for run_id in ("20260329-010100-apdr", "20260329-010101-apdr"):
+                run_dir = repo_root / "runs" / run_id
+                run_dir.mkdir(parents=True, exist_ok=True)
+                state.write_json(
+                    run_dir / "summary.json",
+                    {
+                        "tool": "apdr",
+                        "dataset_tar": str(repo_root / "hard-gists.tar.gz"),
+                        "dataset_dir": str(dataset_root),
+                        "validation_backend": "env",
+                        "status": "completed",
+                        "results": [],
+                    },
+                )
+
+            service = BenchmarkService(state)
+
+            first_payload = service.runs()
+            second_payload = service.runs()
+
+            self.assertEqual(len(first_payload), 2)
+            self.assertEqual(len(second_payload), 2)
+            self.assertEqual(state.snippet_scan_calls, 1)
 
     def test_runner_passes_llm_validation_policy_flag_for_llm_runs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

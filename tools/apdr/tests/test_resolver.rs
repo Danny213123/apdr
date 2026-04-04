@@ -35,7 +35,10 @@ fn resolver_pins_legacy_pillow_for_python2_pil_snippets() {
     let result = apdr::resolver::resolve_path(&tool_root, &snippet, &config).unwrap();
 
     assert_eq!(result.python_version, "2.7");
-    assert!(result.requirements_txt.contains("Pillow==6.2.2"));
+    assert!(result
+        .requirements_txt
+        .to_lowercase()
+        .contains("pillow==6.2.2"));
     assert!(!result.requirements_txt.to_lowercase().contains("stringio"));
     assert!(!result.unresolved.iter().any(|item| item == "StringIO"));
 }
@@ -1732,11 +1735,10 @@ impl CuratedFamilyOverride {
     {
         let tool_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let temp_dir = tempfile::tempdir().unwrap();
-        let families_json =
-            std::fs::read_to_string(apdr::resolver::family_knowledge::touched_families_path(
-                &tool_root,
-            ))
-            .unwrap();
+        let families_json = std::fs::read_to_string(
+            apdr::resolver::family_knowledge::touched_families_path(&tool_root),
+        )
+        .unwrap();
         let recovery_rules_json = std::fs::read_to_string(
             apdr::resolver::family_knowledge::touched_recovery_rules_path(&tool_root),
         )
@@ -1767,11 +1769,14 @@ impl Drop for CuratedFamilyOverride {
 fn data_driven_family_runtime_registry_prefers_curated_touch_points() {
     let _lock = family_runtime_test_lock();
     let _override = CuratedFamilyOverride::from_modified_families(|json| {
-        json.replace("\"package\": \"scikit-learn\"", "\"package\": \"scikit-learn-modern\"")
-            .replace(
-                "\"package_name\": \"scikit-learn\"",
-                "\"package_name\": \"scikit-learn-modern\"",
-            )
+        json.replace(
+            "\"package\": \"scikit-learn\"",
+            "\"package\": \"scikit-learn-modern\"",
+        )
+        .replace(
+            "\"package_name\": \"scikit-learn\"",
+            "\"package_name\": \"scikit-learn-modern\"",
+        )
     });
 
     assert_eq!(
@@ -1784,10 +1789,9 @@ fn data_driven_family_runtime_registry_prefers_curated_touch_points() {
         "sklearn",
         "scikit-learn-modern",
     ));
-    assert!(!apdr::resolver::family_knowledge::namespace_mapping_allowed(
-        "sklearn",
-        "scikit-learn",
-    ));
+    assert!(
+        !apdr::resolver::family_knowledge::namespace_mapping_allowed("sklearn", "scikit-learn",)
+    );
 }
 
 #[test]
@@ -1801,8 +1805,7 @@ fn data_driven_family_runtime_registry_keeps_untouched_static_families() {
         Some(("static".to_string(), "serial".to_string()))
     );
     assert!(apdr::resolver::family_knowledge::namespace_mapping_allowed(
-        "serial",
-        "pyserial",
+        "serial", "pyserial",
     ));
 }
 
@@ -1814,9 +1817,17 @@ fn data_driven_family_runtime_behavior_preserves_legacy_pillow_pin() {
         "test-data-driven-legacy-pillow-output",
     );
 
-    assert!(result.requirements_txt.contains("Pillow==6.2.2"));
-    assert!(result.resolution_report.notes.iter().any(|note| note
-        .contains("Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility.")));
+    assert!(result
+        .requirements_txt
+        .to_lowercase()
+        .contains("pillow==6.2.2"));
+    assert!(result
+        .resolution_report
+        .notes
+        .iter()
+        .any(|note| note.contains(
+            "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+        )));
 }
 
 #[test]
@@ -1847,13 +1858,21 @@ fn data_driven_family_runtime_behavior_preserves_legacy_pymc3_bundle() {
 #[test]
 fn data_driven_family_runtime_behavior_preserves_keras_backend_rule() {
     let _lock = family_runtime_test_lock();
-    let result = resolve_inline_snippet("import keras\nmodel = keras.Sequential()\n", "test-data-driven-keras-backend-output");
+    let result = resolve_inline_snippet(
+        "import keras\nmodel = keras.Sequential()\n",
+        "test-data-driven-keras-backend-output",
+    );
     let req_lower = result.requirements_txt.to_lowercase();
 
     assert!(req_lower.contains("keras"));
     assert!(req_lower.contains("tensorflow"));
-    assert!(result.resolution_report.notes.iter().any(|note| note
-        .contains("Family knowledge added tensorflow as the default backend for standalone keras.")));
+    assert!(result
+        .resolution_report
+        .notes
+        .iter()
+        .any(|note| note.contains(
+            "Family knowledge added tensorflow as the default backend for standalone keras."
+        )));
 }
 
 #[test]
@@ -1882,19 +1901,24 @@ fn data_driven_family_runtime_behavior_routes_pkg_resources_through_curated_mapp
 fn phase7_family_pillow_fixtures_still_pin_pillow() {
     let _lock = family_runtime_test_lock();
     for case_id in ["2e3b989e0343f0884388ed7ed82eb3b0", "33e2172bafbb5dd794ab"] {
-        let result = resolve_phase7_family_fixture(
-            case_id,
-            &format!("phase7-family-pillow-{case_id}"),
-        );
+        let result =
+            resolve_phase7_family_fixture(case_id, &format!("phase7-family-pillow-{case_id}"));
 
         assert!(
-            result.requirements_txt.contains("Pillow==6.2.2"),
+            result
+                .requirements_txt
+                .to_lowercase()
+                .contains("pillow==6.2.2"),
             "{case_id} should keep the legacy Pillow pin"
         );
         assert!(
-            result.resolution_report.notes.iter().any(|note| note.contains(
-                "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
-            )),
+            result
+                .resolution_report
+                .notes
+                .iter()
+                .any(|note| note.contains(
+                    "Family knowledge pinned Pillow to 6.2.2 for Python 2.7 PIL-era compatibility."
+                )),
             "{case_id} should keep the legacy Pillow note"
         );
     }
@@ -1943,13 +1967,18 @@ fn phase7_family_keras_fixtures_add_tensorflow_backend() {
             "{case_id} should keep tensorflow in the resolved requirements"
         );
         assert!(result.resolved.iter().any(|dependency| {
-            dependency.package_name == "tensorflow"
-                && dependency.strategy == "family:keras-backend"
+            dependency.package_name == "tensorflow" && dependency.strategy == "family:keras-backend"
         }));
         assert!(
-            result.resolution_report.notes.iter().any(|note| note.contains(
+            result
+                .resolution_report
+                .notes
+                .iter()
+                .any(|note| {
+                    note.contains(
                 "Family knowledge added tensorflow as the default backend for standalone keras."
-            )),
+            )
+                }),
             "{case_id} should keep the keras backend note"
         );
     }
@@ -1985,10 +2014,8 @@ fn phase7_family_pkg_resources_fixtures_add_setuptools() {
 #[test]
 fn phase7_family_sklearn_fixture_resolves_to_scikit_learn() {
     let _lock = family_runtime_test_lock();
-    let result = resolve_phase7_family_fixture(
-        "28bf77e9a95ae6b70b14141feacb1f84",
-        "phase7-family-sklearn",
-    );
+    let result =
+        resolve_phase7_family_fixture("28bf77e9a95ae6b70b14141feacb1f84", "phase7-family-sklearn");
     let req_lower = result.requirements_txt.to_lowercase();
 
     assert!(req_lower.contains("scikit-learn"));
@@ -2012,41 +2039,65 @@ fn phase9_targeted_policy_reads_seed_rules() {
 
     // Module provider rules should include pkg_resources and Image.
     assert!(
-        policy.module_rules().iter().any(|r| r.id == "mod-pkg-resources"),
+        policy
+            .module_rules()
+            .iter()
+            .any(|r| r.id == "mod-pkg-resources"),
         "expected mod-pkg-resources rule in module_rules"
     );
     assert!(
-        policy.module_rules().iter().any(|r| r.id == "mod-pil-image"),
+        policy
+            .module_rules()
+            .iter()
+            .any(|r| r.id == "mod-pil-image"),
         "expected mod-pil-image rule in module_rules"
     );
 
     // Stop reason rules should include imp and numpy.distutils.
     assert!(
-        policy.stop_reason_rules().iter().any(|r| r.id == "stop-imp-removed"),
+        policy
+            .stop_reason_rules()
+            .iter()
+            .any(|r| r.id == "stop-imp-removed"),
         "expected stop-imp-removed rule in stop_reason_rules"
     );
     assert!(
-        policy.stop_reason_rules().iter().any(|r| r.id == "stop-numpy-distutils"),
+        policy
+            .stop_reason_rules()
+            .iter()
+            .any(|r| r.id == "stop-numpy-distutils"),
         "expected stop-numpy-distutils rule in stop_reason_rules"
     );
 
     // Compatibility clusters should include torch and tensorflow.
     assert!(
-        policy.compatibility_clusters().iter().any(|c| c.id == "compat-torch"),
+        policy
+            .compatibility_clusters()
+            .iter()
+            .any(|c| c.id == "compat-torch"),
         "expected compat-torch cluster in compatibility_clusters"
     );
     assert!(
-        policy.compatibility_clusters().iter().any(|c| c.id == "compat-tensorflow"),
+        policy
+            .compatibility_clusters()
+            .iter()
+            .any(|c| c.id == "compat-tensorflow"),
         "expected compat-tensorflow cluster in compatibility_clusters"
     );
 
     // Read-only accessors should work.
     let pkg_rule = policy.module_rule_for_alias("pkg_resources");
-    assert!(pkg_rule.is_some(), "module_rule_for_alias should find pkg_resources");
+    assert!(
+        pkg_rule.is_some(),
+        "module_rule_for_alias should find pkg_resources"
+    );
     assert_eq!(pkg_rule.unwrap().provider_package, "setuptools");
 
     let torch_cluster = policy.compatibility_cluster_for_package("torch");
-    assert!(torch_cluster.is_some(), "compatibility_cluster_for_package should find torch");
+    assert!(
+        torch_cluster.is_some(),
+        "compatibility_cluster_for_package should find torch"
+    );
     assert_eq!(torch_cluster.unwrap().id, "compat-torch");
 }
 
@@ -2400,7 +2451,10 @@ fn phase26_intake_preserves_authored_plan() {
 
     assert_eq!(authored_plan.extracted_imports, vec!["sklearn"]);
     assert_eq!(authored_plan.package_mappings.len(), 1);
-    assert_eq!(authored_plan.package_mappings[0].package_name, "scikit-learn");
+    assert_eq!(
+        authored_plan.package_mappings[0].package_name,
+        "scikit-learn"
+    );
     assert_eq!(authored_plan.smoke_strategy.mode, "import");
 }
 
@@ -2417,9 +2471,8 @@ fn phase26_intake_preserves_failure_class() {
         }
     });
 
-    let intake_failure =
-        apdr::resolver::tier3_llm::parse_intake_failure_response(&response)
-            .expect("expected intake failure");
+    let intake_failure = apdr::resolver::tier3_llm::parse_intake_failure_response(&response)
+        .expect("expected intake failure");
 
     assert_eq!(intake_failure.failure_class, "schema-validation-failure");
     assert_eq!(intake_failure.authored_plan_status, "unusable");
@@ -2458,11 +2511,10 @@ fn phase26_zero_dependency_intake_returns_deterministic_authored_plan() {
     let plan = stage.authored_plan.unwrap();
     assert!(plan.extracted_imports.is_empty());
     assert!(plan.package_mappings.is_empty());
-    assert!(
-        plan.runtime_assumptions
-            .iter()
-            .any(|item| item.contains("no third-party imports were detected"))
-    );
+    assert!(plan
+        .runtime_assumptions
+        .iter()
+        .any(|item| item.contains("no third-party imports were detected")));
 
     std::fs::remove_dir_all(cache_path).unwrap();
 }
@@ -2507,11 +2559,10 @@ fn phase26_zero_dependency_retry_intake_returns_deterministic_authored_plan() {
     let plan = stage.authored_plan.unwrap();
     assert!(plan.extracted_imports.is_empty());
     assert!(plan.package_mappings.is_empty());
-    assert!(
-        plan.runtime_assumptions
-            .iter()
-            .any(|item| item.contains("no third-party imports were detected"))
-    );
+    assert!(plan
+        .runtime_assumptions
+        .iter()
+        .any(|item| item.contains("no third-party imports were detected")));
 
     std::fs::remove_dir_all(cache_path).unwrap();
 }
@@ -2564,9 +2615,8 @@ fn phase27_author_preserves_authored_docker_plan() {
         }
     });
 
-    let docker_plan =
-        apdr::resolver::tier3_llm::parse_authored_docker_plan_response(&response)
-            .expect("expected authored docker plan");
+    let docker_plan = apdr::resolver::tier3_llm::parse_authored_docker_plan_response(&response)
+        .expect("expected authored docker plan");
 
     assert_eq!(docker_plan.base_image, "python:3.11-slim");
     assert_eq!(docker_plan.system_packages.len(), 2);
@@ -2696,8 +2746,7 @@ fn phase26_truth_write_outputs_include_case_plan_and_intake_failure_artifacts() 
     let (_requirements_path, _report_path) = result.write_outputs(&output_dir).unwrap();
 
     let case_plan = std::fs::read_to_string(output_dir.join("case-plan.json")).unwrap();
-    let intake_failure =
-        std::fs::read_to_string(output_dir.join("intake-failure.json")).unwrap();
+    let intake_failure = std::fs::read_to_string(output_dir.join("intake-failure.json")).unwrap();
 
     assert!(case_plan.contains("\"smoke_strategy\""));
     assert!(case_plan.contains("\"authorship\": \"llm-authored\""));
@@ -2871,8 +2920,7 @@ fn phase28_recovery_summary_lines_include_recovery_truth_fields() {
     let output_dir = tool_root.join("target/phase28-recovery-summary");
     let mut result = phase26_truth_fixture_result("phase28-recovery-summary");
     result.validation.recovery_outcome = Some("provider-failure".to_string());
-    result.validation.failure_truth_class =
-        Some("provider-tooling-failure".to_string());
+    result.validation.failure_truth_class = Some("provider-tooling-failure".to_string());
     result.validation.failure_truth_detail =
         Some("timeout: attempt 1 timed out waiting for structured JSON".to_string());
     result.validation.recovery_attempts = vec![apdr::RecoveryAttemptRecord {
@@ -2906,7 +2954,8 @@ fn phase28_recovery_summary_lines_include_recovery_truth_fields() {
     assert!(summary.contains("RECOVERY_ATTEMPTS_PATH="));
     assert!(summary.contains("RECOVERY_OUTCOME=provider-failure"));
     assert!(summary.contains("FAILURE_TRUTH_CLASS=provider-tooling-failure"));
-    assert!(summary.contains("FAILURE_TRUTH_DETAIL=timeout: attempt 1 timed out waiting for structured JSON"));
+    assert!(summary
+        .contains("FAILURE_TRUTH_DETAIL=timeout: attempt 1 timed out waiting for structured JSON"));
 }
 
 #[test]
@@ -3123,7 +3172,10 @@ fn phase20_compat_beautifulsoup_rewrites_to_bs4() {
     );
 
     assert_eq!(cluster.id, "compat-beautifulsoup-rename");
-    assert!(!notes.is_empty(), "expected replacement notes for BeautifulSoup");
+    assert!(
+        !notes.is_empty(),
+        "expected replacement notes for BeautifulSoup"
+    );
     assert_eq!(resolved[0].package_name, "beautifulsoup4");
     assert_eq!(resolved[0].version.as_deref(), Some("4.12.3"));
 }
@@ -3199,7 +3251,10 @@ fn phase20_compat_opencv_cluster_converges() {
         .expect("expected numpy dependency");
 
     assert_eq!(cluster.id, "compat-opencv-headless-legacy");
-    assert!(!notes.is_empty(), "expected convergence notes for opencv cluster");
+    assert!(
+        !notes.is_empty(),
+        "expected convergence notes for opencv cluster"
+    );
     assert_eq!(opencv.package_name, "opencv-python-headless");
     assert_eq!(opencv.version.as_deref(), Some("3.4.11.43"));
     assert_eq!(numpy.version.as_deref(), Some("1.24.4"));

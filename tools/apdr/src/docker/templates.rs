@@ -73,7 +73,7 @@ fn render_template(
         command
     };
     let command_json = serde_json::to_string(effective_command)
-    .unwrap_or_else(|_| "[\"python\",\"/app/smoke_test.py\"]".to_string());
+        .unwrap_or_else(|_| "[\"python\",\"/app/smoke_test.py\"]".to_string());
 
     format!(
         "# syntax=docker/dockerfile:1\n\

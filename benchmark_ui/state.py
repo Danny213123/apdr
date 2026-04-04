@@ -55,6 +55,7 @@ class AppState:
         self.loadouts_dir = self.repo_root / "loadouts"
         self.runs_dir = self.repo_root / "runs"
         self.default_dataset_tar = self.repo_root / "hard-gists.tar.gz"
+        self._snippet_count_cache: dict[str, tuple[int, int]] = {}
         self.ensure_directories()
 
     def ensure_directories(self) -> None:
@@ -495,7 +496,18 @@ class AppState:
         path = Path(dataset_dir)
         if not path.exists():
             return 0
-        return len(self.snippet_files(path))
+        resolved_path = path.resolve()
+        try:
+            mtime_ns = resolved_path.stat().st_mtime_ns
+        except OSError:
+            return len(self.snippet_files(resolved_path))
+        cache_key = str(resolved_path)
+        cached = self._snippet_count_cache.get(cache_key)
+        if cached and cached[0] == mtime_ns:
+            return cached[1]
+        count = len(self.snippet_files(resolved_path))
+        self._snippet_count_cache[cache_key] = (mtime_ns, count)
+        return count
 
     def snippet_files(self, dataset_dir: str | Path) -> list[Path]:
         path = Path(dataset_dir)

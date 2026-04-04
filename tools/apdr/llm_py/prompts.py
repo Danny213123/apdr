@@ -56,6 +56,24 @@ Pattern G — identity mappings (import name == package name):
   requests -> requests | flask -> flask | django -> django
   celery -> celery | redis -> redis | numpy -> numpy | pandas -> pandas
   pymongo -> pymongo | boto3 -> boto3 | sqlalchemy -> SQLAlchemy
+
+Pattern H — version-sensitive frameworks (API usage reveals version):
+  TensorFlow 1.x indicators: tf.placeholder, tf.Session, tf.unpack, tf.concat(axis, []),
+    tf.initialize_all_variables(), tf.train.*, tf.nn.rnn_cell, contrib.*
+    -> tensorflow==1.15.0 (+ protobuf==3.20.3 transitive dep)
+  TensorFlow 2.x indicators: tf.keras.*, tf.function, tf.data.Dataset, tf.GradientTape
+    -> tensorflow (latest)
+  OpenCV with GUI: cv2.imshow, cv2.VideoCapture, cv2.waitKey -> opencv-python
+  OpenCV headless (no GUI): cv2.imread, cv2.resize, cv2.cvtColor -> opencv-python-headless
+    (prefer headless — has pre-built wheels, no system deps needed)
+
+Pattern I — unsolvable platform-specific imports (SKIP these entirely):
+  macOS frameworks: Foundation, CoreFoundation, AppKit, SystemConfiguration,
+    OpenDirectory, ScriptingBridge, Cocoa, objc (when used as pyobjc bridge to macOS)
+  Windows APIs: win32com, win32api, win32gui, pythoncom, wmi, winreg (stdlib on Windows)
+  Hardware/embedded: ev3dev, gameduino, RPi.GPIO, picamera, sense_hat, smbus
+  Host-app runtimes: maya.cmds, pymel, bpy (Blender), arcpy, nuke, hou (Houdini)
+  Private/defunct packages: xtls, flotilla (Pimoroni), plist (use biplist instead)
 """
 
 # ---------------------------------------------------------------------------
@@ -78,6 +96,20 @@ Common mistakes and their corrections (learn from these failures):
   WRONG: simplegui -> simplegui  CORRECT: simplegui -> SimpleGUICS2Pygame (or skip if CodeSkulptor)
   WRONG: apt -> apt              CORRECT: apt is a system package — skip it
   WRONG: rpm -> rpm              CORRECT: rpm is a system package — skip it
+  WRONG: plist -> biplist        CORRECT: plist is NOT a real PyPI package — skip it (biplist is a different API)
+  WRONG: ev3dev -> evdev         CORRECT: ev3dev is a hardware-specific package for LEGO EV3 — skip it
+  WRONG: gameduino -> gameduino  CORRECT: gameduino is NOT on PyPI — skip it (Arduino hardware lib)
+  WRONG: OpenDirectory -> pyobjc CORRECT: OpenDirectory is a macOS framework — skip it
+  WRONG: CoreFoundation -> pyobjc CORRECT: CoreFoundation is a macOS framework — skip it
+  WRONG: Foundation -> pyobjc    CORRECT: Foundation is a macOS framework — skip it
+  WRONG: SystemConfiguration -> pyobjc CORRECT: SystemConfiguration is macOS framework — skip it
+  WRONG: Quandl -> Quandl        CORRECT: Quandl -> quandl (lowercase on PyPI, but also check for Nasdaq Data Link)
+  WRONG: txredisapi -> txredisapi CORRECT: txredisapi -> txredisapi (verify it actually exists on PyPI)
+  WRONG: pylearn2 -> pylearn2    CORRECT: pylearn2 is NOT on PyPI — skip it (install from GitHub only)
+  WRONG: opencv-python==4.10.0   CORRECT: opencv-python-headless (prefer headless — avoids system deps)
+  WRONG: sunburnt -> sunburnt    CORRECT: sunburnt -> sunburnt==0.5 (must pin old version, package is archived)
+  WRONG: deployment -> deployment CORRECT: deployment is a local module — skip it (common in Fabric projects)
+  WRONG: taggit_autocomplete -> taggit-autocomplete CORRECT: taggit_autocomplete -> django-taggit-autosuggest (or django-taggit-autocomplete-modified)
 
 CRITICAL RULE: If you cannot confidently identify a real PyPI package for an
 import, skip it entirely. Never echo the import name back as the package name
@@ -335,22 +367,35 @@ Return a JSON object with a "mappings" array. Each entry has "import_name" and "
 SOLVABILITY_SYSTEM = """\
 You are triaging whether a Python snippet is solvable in a generic Docker + PyPI environment.
 Decide whether APDR should try dependency resolution or skip the snippet.
-Treat these as NOT solvable in generic Docker:
-- Host-application runtimes: Maya, Blender, ArcGIS, Houdini, Rhino, Unreal, Nuke, Sublime Text, GIMP, IDA Pro, Cinema4D, HexChat
-- Platform-specific APIs: COM/Win32 Windows APIs, macOS Objective-C frameworks (Foundation, CoreFoundation, AppKit, SystemConfiguration, OpenDirectory), Raspberry Pi GPIO/camera
-- Java/Jython interop: javax.*, java.*, com.android.*
-- Local project modules not available on PyPI
+
+NOT solvable in generic Docker (flag as unsolvable):
+- Host-application runtimes: Maya (maya.cmds, maya.mel, pymel), Blender (bpy), ArcGIS (arcpy),
+  Houdini (hou), Rhino (rhinoscriptsyntax), Unreal, Nuke (nuke), Sublime Text, GIMP, IDA Pro,
+  Cinema4D, HexChat
+- macOS Objective-C frameworks: Foundation, CoreFoundation, AppKit, SystemConfiguration,
+  OpenDirectory, ScriptingBridge, Cocoa, LaunchServices, Security, IOKit, DiskArbitration,
+  CoreGraphics, CoreText, Quartz, WebKit, CoreBluetooth, CoreWLAN, CoreLocation
+  (These are macOS system frameworks accessed via pyobjc but CANNOT be installed in Docker)
+- Windows APIs: win32com, win32api, win32gui, pythoncom, wmi, comtypes (Windows-only)
+- Hardware/embedded: ev3dev (LEGO EV3), gameduino (Arduino), RPi.GPIO, picamera, sense_hat,
+  smbus, spidev, serial (when used for hardware), gpiozero, Adafruit_DHT, board, busio, digitalio
+- Java/Jython interop: javax.*, java.*, com.android.*, pyjnius (when not in Docker)
+- Private/GitHub-only packages: pylearn2, xtls, theano (dead), lasagne (dead)
+- Platform-specific GUI: tkinter on headless Docker, pygame (needs display), kivy (needs display)
 
 Think step by step:
 1. Identify which imports are standard library modules (skip those).
-2. For each remaining import, determine if it is a known PyPI package, a host-app runtime, or a local module.
-3. If ALL non-stdlib imports are host-app or platform-specific, decision=skip. Otherwise decision=solve.
+2. For each remaining import, determine if it is a known PyPI package, a host-app runtime,
+   a platform-specific framework, a hardware lib, or a local module.
+3. If ALL non-stdlib imports are unsolvable, decision=skip.
+4. If SOME non-stdlib imports are unsolvable but others are solvable PyPI packages,
+   decision=solve but list the unsolvable ones in unsolvable_modules.
 
 Return a JSON object with these fields:
 - decision: "solve" or "skip"
 - confidence: 0.00 to 1.00
 - reason: short explanation
-- unsolvable_modules: array of import names that cannot be resolved from PyPI (empty array if decision=solve)
+- unsolvable_modules: array of import names that cannot be resolved from PyPI
 """
 
 SELF_REFINE_SYSTEM = f"""\
@@ -358,15 +403,19 @@ Review Python import-to-PyPI-package mappings for correctness.
 
 {IMPORT_PATTERN_TAXONOMY}
 For each mapping, verify:
-1. Does this PyPI package actually exist?
+1. Does this PyPI package actually exist on PyPI?
 2. Does the package provide the import name shown?
 3. Is there a more common/correct package for this import?
 4. Is the import actually a local module that should be skipped?
+5. Is the import a macOS/Windows/hardware-specific module that cannot be installed in Docker?
+   If so, set corrected_package to "SKIP".
+6. For opencv-python: should it be opencv-python-headless instead (avoids system deps)?
+7. For tensorflow: does the code use TF1 API (tf.placeholder, tf.Session)? If so, pin ==1.15.0.
 
 Return a JSON object with:
 - all_correct: true if all mappings are correct
 - corrections: array of objects with import_name, original_package, corrected_package, reason
-  (empty array if all correct)
+  (empty array if all correct; use corrected_package="SKIP" to remove unsolvable imports)
 """
 
 RECOVERY_SYSTEM = f"""\
@@ -393,6 +442,16 @@ PyYAML==5.4.1, attrs==21.4.0, six==1.16.0, futures==3.3.0, enum34==1.1.10, typin
 SyntaxError in setup.py with f-strings or walrus operators means the package is Py3-only.
 8. For build failures ("failed building wheel", "command errored out", "subprocess-exited-with-error"): \
 try pinning to an older version that has pre-built wheels, or suggest a pure-Python alternative.
+9. For opencv-python build failures (missing system deps like libGL, libgthread, cmake): \
+ALWAYS replace opencv-python with opencv-python-headless — it has the same API but ships \
+pre-built wheels with no system dependencies. This fixes 90% of OpenCV build failures.
+10. For TensorFlow version selection based on API usage: \
+tf.placeholder, tf.Session, tf.train.*, tf.nn.rnn_cell, tf.contrib.* -> tensorflow==1.15.0 \
+(also add protobuf==3.20.3). tf.keras.*, tf.function, tf.GradientTape -> tensorflow (latest).
+11. For macOS-framework imports (Foundation, CoreFoundation, OpenDirectory, AppKit, \
+SystemConfiguration, Cocoa, ScriptingBridge, etc.): These CANNOT be installed via pip in Docker. \
+Use remove_package to remove pyobjc or pyobjc-framework-* packages — the snippet is \
+macOS-only and these imports are unsolvable in a generic environment.
 
 Return a JSON object with:
 - fix_possible: true or false
@@ -620,10 +679,16 @@ def _build_error_specific_hint(
             "1. CHECK if the package name is WRONG — common English words like 'domain', "
             "'core', 'base', 'api', 'utils' are often local modules incorrectly resolved "
             "to unrelated PyPI packages. Use remove_package to remove them.\n"
-            "2. CHECK if a pure-Python alternative exists (e.g. Pillow instead of PIL, "
+            "2. For opencv-python: REPLACE with opencv-python-headless (same API, pre-built wheels, "
+            "no system deps like libGL/libgthread needed). This is the #1 fix for OpenCV failures.\n"
+            "3. For dlib: requires cmake + C++ compiler. Pin dlib==19.22.1 (last version with wheels) "
+            "or remove if not essential.\n"
+            "4. For pyobjc / pyobjc-framework-*: These are macOS-only. REMOVE them — they cannot "
+            "build in Docker Linux containers.\n"
+            "5. CHECK if a pure-Python alternative exists (e.g. Pillow instead of PIL, "
             "pylibmc instead of python-memcached, cffi-based alternatives).\n"
-            "3. TRY pinning to an older version that ships pre-built wheels.\n"
-            "4. CHECK if the package is Py3-only being installed on Py2 — use remove_package "
+            "6. TRY pinning to an older version that ships pre-built wheels.\n"
+            "7. CHECK if the package is Py3-only being installed on Py2 — use remove_package "
             "or pin to the last Py2-compatible version."
         )
         if is_py2:

@@ -560,12 +560,21 @@ fn verify_local_image_reference(
             if combined.is_empty() { "--" } else { &combined }
         ));
         if output.success && !output.timed_out {
-            let image_id = combined.lines().last().map(str::trim).unwrap_or("").to_string();
+            let image_id = combined
+                .lines()
+                .last()
+                .map(str::trim)
+                .unwrap_or("")
+                .to_string();
             let inspect_log = inspect_logs.join("\n");
             fs::write(inspect_path, &inspect_log)?;
             return Ok(VerifiedImageRef {
                 image_ref: candidate,
-                image_id: if image_id.is_empty() { iid.clone() } else { Some(image_id) },
+                image_id: if image_id.is_empty() {
+                    iid.clone()
+                } else {
+                    Some(image_id)
+                },
                 handoff_verified: true,
                 inspect_path: Some(inspect_path.display().to_string()),
                 inspect_log,

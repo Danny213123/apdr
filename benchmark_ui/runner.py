@@ -111,6 +111,7 @@ def filter_snippets_by_manifest(
 
 # WSL mount prefix pattern: /mnt/<drive>/...
 _WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
+LLM_ONLY_MAX_WORKERS = 2
 MACOS_REPLAY_MAX_WORKERS = 4
 
 
@@ -201,14 +202,18 @@ def determine_effective_worker_count(
     run_intent = normalize_run_intent(run_config.get("run_intent"))
     llm_only_mode = bool(run_config.get("llm_only_mode"))
     if llm_only_mode:
-        if requested > 1:
+        auto_workers = min(LLM_ONLY_MAX_WORKERS, max(1, resolved_cpu_count - 2))
+        if requested <= 0:
+            return auto_workers, []
+        if requested > LLM_ONLY_MAX_WORKERS:
             return (
-                1,
+                LLM_ONLY_MAX_WORKERS,
                 [
-                    f"llm-only capped requested workers={requested} to 1 to serialize local LLM intake."
+                    f"llm-only capped requested workers={requested} to "
+                    f"{LLM_ONLY_MAX_WORKERS} to bound local LLM concurrency."
                 ],
             )
-        return 1, []
+        return requested, []
     if run_intent == "macos-replay":
         if requested <= 0:
             return 1, []

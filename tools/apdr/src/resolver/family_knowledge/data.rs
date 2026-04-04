@@ -383,14 +383,15 @@ pub fn load_curated_family_knowledge(tool_root: &Path) -> Result<CuratedFamilyKn
         )
     })?;
 
-    let families_file: CuratedFamiliesFile = serde_json::from_str(&families_json).map_err(|err| {
-        format!(
-            "Failed to parse curated families `{}`: {err}",
-            families_path.display()
-        )
-    })?;
-    let recovery_rules_file: CuratedRecoveryRulesFile =
-        serde_json::from_str(&recovery_rules_json).map_err(|err| {
+    let families_file: CuratedFamiliesFile =
+        serde_json::from_str(&families_json).map_err(|err| {
+            format!(
+                "Failed to parse curated families `{}`: {err}",
+                families_path.display()
+            )
+        })?;
+    let recovery_rules_file: CuratedRecoveryRulesFile = serde_json::from_str(&recovery_rules_json)
+        .map_err(|err| {
             format!(
                 "Failed to parse curated recovery rules `{}`: {err}",
                 recovery_rules_path.display()

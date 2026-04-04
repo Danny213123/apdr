@@ -1152,9 +1152,8 @@ pub fn validation_candidate_versions(
     if uses_legacy_pymc3_stack(parse_result, resolved) {
         let candidates =
             docker::parallel::candidate_versions(selected_python, python_range, None, None);
-        let preferred = preferred_rule_python_order("legacy-pymc3", execute_snippet, &[
-            "3.10", "3.9", "2.7",
-        ]);
+        let preferred =
+            preferred_rule_python_order("legacy-pymc3", execute_snippet, &["3.10", "3.9", "2.7"]);
         let ordered = preferred
             .into_iter()
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
@@ -1168,9 +1167,11 @@ pub fn validation_candidate_versions(
 
     if uses_legacy_tensorflow_stack(parse_result, resolved) {
         let candidates = legacy_tensorflow_candidate_versions(selected_python, python_range);
-        let preferred = preferred_rule_python_order("legacy-tensorflow", execute_snippet, &[
-            "3.7", "2.7", "3.8", "3.9", "3.10",
-        ]);
+        let preferred = preferred_rule_python_order(
+            "legacy-tensorflow",
+            execute_snippet,
+            &["3.7", "2.7", "3.8", "3.9", "3.10"],
+        );
         let ordered = preferred
             .into_iter()
             .filter(|version| candidates.iter().any(|candidate| candidate == version))
@@ -1180,6 +1181,31 @@ pub fn validation_candidate_versions(
         } else {
             ordered
         });
+    }
+
+    None
+}
+
+pub fn preferred_initial_python_version(
+    parse_result: &ParseResult,
+    selected_python: &str,
+    python_range: usize,
+    execute_snippet: bool,
+) -> Option<String> {
+    if uses_legacy_pymc3_stack(parse_result, &[]) {
+        return Some(preferred_legacy_pymc3_python(
+            selected_python,
+            python_range,
+            execute_snippet,
+        ));
+    }
+
+    if uses_legacy_tensorflow_stack(parse_result, &[]) {
+        return Some(preferred_legacy_tensorflow_python(
+            selected_python,
+            python_range,
+            execute_snippet,
+        ));
     }
 
     None
@@ -1210,7 +1236,9 @@ pub fn recover_curated_missing_module(
 
     let mut changed = false;
     for dependency in resolved.iter_mut() {
-        if dependency.import_name.eq_ignore_ascii_case(&member.import_name)
+        if dependency
+            .import_name
+            .eq_ignore_ascii_case(&member.import_name)
             || normalize(&dependency.package_name) == normalize(&member.package_name)
         {
             let row_changed = dependency.package_name != member.package_name
@@ -1226,7 +1254,9 @@ pub fn recover_curated_missing_module(
     }
 
     if !resolved.iter().any(|dependency| {
-        dependency.import_name.eq_ignore_ascii_case(&member.import_name)
+        dependency
+            .import_name
+            .eq_ignore_ascii_case(&member.import_name)
             || normalize(&dependency.package_name) == normalize(&member.package_name)
     }) {
         resolved.push(ResolvedDependency {
@@ -1240,11 +1270,9 @@ pub fn recover_curated_missing_module(
     }
 
     if changed {
-        Some(
-            rule.apply_note_template
-                .clone()
-                .unwrap_or_else(|| "Added setuptools to provide missing pkg_resources module.".to_string()),
-        )
+        Some(rule.apply_note_template.clone().unwrap_or_else(|| {
+            "Added setuptools to provide missing pkg_resources module.".to_string()
+        }))
     } else {
         None
     }

@@ -440,7 +440,10 @@ fn phase21_1_cache_learned_families_path_matches_default_cache_root() {
             EnvVarGuard::set_path("LOCALAPPDATA", Some(&local_app_data)),
         ];
         let expected = apdr::default_apdr_cache_path(&tool_root).join("learned_families.json");
-        assert_eq!(apdr::resolver::family_knowledge::learned_families_path(), expected);
+        assert_eq!(
+            apdr::resolver::family_knowledge::learned_families_path(),
+            expected
+        );
     }
 
     fs::remove_dir_all(env_root).unwrap();

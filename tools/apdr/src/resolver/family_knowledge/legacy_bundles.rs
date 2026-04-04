@@ -93,15 +93,17 @@ pub(super) fn rule_log_matches_triggers(rule_id: &str, lowercase_log: &str) -> b
                     .contains("could not find a version that satisfies the requirement numpy==")
                 || lowercase_log.contains("no matching distribution found for numpy==")
                 || lowercase_log.contains("modulenotfounderror: no module named 'pkg_resources'")
-                || lowercase_log.contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
+                || lowercase_log
+                    .contains("typeerror: 'numpy._dtypemeta' object is not subscriptable")
                 || lowercase_log.contains("requires a different python version")
                 || lowercase_log.contains("cannot import 'setuptools.build_meta'")
                 || lowercase_log.contains("resolutionimpossible")
         }
         "legacy-tensorflow" => {
             lowercase_log.contains("requires a different python version")
-                || lowercase_log
-                    .contains("could not find a version that satisfies the requirement tensorflow==")
+                || lowercase_log.contains(
+                    "could not find a version that satisfies the requirement tensorflow==",
+                )
                 || lowercase_log.contains("no matching distribution found for tensorflow==")
                 || lowercase_log
                     .contains("could not find a version that satisfies the requirement keras==")
@@ -660,9 +662,9 @@ pub(super) fn apply_legacy_pillow_pin(
         .iter()
         .map(|item| normalize(item))
         .any(|item| pil_markers.iter().any(|marker| marker == &item))
-        || resolved
-            .iter()
-            .any(|dependency| normalize(&dependency.package_name) == normalize(&member.package_name));
+        || resolved.iter().any(|dependency| {
+            normalize(&dependency.package_name) == normalize(&member.package_name)
+        });
     if !references_pillow {
         return None;
     }
@@ -717,9 +719,8 @@ pub(super) fn preferred_legacy_pymc3_python(
 ) -> String {
     let candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
-    let preferred = preferred_rule_python_order("legacy-pymc3", execute_snippet, &[
-        "3.10", "3.9", "2.7",
-    ]);
+    let preferred =
+        preferred_rule_python_order("legacy-pymc3", execute_snippet, &["3.10", "3.9", "2.7"]);
     preferred
         .into_iter()
         .find(|version| candidates.iter().any(|candidate| candidate == version))
@@ -735,9 +736,11 @@ pub(super) fn preferred_legacy_tensorflow_python(
     let base_candidates =
         docker::parallel::candidate_versions(selected_python, python_range, None, None);
 
-    let preferred = preferred_rule_python_order("legacy-tensorflow", execute_snippet, &[
-        "3.7", "2.7", "3.8", "3.9", "3.10",
-    ]);
+    let preferred = preferred_rule_python_order(
+        "legacy-tensorflow",
+        execute_snippet,
+        &["3.7", "2.7", "3.8", "3.9", "3.10"],
+    );
     preferred
         .into_iter()
         .find(|version| base_candidates.iter().any(|candidate| candidate == version))
@@ -759,9 +762,7 @@ pub(super) fn legacy_tensorflow_candidate_versions(
     candidates
 }
 
-pub(super) fn legacy_pymc3_bundle(
-    bundle_python: &str,
-) -> Vec<(String, String, Option<String>)> {
+pub(super) fn legacy_pymc3_bundle(bundle_python: &str) -> Vec<(String, String, Option<String>)> {
     if let Some(members) = bundle_members_for_rule("legacy-pymc3", bundle_python) {
         return members
             .into_iter()
@@ -771,23 +772,79 @@ pub(super) fn legacy_pymc3_bundle(
 
     if bundle_python.starts_with("2.") {
         vec![
-            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
-            ("pandas".to_string(), "pandas".to_string(), Some("0.24.2".to_string())),
-            ("pymc3".to_string(), "pymc3".to_string(), Some("3.5".to_string())),
-            ("scipy".to_string(), "scipy".to_string(), Some("1.2.3".to_string())),
-            ("setuptools".to_string(), "setuptools".to_string(), Some("44.1.1".to_string())),
-            ("theano".to_string(), "Theano".to_string(), Some("1.0.5".to_string())),
+            (
+                "numpy".to_string(),
+                "numpy".to_string(),
+                Some("1.16.6".to_string()),
+            ),
+            (
+                "pandas".to_string(),
+                "pandas".to_string(),
+                Some("0.24.2".to_string()),
+            ),
+            (
+                "pymc3".to_string(),
+                "pymc3".to_string(),
+                Some("3.5".to_string()),
+            ),
+            (
+                "scipy".to_string(),
+                "scipy".to_string(),
+                Some("1.2.3".to_string()),
+            ),
+            (
+                "setuptools".to_string(),
+                "setuptools".to_string(),
+                Some("44.1.1".to_string()),
+            ),
+            (
+                "theano".to_string(),
+                "Theano".to_string(),
+                Some("1.0.5".to_string()),
+            ),
         ]
     } else {
         vec![
-            ("arviz".to_string(), "arviz".to_string(), Some("0.12.1".to_string())),
-            ("numpy".to_string(), "numpy".to_string(), Some("1.21.6".to_string())),
-            ("pandas".to_string(), "pandas".to_string(), Some("1.5.3".to_string())),
-            ("pymc3".to_string(), "pymc3".to_string(), Some("3.11.5".to_string())),
-            ("scipy".to_string(), "scipy".to_string(), Some("1.7.3".to_string())),
-            ("setuptools".to_string(), "setuptools".to_string(), Some("69.5.1".to_string())),
-            ("theano".to_string(), "Theano-PyMC".to_string(), Some("1.1.2".to_string())),
-            ("xarray".to_string(), "xarray".to_string(), Some("2022.9.0".to_string())),
+            (
+                "arviz".to_string(),
+                "arviz".to_string(),
+                Some("0.12.1".to_string()),
+            ),
+            (
+                "numpy".to_string(),
+                "numpy".to_string(),
+                Some("1.21.6".to_string()),
+            ),
+            (
+                "pandas".to_string(),
+                "pandas".to_string(),
+                Some("1.5.3".to_string()),
+            ),
+            (
+                "pymc3".to_string(),
+                "pymc3".to_string(),
+                Some("3.11.5".to_string()),
+            ),
+            (
+                "scipy".to_string(),
+                "scipy".to_string(),
+                Some("1.7.3".to_string()),
+            ),
+            (
+                "setuptools".to_string(),
+                "setuptools".to_string(),
+                Some("69.5.1".to_string()),
+            ),
+            (
+                "theano".to_string(),
+                "Theano-PyMC".to_string(),
+                Some("1.1.2".to_string()),
+            ),
+            (
+                "xarray".to_string(),
+                "xarray".to_string(),
+                Some("2022.9.0".to_string()),
+            ),
             (
                 "xarray_einstats".to_string(),
                 "xarray-einstats".to_string(),
@@ -810,9 +867,21 @@ pub(super) fn legacy_tensorflow_bundle(
     if bundle_python.starts_with("2.") {
         // gym 0.17+ dropped Python 2 support; protobuf must be <4 for TF 1.x
         vec![
-            ("gym".to_string(), "gym".to_string(), Some("0.16.0".to_string())),
-            ("keras".to_string(), "keras".to_string(), Some("2.3.1".to_string())),
-            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
+            (
+                "gym".to_string(),
+                "gym".to_string(),
+                Some("0.16.0".to_string()),
+            ),
+            (
+                "keras".to_string(),
+                "keras".to_string(),
+                Some("2.3.1".to_string()),
+            ),
+            (
+                "numpy".to_string(),
+                "numpy".to_string(),
+                Some("1.16.6".to_string()),
+            ),
             (
                 "protobuf".to_string(),
                 "protobuf".to_string(),
@@ -827,9 +896,21 @@ pub(super) fn legacy_tensorflow_bundle(
     } else if bundle_python.starts_with("3.7") {
         // protobuf >=4 breaks TF 1.x descriptor generation
         vec![
-            ("gym".to_string(), "gym".to_string(), Some("0.17.3".to_string())),
-            ("keras".to_string(), "keras".to_string(), Some("2.3.1".to_string())),
-            ("numpy".to_string(), "numpy".to_string(), Some("1.16.6".to_string())),
+            (
+                "gym".to_string(),
+                "gym".to_string(),
+                Some("0.17.3".to_string()),
+            ),
+            (
+                "keras".to_string(),
+                "keras".to_string(),
+                Some("2.3.1".to_string()),
+            ),
+            (
+                "numpy".to_string(),
+                "numpy".to_string(),
+                Some("1.16.6".to_string()),
+            ),
             (
                 "protobuf".to_string(),
                 "protobuf".to_string(),

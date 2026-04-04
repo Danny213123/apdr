@@ -49,8 +49,8 @@ use crate::recovery::classifier;
 use crate::{
     AuthoredCasePlan, AuthoredDockerPlan, AuthoredPlanPackageMapping, IntakeFailureRecord,
     ResolutionReport, ResolveConfig, ResolveResult, ResolvedDependency, SmokeStrategy,
-    SolvabilityAssessment, UnsolvableModuleRecord, ValidationSummary,
-    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_LLM,
+    SolvabilityAssessment, UnsolvableModuleRecord, ValidationSummary, VALIDATION_BACKEND_DOCKER,
+    VALIDATION_BACKEND_LLM,
 };
 
 pub fn resolve_path(
@@ -538,12 +538,10 @@ pub fn resolve_path(
 
     if let Some(plan) = authored_plan.as_ref() {
         let authored_plan_path = config.output_dir.join("case-plan.json");
-        let authored_plan_json =
-            serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+        let authored_plan_json = serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
         fs::write(&authored_plan_path, authored_plan_json)?;
         if should_author_docker_plan(config) {
-            let docker_stage =
-                tier3_llm::author_docker_plan(plan, config, &selected_python);
+            let docker_stage = tier3_llm::author_docker_plan(plan, config, &selected_python);
             report.llm_calls += docker_stage.prompts_issued;
             pre_validation_llm_duration_ms += docker_stage.llm_duration_ms;
             report.notes.extend(docker_stage.notes);
@@ -560,8 +558,7 @@ pub fn resolve_path(
     }
     if let Some(plan) = docker_plan.as_ref() {
         let docker_plan_path = config.output_dir.join("docker-plan.json");
-        let docker_plan_json =
-            serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+        let docker_plan_json = serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
         fs::write(&docker_plan_path, docker_plan_json)?;
         let authored_dockerfile_path = config.output_dir.join("Dockerfile.authored");
         fs::write(
@@ -1045,8 +1042,13 @@ fn merge_resolved_into_authored_plan(
         let source = authored_source_for_strategy(&dependency.strategy);
         if source != "llm" {
             let section = deterministic_section_for_strategy(&dependency.strategy);
-            if !plan.deterministic_fallback_sections.iter().any(|item| item == section) {
-                plan.deterministic_fallback_sections.push(section.to_string());
+            if !plan
+                .deterministic_fallback_sections
+                .iter()
+                .any(|item| item == section)
+            {
+                plan.deterministic_fallback_sections
+                    .push(section.to_string());
             }
         }
         plan.package_mappings.push(AuthoredPlanPackageMapping {
@@ -1090,7 +1092,10 @@ fn synthesize_deterministic_authored_plan(
         .iter()
         .map(|dependency| {
             let section = deterministic_section_for_strategy(&dependency.strategy).to_string();
-            if !deterministic_fallback_sections.iter().any(|item| item == &section) {
+            if !deterministic_fallback_sections
+                .iter()
+                .any(|item| item == &section)
+            {
                 deterministic_fallback_sections.push(section.clone());
             }
             AuthoredPlanPackageMapping {

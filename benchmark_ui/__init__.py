@@ -1,2 +1,2 @@
 APP_NAME = "APDR Bench"
-APP_VERSION = "0.2.18"
+APP_VERSION = "0.2.19"

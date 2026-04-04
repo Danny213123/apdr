@@ -332,13 +332,7 @@ fn infer_failure_truth(validation: &ValidationSummary) -> Option<(String, String
                 .filter(|value| !value.trim().is_empty())
         })
         .or_else(|| {
-            Some(
-                validation
-                    .failure_bucket
-                    .trim()
-                    .to_string(),
-            )
-            .filter(|value| !value.is_empty())
+            Some(validation.failure_bucket.trim().to_string()).filter(|value| !value.is_empty())
         })
         .unwrap_or_else(|| "validation failed".to_string());
 
@@ -346,11 +340,7 @@ fn infer_failure_truth(validation: &ValidationSummary) -> Option<(String, String
 }
 
 fn docker_infrastructure_detail(validation: &ValidationSummary) -> Option<String> {
-    if validation
-        .status
-        .trim()
-        .starts_with("docker-")
-    {
+    if validation.status.trim().starts_with("docker-") {
         return Some(
             validation
                 .reason
@@ -360,16 +350,9 @@ fn docker_infrastructure_detail(validation: &ValidationSummary) -> Option<String
     }
 
     if let Some(attempt) = validation.attempts.iter().rev().find(|attempt| {
-        attempt
-            .error_type
-            .as_deref()
-            .is_some_and(|value| {
-                matches!(
-                    value,
-                    "DockerPermissionDenied" | "DockerDaemonUnavailable"
-                )
-            })
-            || docker_log_suggests_infrastructure(&attempt.log_excerpt)
+        attempt.error_type.as_deref().is_some_and(|value| {
+            matches!(value, "DockerPermissionDenied" | "DockerDaemonUnavailable")
+        }) || docker_log_suggests_infrastructure(&attempt.log_excerpt)
     }) {
         if let Some(error_type) = attempt.error_type.as_deref() {
             if !error_type.trim().is_empty() {
@@ -434,17 +417,13 @@ pub(super) fn classify_failure_family(validation: &ValidationSummary) -> Option<
         return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
     }
 
-    if validation
-        .attempts
-        .iter()
-        .any(|attempt| {
-            attempt
-                .error_type
-                .as_deref()
-                .is_some_and(is_environment_specific_error_type)
-                || text_suggests_environment_specific(&attempt.log_excerpt)
-        })
-    {
+    if validation.attempts.iter().any(|attempt| {
+        attempt
+            .error_type
+            .as_deref()
+            .is_some_and(is_environment_specific_error_type)
+            || text_suggests_environment_specific(&attempt.log_excerpt)
+    }) {
         return Some(FAILURE_FAMILY_ENVIRONMENT_SPECIFIC.to_string());
     }
 
@@ -486,7 +465,10 @@ fn is_environment_specific_error_type(value: &str) -> bool {
 }
 
 fn is_environment_specific_llm_route(value: &str) -> bool {
-    matches!(value.trim().to_ascii_lowercase().as_str(), "env-first-host-runtime")
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "env-first-host-runtime"
+    )
 }
 
 fn is_environment_specific_docker_bypass_reason(value: &str) -> bool {

@@ -377,8 +377,7 @@ pub fn filter_candidate_versions_for_resolved(
                     None => cluster_floor,
                 });
             }
-            if let Some(cluster_ceiling) =
-                cluster.python_ceiling.as_deref().map(version_tuple_safe)
+            if let Some(cluster_ceiling) = cluster.python_ceiling.as_deref().map(version_tuple_safe)
             {
                 ceiling = Some(match ceiling {
                     Some(current) => current.min(cluster_ceiling),
@@ -464,9 +463,7 @@ pub fn get_targeted_recovery_policy() -> Option<TargetedRecoveryPolicy> {
 
 /// Load and validate the targeted recovery policy from disk without caching.
 /// This is the primary entrypoint for tests that want validation behavior.
-pub fn load_targeted_recovery_policy(
-    tool_root: &Path,
-) -> Result<TargetedRecoveryPolicy, String> {
+pub fn load_targeted_recovery_policy(tool_root: &Path) -> Result<TargetedRecoveryPolicy, String> {
     let mod_path = module_rules_path(tool_root);
     let compat_path = compatibility_rules_path(tool_root);
 
@@ -513,17 +510,13 @@ pub fn load_targeted_recovery_policy(
                 manifest_path.display()
             )
         })?;
-        let manifest: ParityManifest =
-            serde_json::from_str(&manifest_json).map_err(|err| {
-                format!(
-                    "Failed to parse parity manifest `{}`: {err}",
-                    manifest_path.display()
-                )
-            })?;
-        let mut ids: BTreeSet<String> = manifest
-            .canonical_case_ids
-            .into_iter()
-            .collect();
+        let manifest: ParityManifest = serde_json::from_str(&manifest_json).map_err(|err| {
+            format!(
+                "Failed to parse parity manifest `{}`: {err}",
+                manifest_path.display()
+            )
+        })?;
+        let mut ids: BTreeSet<String> = manifest.canonical_case_ids.into_iter().collect();
         ids.extend(manifest.tier1_watchlist_case_ids);
         ids
     } else {

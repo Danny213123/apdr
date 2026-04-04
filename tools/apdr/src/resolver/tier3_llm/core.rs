@@ -57,9 +57,7 @@ pub fn parse_authored_docker_plan_response(
 }
 
 #[doc(hidden)]
-pub fn parse_intake_failure_response(
-    response: &serde_json::Value,
-) -> Option<IntakeFailureRecord> {
+pub fn parse_intake_failure_response(response: &serde_json::Value) -> Option<IntakeFailureRecord> {
     response
         .get("intake_failure")
         .cloned()
@@ -71,7 +69,10 @@ fn parse_authored_plan_status(
     authored_plan: &Option<AuthoredCasePlan>,
     intake_failure: &Option<IntakeFailureRecord>,
 ) -> String {
-    if let Some(status) = response.get("authored_plan_status").and_then(|value| value.as_str()) {
+    if let Some(status) = response
+        .get("authored_plan_status")
+        .and_then(|value| value.as_str())
+    {
         let trimmed = status.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -90,7 +91,10 @@ fn parse_docker_plan_status(
     response: &serde_json::Value,
     docker_plan: &Option<AuthoredDockerPlan>,
 ) -> String {
-    if let Some(status) = response.get("docker_plan_status").and_then(|value| value.as_str()) {
+    if let Some(status) = response
+        .get("docker_plan_status")
+        .and_then(|value| value.as_str())
+    {
         let trimmed = status.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -126,7 +130,10 @@ fn deterministic_zero_dependency_authored_plan(
     section_confidence.insert("smoke_strategy".to_string(), 1.0);
 
     let mut deterministic_fallback_sections = Vec::new();
-    if notes.iter().any(|note| note.contains("local helper imports")) {
+    if notes
+        .iter()
+        .any(|note| note.contains("local helper imports"))
+    {
         deterministic_fallback_sections.push("local-import-filter".to_string());
     }
 
@@ -145,9 +152,8 @@ fn deterministic_zero_dependency_authored_plan(
             mode: "import".to_string(),
             import_targets: Vec::new(),
             commands: Vec::new(),
-            rationale:
-                "No third-party imports were detected, so dependency validation is a no-op."
-                    .to_string(),
+            rationale: "No third-party imports were detected, so dependency validation is a no-op."
+                .to_string(),
         },
         section_confidence,
         authorship: "deterministic-fallback".to_string(),
@@ -194,7 +200,10 @@ pub fn author_docker_plan(
                 .collect()
         })
         .unwrap_or_default();
-    if let Some(reason) = response.get("failure_reason").and_then(|value| value.as_str()) {
+    if let Some(reason) = response
+        .get("failure_reason")
+        .and_then(|value| value.as_str())
+    {
         if !reason.trim().is_empty() {
             notes.push(format!("docker authoring failure: {}", reason.trim()));
         }
@@ -922,8 +931,7 @@ pub fn recovery_package_hint(
     request["previous_attempts"] = serde_json::json!(attempts_json);
     request["authored_plan"] =
         serde_json::to_value(authored_plan).unwrap_or(serde_json::Value::Null);
-    request["docker_plan"] =
-        serde_json::to_value(docker_plan).unwrap_or(serde_json::Value::Null);
+    request["docker_plan"] = serde_json::to_value(docker_plan).unwrap_or(serde_json::Value::Null);
     request["intake_failure"] =
         serde_json::to_value(intake_failure).unwrap_or(serde_json::Value::Null);
     request["recovery_artifacts"] = serde_json::json!({

@@ -55,8 +55,7 @@ pub(super) fn validate_with_retries(
     // This reduces per-iteration I/O from 8-12 writes to 1 batched write.
     let mut iteration_snapshots: Vec<(usize, String, String)> = Vec::new();
     let recovery_attempts_path = config.output_dir.join("recovery-attempts.json");
-    validation.recovery_attempts_path =
-        Some(recovery_attempts_path.display().to_string());
+    validation.recovery_attempts_path = Some(recovery_attempts_path.display().to_string());
 
     for attempt_index in 0..=config.max_retries {
         // Check overall wall-time budget before starting another retry iteration
@@ -100,7 +99,8 @@ pub(super) fn validate_with_retries(
             // The oscillation often means a package keeps flipping between
             // versions that both fail (e.g. python-memcached on Py2.7).
             // Give the LLM a chance to suggest an alternative package.
-            if config.allow_llm && !seed_llm_fallback_attempted && consecutive_provider_failures < 2 {
+            if config.allow_llm && !seed_llm_fallback_attempted && consecutive_provider_failures < 2
+            {
                 seed_llm_fallback_attempted = true; // prevent infinite loop
                 report.notes.push(
                     "Requirements oscillating â€” attempting LLM recovery before giving up."
@@ -224,8 +224,9 @@ pub(super) fn validate_with_retries(
             vec![selected_python.to_string()]
         };
         if let Some(policy) = targeted_recovery::get_targeted_recovery_policy() {
-            versions =
-                targeted_recovery::filter_candidate_versions_for_resolved(&policy, resolved, versions);
+            versions = targeted_recovery::filter_candidate_versions_for_resolved(
+                &policy, resolved, versions,
+            );
         }
         iteration_snapshots.push((
             iter_num,
@@ -305,7 +306,8 @@ pub(super) fn validate_with_retries(
         if last_log.is_empty() {
             // No error output â€” try LLM recovery with a synthetic description
             // before giving up, so every failing case gets at least one LLM attempt.
-            if config.allow_llm && consecutive_llm_failures < 3 && consecutive_provider_failures < 2 {
+            if config.allow_llm && consecutive_llm_failures < 3 && consecutive_provider_failures < 2
+            {
                 let synthetic_log = "Validation failed with no error output. The environment may have failed to install or the smoke test produced no stderr/stdout.";
                 report.llm_calls += 1;
                 let llm_started = std::time::Instant::now();
@@ -678,11 +680,9 @@ pub(super) fn validate_with_retries(
                     "DependencyConflict" | "VersionNotFound" | "InvalidVersion"
                 )
             {
-                if let Some(note) = try_targeted_compatibility_recovery(
-                    &last_log,
-                    resolved,
-                    Some(&package_name),
-                ) {
+                if let Some(note) =
+                    try_targeted_compatibility_recovery(&last_log, resolved, Some(&package_name))
+                {
                     report.retries += 1;
                     report.notes.push(note.clone());
                     validation.iteration_history.push(note.clone());
@@ -1886,12 +1886,23 @@ pub(super) fn selected_python_version(
     if let Some(value) = &config.python_version {
         return value.clone();
     }
-    if let Some(value) = &parse_result.python_version_max {
+    let baseline = if let Some(value) = &parse_result.python_version_max {
         if value.starts_with("2.") {
-            return value.clone();
+            value.clone()
+        } else {
+            parse_result.python_version_min.clone()
         }
-    }
-    parse_result.python_version_min.clone()
+    } else {
+        parse_result.python_version_min.clone()
+    };
+
+    family_knowledge::preferred_initial_python_version(
+        parse_result,
+        &baseline,
+        config.python_version_range,
+        config.execute_snippet,
+    )
+    .unwrap_or(baseline)
 }
 
 struct RetryLoopState {
@@ -1923,8 +1934,12 @@ pub(super) fn render_requirements(resolved: &[ResolvedDependency]) -> String {
     resolved
         .iter()
         .map(|dependency| match &dependency.version {
-            Some(version) => format!("{}=={}", dependency.package_name, version),
-            None => dependency.package_name.clone(),
+            Some(version) => format!(
+                "{}=={}",
+                crate::cache::store::normalize(&dependency.package_name),
+                version
+            ),
+            None => crate::cache::store::normalize(&dependency.package_name),
         })
         .collect::<Vec<_>>()
         .join("\n")

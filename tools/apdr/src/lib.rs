@@ -694,8 +694,7 @@ impl ResolveResult {
         let report_path = output_dir.join("resolution-report.txt");
         if let Some(plan) = &self.authored_plan {
             let authored_plan_path = output_dir.join("case-plan.json");
-            let plan_json =
-                serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
+            let plan_json = serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
             fs::write(&authored_plan_path, plan_json)?;
         }
         if let Some(plan) = &self.docker_plan {
@@ -703,11 +702,8 @@ impl ResolveResult {
             let plan_json = serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
             fs::write(&docker_plan_path, plan_json)?;
             let authored_dockerfile_path = output_dir.join("Dockerfile.authored");
-            let dockerfile = crate::docker::templates::authored_docker_template(
-                plan,
-                &self.python_version,
-                &[],
-            );
+            let dockerfile =
+                crate::docker::templates::authored_docker_template(plan, &self.python_version, &[]);
             fs::write(&authored_dockerfile_path, dockerfile)?;
         }
         if let Some(intake_failure) = &self.intake_failure {
@@ -718,10 +714,9 @@ impl ResolveResult {
         }
         if !self.validation.recovery_attempts.is_empty() {
             let recovery_attempts_path = output_dir.join("recovery-attempts.json");
-            let recovery_attempts_json = serde_json::to_string_pretty(
-                &self.validation.recovery_attempts,
-            )
-            .map_err(io::Error::other)?;
+            let recovery_attempts_json =
+                serde_json::to_string_pretty(&self.validation.recovery_attempts)
+                    .map_err(io::Error::other)?;
             fs::write(&recovery_attempts_path, recovery_attempts_json)?;
         }
         fs::write(&requirements_path, &self.requirements_txt)?;

@@ -11,6 +11,7 @@ import shutil
 
 from .runner import (
     BenchmarkWorker,
+    LLM_ONLY_MAX_WORKERS,
     collect_replay_preflight_warnings,
     determine_effective_worker_count,
     filter_snippets_by_manifest,
@@ -730,12 +731,20 @@ class TestMacosReplayPolicy(unittest.TestCase):
         self.assertEqual(workers, 4)
         self.assertTrue(any("macos-replay capped requested workers=9" in warning for warning in warnings))
 
-    def test_llm_only_auto_workers_default_to_one(self):
+    def test_llm_only_auto_workers_use_llm_cap(self):
         workers, warnings = determine_effective_worker_count(
             {"llm_only_mode": True, "workers": 0},
             cpu_count=12,
         )
-        self.assertEqual(workers, 1)
+        self.assertEqual(workers, LLM_ONLY_MAX_WORKERS)
+        self.assertEqual(warnings, [])
+
+    def test_llm_only_respects_requested_workers_within_cap(self):
+        workers, warnings = determine_effective_worker_count(
+            {"llm_only_mode": True, "workers": 2},
+            cpu_count=12,
+        )
+        self.assertEqual(workers, 2)
         self.assertEqual(warnings, [])
 
     def test_llm_only_caps_excessive_workers(self):
@@ -743,7 +752,7 @@ class TestMacosReplayPolicy(unittest.TestCase):
             {"llm_only_mode": True, "workers": 9},
             cpu_count=12,
         )
-        self.assertEqual(workers, 1)
+        self.assertEqual(workers, LLM_ONLY_MAX_WORKERS)
         self.assertTrue(any("llm-only capped requested workers=9" in warning for warning in warnings))
 
     @patch("benchmark_ui.runner.detect_requested_apdr_binary")

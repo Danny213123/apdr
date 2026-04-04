@@ -216,7 +216,9 @@ pub(super) fn command_on_path(command: &str) -> bool {
 
 pub(super) fn probe_docker_validation_availability() -> DockerValidationAvailability {
     if !command_on_path("docker") {
-        return DockerValidationAvailability::Unavailable(DockerUnavailabilityReason::CliUnavailable);
+        return DockerValidationAvailability::Unavailable(
+            DockerUnavailabilityReason::CliUnavailable,
+        );
     }
 
     let mut command_parts = DOCKER_VALIDATION_PROBE_COMMAND.split_whitespace();
@@ -225,9 +227,9 @@ pub(super) fn probe_docker_validation_availability() -> DockerValidationAvailabi
     command.args(command_parts);
     match run_command_with_timeout(&mut command, Duration::from_secs(8)) {
         Ok(result) if result.success => DockerValidationAvailability::Available,
-        _ => DockerValidationAvailability::Unavailable(
-            DockerUnavailabilityReason::DaemonUnavailable,
-        ),
+        _ => {
+            DockerValidationAvailability::Unavailable(DockerUnavailabilityReason::DaemonUnavailable)
+        }
     }
 }
 

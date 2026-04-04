@@ -14,8 +14,8 @@ use apdr::recovery::classifier;
 use apdr::resolver;
 use apdr::{
     default_apdr_cache_path, ResolveConfig, RunContractMetadata,
-    LLM_VALIDATION_POLICY_DOCKER_FIRST, LLM_VALIDATION_POLICY_ENV_FIRST,
-    VALIDATION_BACKEND_DOCKER, VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
+    LLM_VALIDATION_POLICY_DOCKER_FIRST, LLM_VALIDATION_POLICY_ENV_FIRST, VALIDATION_BACKEND_DOCKER,
+    VALIDATION_BACKEND_ENV, VALIDATION_BACKEND_LLM,
 };
 
 fn main() {
@@ -128,7 +128,7 @@ fn resolve_command(tool_root: &Path, args: &[String]) -> Result<(), String> {
                     }
                     _ => {
                         return Err(
-                            "--llm-validation-policy only supports `docker-first`".to_string(),
+                            "--llm-validation-policy only supports `docker-first`".to_string()
                         )
                     }
                 };
