@@ -588,18 +588,19 @@ code {
   grid-template-columns:
     48px
     56px
-    minmax(150px, 190px)
+    minmax(136px, 180px)
     74px
     54px
     64px
     64px
     70px
     76px
+    minmax(88px, 104px)
     minmax(150px, 210px)
     minmax(210px, 1fr);
   gap: 12px;
   align-items: center;
-  min-width: 1346px;
+  min-width: 1450px;
 }
 
 .case-table-head {
@@ -614,7 +615,7 @@ code {
 }
 
 .case-row {
-  min-width: 1290px;
+  min-width: 1450px;
   border-bottom: 1px solid rgba(122, 127, 138, 0.28);
 }
 
@@ -666,6 +667,12 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.case-route {
+  color: var(--blue);
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 
 .case-detail {

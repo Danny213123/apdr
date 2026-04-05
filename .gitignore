@@ -1,3 +1,6 @@
+runs/*
+!runs/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -181,3 +184,5 @@ web/node_modules/
 web/dist/
 .planning/phases/*/.baseline-runs/
 .planning/phases/*/.memory-profile-run/
+archive/
+%TEMP%/

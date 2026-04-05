@@ -530,7 +530,10 @@ fn trigram_jaccard(a: &[[u8; 3]], b: &[[u8; 3]]) -> f64 {
     }
 }
 
-fn looks_like_local_helper_import(parse_result: &ParseResult, import_name: &str) -> bool {
+pub(super) fn looks_like_local_helper_import(
+    parse_result: &ParseResult,
+    import_name: &str,
+) -> bool {
     let normalized = normalize(import_name);
     // Unconditionally local: names that are never a correct PyPI import.
     // These are standard Django/Flask project structure names and generic

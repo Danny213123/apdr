@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.20 - 2026-04-04
+
+- Restored APDR's `llm` validation flow to prefer local env validation before Docker fallback, fixed benchmark runner and web UI defaults that were still forcing Docker-first, and expanded the run dashboard so env-vs-Docker routes are visible in saved and live case views.
+- Stopped pure tier1 cache hits from spending validation work they never use by skipping validation only for fully cached resolutions, suppressing pre-validation Docker-plan LLM authoring for those cases, and tightening smoke-test targeting so project-local helper imports no longer sink otherwise valid dependency resolutions.
+- Cleaned the repository footprint for review by archiving local planning, Claude, temp, and scratch artifacts out of the repo root, ignoring the archive and temp/cache leftovers in Git, and keeping the release branch focused on product changes instead of local workflow debris.
+
 ## 0.2.19 - 2026-04-04
 
 - Expanded APDR's LLM resolution and recovery guidance with stricter solvability triage for macOS frameworks, Windows and hardware-only imports, private or defunct modules, local-project helpers, TensorFlow 1-era APIs, and OpenCV headless builds, backed by broader live-LLM fixture coverage for the new mapping cases.

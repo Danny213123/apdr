@@ -94,7 +94,7 @@ class TestRunContract(unittest.TestCase):
             self.assertEqual(config["run_intent"], "macos-replay")
             self.assertEqual(config["build_profile"], "release")
 
-    def test_service_defaults_llm_policy_to_docker_first(self) -> None:
+    def test_service_defaults_llm_policy_to_env_first(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             service = BenchmarkService(AppState(Path(temp_dir)))
             config = service._normalize_run_config(
@@ -104,9 +104,9 @@ class TestRunContract(unittest.TestCase):
                     "validation_backend": "llm",
                 }
             )
-            self.assertEqual(config["llm_validation_policy"], "docker-first")
+            self.assertEqual(config["llm_validation_policy"], "env-first")
 
-    def test_service_coerces_legacy_env_first_policy_to_docker_first(self) -> None:
+    def test_service_preserves_env_first_policy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             service = BenchmarkService(AppState(Path(temp_dir)))
             config = service._normalize_run_config(
@@ -117,7 +117,7 @@ class TestRunContract(unittest.TestCase):
                     "llm_validation_policy": "env-first",
                 }
             )
-            self.assertEqual(config["llm_validation_policy"], "docker-first")
+            self.assertEqual(config["llm_validation_policy"], "env-first")
 
     def test_service_preserves_llm_only_mode_from_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -158,7 +158,7 @@ class TestRunContract(unittest.TestCase):
         self.assertEqual(missing_required_keys(contract), [])
         self.assertEqual(set(REQUIRED_RUN_CONTRACT_KEYS), set(contract.keys()))
         self.assertEqual(contract["model_name"], "qwen3.5:9b")
-        self.assertEqual(contract["llm_validation_policy"], "docker-first")
+        self.assertEqual(contract["llm_validation_policy"], "env-first")
         self.assertEqual(contract["run_intent"], "comparison")
         self.assertEqual(contract["execution_mode"], "env-fast")
         self.assertEqual(contract["cache_state"], "warm")
@@ -323,8 +323,8 @@ class TestRunContract(unittest.TestCase):
             info_fields = {item["label"]: item["value"] for item in run["infoFields"]}
 
             self.assertEqual(payload["formConfig"]["validation_backend"], "llm")
-            self.assertEqual(payload["formConfig"]["llm_validation_policy"], "docker-first")
-            self.assertEqual(info_fields["Validation"], "LLM resolver (legacy env-first control + Docker follow-up + agent fallback)")
+            self.assertEqual(payload["formConfig"]["llm_validation_policy"], "env-first")
+            self.assertEqual(info_fields["Validation"], "LLM resolver (env-first validation + Docker follow-up + agent fallback)")
             self.assertEqual(info_fields["LLM policy"], "env-first")
 
     def test_historical_llm_only_run_restores_backend_selection(self) -> None:
@@ -515,7 +515,8 @@ class TestRunContract(unittest.TestCase):
             self.assertIn("llm", command)
             self.assertIn("--llm-validation-policy", command)
             policy_index = command.index("--llm-validation-policy")
-            self.assertEqual(command[policy_index + 1], "docker-first")
+            self.assertEqual(command[policy_index + 1], "env-first")
+            self.assertNotIn("--force-validate", command)
 
     def test_runner_passes_llm_only_flag_for_llm_only_runs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

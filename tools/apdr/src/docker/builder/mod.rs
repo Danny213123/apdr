@@ -606,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn phase22_policy_llm_defaults_to_docker_first() {
+    fn phase22_policy_llm_defaults_to_env_first() {
         let config = ResolveConfig::for_tool_root(Path::new("."));
 
         assert_eq!(
@@ -616,14 +616,14 @@ mod tests {
                 "requests==2.31.0",
                 DockerValidationAvailability::Available
             ),
-            LlmValidationRoute::DockerFirst
+            LlmValidationRoute::EnvFirst
         );
     }
 
     #[test]
-    fn phase22_policy_legacy_env_first_input_normalizes_to_docker_first() {
+    fn phase22_policy_explicit_docker_first_route_uses_docker_first() {
         let mut config = ResolveConfig::for_tool_root(Path::new("."));
-        config.llm_validation_policy = "env-first".to_string();
+        config.llm_validation_policy = "docker-first".to_string();
 
         assert_eq!(
             llm_validation_route(
@@ -677,7 +677,7 @@ mod tests {
         assert_eq!(route, LlmValidationRoute::EnvFirstHostRuntime);
         assert_eq!(
             summary.requested_llm_validation_policy.as_deref(),
-            Some("docker-first")
+            Some("env-first")
         );
         assert_eq!(
             summary.llm_validation_route.as_deref(),
@@ -741,7 +741,7 @@ mod tests {
 
         assert_eq!(
             summary.requested_llm_validation_policy.as_deref(),
-            Some("docker-first")
+            Some("env-first")
         );
         assert_eq!(
             summary.llm_validation_route.as_deref(),
@@ -769,12 +769,16 @@ mod tests {
         )
         .expect("route metadata");
 
-        let note_path = temp.path().join("out/.apdr-debug/docker-bypass.txt");
+        let note_path = temp
+            .path()
+            .join("out")
+            .join(".apdr-debug")
+            .join("docker-bypass.txt");
         let note_path_string = note_path.display().to_string();
         let note = fs::read_to_string(&note_path).expect("docker bypass note");
         assert_eq!(
             summary.requested_llm_validation_policy.as_deref(),
-            Some("docker-first")
+            Some("env-first")
         );
         assert_eq!(
             summary.llm_validation_route.as_deref(),
@@ -789,7 +793,7 @@ mod tests {
             Some(note_path_string.as_str())
         );
         assert!(note.contains("note_type: docker-bypass"));
-        assert!(note.contains("requested_llm_validation_policy: docker-first"));
+        assert!(note.contains("requested_llm_validation_policy: env-first"));
         assert!(note.contains("llm_validation_route: env-first-docker-bypass"));
         assert!(note.contains("docker_bypass_reason: docker cli unavailable"));
     }
@@ -810,7 +814,11 @@ mod tests {
         )
         .expect("route metadata");
 
-        let note_path = temp.path().join("out/.apdr-debug/docker-bypass.txt");
+        let note_path = temp
+            .path()
+            .join("out")
+            .join(".apdr-debug")
+            .join("docker-bypass.txt");
         let note = fs::read_to_string(&note_path).expect("docker bypass note");
         assert_eq!(
             summary.docker_bypass_reason.as_deref(),
@@ -825,6 +833,7 @@ mod tests {
 
         let temp = TempDir::new().expect("tempdir");
         let mut config = ResolveConfig::for_tool_root(temp.path());
+        config.llm_validation_policy = "docker-first".to_string();
         config.output_dir = temp.path().join("out");
         let mut summary = ValidationSummary::default();
 
@@ -843,7 +852,9 @@ mod tests {
         assert!(summary.docker_bypass_note_path.is_none());
         assert!(!temp
             .path()
-            .join("out/.apdr-debug/docker-bypass.txt")
+            .join("out")
+            .join(".apdr-debug")
+            .join("docker-bypass.txt")
             .exists());
     }
 

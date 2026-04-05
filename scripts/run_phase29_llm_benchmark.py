@@ -226,7 +226,8 @@ def expected_validation_backend(mode: str) -> str:
 
 
 def requested_llm_policy(mode: str) -> str:
-    # v2.5 keeps docker-first as the normalized policy for both modes.
+    # Default to APDR's restored env-first policy unless the caller supplied
+    # an explicit policy string elsewhere in the stack.
     return normalize_llm_validation_policy(mode)
 
 

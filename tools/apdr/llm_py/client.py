@@ -127,6 +127,64 @@ def _provider_call_gate(provider: str, model: str, base_url: str):
                         pass
 
 
+def _is_ollama_busy_response(resp) -> bool:
+    """Check if an Ollama HTTP response is a 503 'server busy' error."""
+    if resp.status_code == 503:
+        return True
+    if resp.status_code == 429:
+        return True
+    try:
+        body = resp.text.lower()
+        if "server busy" in body or "maximum pending requests" in body:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _ollama_post_with_retry(
+    url: str,
+    json_payload: dict,
+    timeout: float,
+    provider: str,
+    model: str,
+    base_url: str,
+    max_retries: int = 5,
+    initial_backoff: float = 2.0,
+):
+    """POST to Ollama with exponential backoff retry on 503/429 'server busy'.
+
+    Returns the requests.Response on success, or the last failed response
+    if all retries are exhausted.
+    """
+    import time
+    import requests as req_lib
+
+    backoff = initial_backoff
+    last_resp = None
+
+    for attempt in range(1 + max_retries):
+        with _provider_call_gate(provider, model, base_url):
+            last_resp = req_lib.post(url, json=json_payload, timeout=timeout)
+
+        if last_resp.ok or not _is_ollama_busy_response(last_resp):
+            return last_resp
+
+        if attempt < max_retries:
+            logger.warning(
+                "Ollama busy (HTTP %d), retry %d/%d in %.1fs",
+                last_resp.status_code, attempt + 1, max_retries, backoff,
+            )
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 30.0)
+
+    logger.error(
+        "Ollama busy after %d retries, giving up (HTTP %d)",
+        max_retries, last_resp.status_code if last_resp else 0,
+    )
+    return last_resp
+
+
 def _timeout_policy_for_action(action_name: str) -> dict[str, float]:
     normalized = (action_name or "").strip().lower()
     if normalized == "resolve":
@@ -736,12 +794,14 @@ class LlmClient:
             }
             if policy["thinking"] is not None:
                 payload["think"] = policy["thinking"]
-            with _provider_call_gate(self.provider, effective_model, self.base_url):
-                resp = req_lib.post(
-                    f"{self.base_url}/api/chat",
-                    json=payload,
-                    timeout=timeout_policy["json_timeout"],
-                )
+            resp = _ollama_post_with_retry(
+                f"{self.base_url}/api/chat",
+                json_payload=payload,
+                timeout=timeout_policy["json_timeout"],
+                provider=self.provider,
+                model=effective_model,
+                base_url=self.base_url,
+            )
             if resp.ok:
                 data = resp.json()
                 content = data.get("message", {}).get("content", "")
@@ -781,22 +841,41 @@ class LlmClient:
         max_tokens: int,
         timeout: float = 60,
     ) -> tuple[str | None, str]:
+        import time as _time
+
         kwargs = self._base_kwargs(temperature, max_tokens)
         kwargs["timeout"] = timeout
         kwargs["messages"] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        try:
-            with _provider_call_gate(self.provider, self.model, self.base_url):
-                response = litellm.completion(**kwargs)
-            text = response.choices[0].message.content
-            if text:
-                return text.strip(), ""
-            return None, "raw text completion returned empty content"
-        except Exception as e:
-            logger.warning("LLM completion failed: %s", e)
-            return None, f"raw text completion failed: {type(e).__name__}: {e}"
+        max_busy_retries = 5
+        backoff = 2.0
+        for attempt in range(1 + max_busy_retries):
+            try:
+                with _provider_call_gate(self.provider, self.model, self.base_url):
+                    response = litellm.completion(**kwargs)
+                text = response.choices[0].message.content
+                if text:
+                    return text.strip(), ""
+                return None, "raw text completion returned empty content"
+            except Exception as e:
+                err_lower = str(e).lower()
+                is_busy = any(
+                    m in err_lower
+                    for m in ("server busy", "maximum pending requests", "503", "429")
+                )
+                if is_busy and attempt < max_busy_retries:
+                    logger.warning(
+                        "Ollama busy (litellm), retry %d/%d in %.1fs: %s",
+                        attempt + 1, max_busy_retries, backoff, e,
+                    )
+                    _time.sleep(backoff)
+                    backoff = min(backoff * 2, 30.0)
+                    continue
+                logger.warning("LLM completion failed: %s", e)
+                return None, f"raw text completion failed: {type(e).__name__}: {e}"
+        return None, "raw text completion exhausted busy retries"
 
     # ------------------------------------------------------------------
     # Tolerant JSON completion (primary path for small models)
@@ -998,12 +1077,14 @@ class LlmClient:
                 }
                 if policy["thinking"] is not None:
                     payload["think"] = policy["thinking"]
-                with _provider_call_gate(self.provider, self.model, self.base_url):
-                    resp = req_lib.post(
-                        f"{self.base_url}/api/chat",
-                        json=payload,
-                        timeout=request_timeout,
-                    )
+                resp = _ollama_post_with_retry(
+                    f"{self.base_url}/api/chat",
+                    json_payload=payload,
+                    timeout=request_timeout,
+                    provider=self.provider,
+                    model=self.model,
+                    base_url=self.base_url,
+                )
                 if resp.ok:
                     data = resp.json()
                     content = data.get("message", {}).get("content", "")
@@ -1022,6 +1103,14 @@ class LlmClient:
                         diagnostic = (
                             f"{diagnostic} (message keys: {', '.join(sorted(message.keys())) or 'none'})"
                         )
+                elif _is_ollama_busy_response(resp):
+                    # All retries exhausted on 503 — don't fall through to raw text
+                    # fallback (that would just add more load to busy Ollama).
+                    diagnostic = (
+                        f"ollama server busy after retries (HTTP {resp.status_code}): "
+                        f"{self._truncate_debug(resp.text)}"
+                    )
+                    return None, diagnostic
                 else:
                     diagnostic = (
                         f"ollama json mode returned HTTP {resp.status_code}: "
@@ -1093,17 +1182,35 @@ class LlmClient:
             {"role": "user", "content": user_prompt},
         ]
         diagnostics: list[str] = []
-        try:
-            with _provider_call_gate(self.provider, self.model, self.base_url):
-                result = self._instructor_client.chat.completions.create(
-                    response_model=response_model,
-                    max_retries=max_retries,
-                    **kwargs,
+        import time as _time
+        max_busy_retries = 5
+        backoff = 2.0
+        for busy_attempt in range(1 + max_busy_retries):
+            try:
+                with _provider_call_gate(self.provider, self.model, self.base_url):
+                    result = self._instructor_client.chat.completions.create(
+                        response_model=response_model,
+                        max_retries=max_retries,
+                        **kwargs,
+                    )
+                return result, ""
+            except Exception as e:
+                err_lower = str(e).lower()
+                is_busy = any(
+                    m in err_lower
+                    for m in ("server busy", "maximum pending requests", "503", "429")
                 )
-            return result, ""
-        except Exception as e:
-            logger.warning("Structured completion failed: %s", e)
-            diagnostics.append(f"instructor primary failed: {type(e).__name__}: {e}")
+                if is_busy and busy_attempt < max_busy_retries:
+                    logger.warning(
+                        "Ollama busy (instructor), retry %d/%d in %.1fs: %s",
+                        busy_attempt + 1, max_busy_retries, backoff, e,
+                    )
+                    _time.sleep(backoff)
+                    backoff = min(backoff * 2, 30.0)
+                    continue
+                logger.warning("Structured completion failed: %s", e)
+                diagnostics.append(f"instructor primary failed: {type(e).__name__}: {e}")
+                break
 
         # --- #8: Fallback to alternative models ---
         for fallback_model in self._fallback_models:

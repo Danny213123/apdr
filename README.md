@@ -10,8 +10,6 @@ The competition emphasizes open-source innovative memory constrained techniques,
 
 [APDR](https://conf.researchr.org/committee/fse-2026/fse-2026-aiware-2026-competition-program-committee)
 
-![Alt text](apdr.jpeg "APDR")
-
 [Changelog](CHANGELOG.md)
 
 
@@ -133,7 +131,7 @@ The terminal UI reuses the same backend service as the web app and includes:
 - A Doctor screen for environment checks and automatic fixes
 - Saved run browsing with load and resume actions
 
-Current app version: `0.2.19`
+Current app version: `0.2.20`
 
 Optional frontend development workflow:
 

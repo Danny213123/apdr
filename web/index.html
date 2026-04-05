@@ -85,7 +85,7 @@
                 </button>
                 <div class="custom-select-menu" role="listbox" aria-label="LLM validation policy options"></div>
               </div>
-              <span class="toolbar-value toolbar-break" id="llm-policy-note">docker-first is the default llm route; env-first stays available as the comparison control.</span>
+              <span class="toolbar-value toolbar-break" id="llm-policy-note">env-first is the default llm route; Docker only runs as the follow-up fallback when the local env path needs help.</span>
             </div>
             <div class="toolbar-line">
               <label class="toolbar-check" for="rag-checkbox">
@@ -269,6 +269,7 @@
                   <span>PLLM</span>
                   <span>PYEGO</span>
                   <span>READPY</span>
+                  <span>ROUTE</span>
                   <span>RESULT</span>
                   <span>DEPENDENCIES</span>
                 </div>
@@ -347,6 +348,7 @@
                   <span>PLLM</span>
                   <span>PYEGO</span>
                   <span>READPY</span>
+                  <span>ROUTE</span>
                   <span>RESULT</span>
                   <span>DEPENDENCIES</span>
                 </div>
@@ -448,6 +450,7 @@
           <span class="case-pllm"></span>
           <span class="case-pyego"></span>
           <span class="case-readpy"></span>
+          <span class="case-route"></span>
           <span class="case-result"></span>
           <span class="case-dependencies"></span>
         </button>

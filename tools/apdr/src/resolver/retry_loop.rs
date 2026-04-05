@@ -41,6 +41,7 @@ pub(super) fn validate_with_retries(
     let mut failure_signature_requirements: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut module_requirement_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut repeat_failure_signature: Option<String> = None;
+    let mut last_validation_import_note: Option<String> = None;
 
     // Overall wall-time budget for the entire retry loop equals validation_timeout.
     // Each validate_requirements call gets the *remaining* time as its budget.
@@ -233,6 +234,24 @@ pub(super) fn validate_with_retries(
             "candidate-versions.txt".to_string(),
             versions.join("\n"),
         ));
+        let validation_import_plan =
+            build_validation_import_plan(parse_result, resolved, &retry_state);
+        if !validation_import_plan
+            .omitted_project_local_imports
+            .is_empty()
+        {
+            let note = format!(
+                "Smoke validation skipped project-local helper import(s): {}",
+                validation_import_plan
+                    .omitted_project_local_imports
+                    .join(", ")
+            );
+            if last_validation_import_note.as_deref() != Some(note.as_str()) {
+                report.notes.push(note.clone());
+                validation.iteration_history.push(note.clone());
+                last_validation_import_note = Some(note);
+            }
+        }
 
         // Give this validation call only the remaining budget
         let remaining = total_retry_budget.saturating_sub(retry_started.elapsed());
@@ -241,7 +260,7 @@ pub(super) fn validate_with_retries(
         let attempt_result = docker::builder::validate_requirements(
             snippet_path,
             requirements_txt,
-            &parse_result.imports,
+            &validation_import_plan.imports,
             &versions,
             validation.attempts.len(),
             &scoped_config,
@@ -1129,6 +1148,68 @@ fn is_provider_failure_class(value: &str) -> bool {
             | "timeout"
             | "transport-failure"
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ValidationImportPlan {
+    imports: Vec<String>,
+    omitted_project_local_imports: Vec<String>,
+}
+
+fn build_validation_import_plan(
+    parse_result: &crate::ParseResult,
+    resolved: &[ResolvedDependency],
+    retry_state: &RetryLoopState,
+) -> ValidationImportPlan {
+    if resolved.is_empty() {
+        return ValidationImportPlan {
+            imports: parse_result.imports.clone(),
+            omitted_project_local_imports: Vec::new(),
+        };
+    }
+
+    let mut imports = Vec::new();
+    let mut omitted_project_local_imports = Vec::new();
+    for import_name in &parse_result.imports {
+        if should_skip_project_local_import_during_validation(
+            parse_result,
+            import_name,
+            retry_state,
+        ) {
+            omitted_project_local_imports.push(import_name.clone());
+        } else {
+            imports.push(import_name.clone());
+        }
+    }
+
+    if imports.is_empty() {
+        return ValidationImportPlan {
+            imports: parse_result.imports.clone(),
+            omitted_project_local_imports: Vec::new(),
+        };
+    }
+
+    ValidationImportPlan {
+        imports,
+        omitted_project_local_imports,
+    }
+}
+
+fn should_skip_project_local_import_during_validation(
+    parse_result: &crate::ParseResult,
+    import_name: &str,
+    retry_state: &RetryLoopState,
+) -> bool {
+    retry_state.has_removed_import(import_name)
+        || super::tier2_heuristic::looks_like_local_helper_import(parse_result, import_name)
+        || targeted_stop_reason_for_module(import_name)
+            .map(|reason| {
+                reason
+                    .trim()
+                    .to_ascii_lowercase()
+                    .starts_with("project-local")
+            })
+            .unwrap_or(false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2303,4 +2384,80 @@ fn try_targeted_transitive_specifier_recovery(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_parse_result(imports: &[&str]) -> crate::ParseResult {
+        crate::ParseResult {
+            imports: imports.iter().map(|value| (*value).to_string()).collect(),
+            import_paths: imports.iter().map(|value| (*value).to_string()).collect(),
+            config_deps: Vec::new(),
+            python_version_min: "3.11".to_string(),
+            python_version_max: Some("3.11".to_string()),
+            confidence: 0.9,
+            scanned_files: Vec::new(),
+            stdlib_modules: BTreeSet::new(),
+            attribute_usage: BTreeMap::new(),
+        }
+    }
+
+    fn resolved_dep(import_name: &str, package_name: &str) -> ResolvedDependency {
+        ResolvedDependency {
+            import_name: import_name.to_string(),
+            package_name: package_name.to_string(),
+            version: Some("1.0.0".to_string()),
+            strategy: "test".to_string(),
+            confidence: 0.9,
+        }
+    }
+
+    #[test]
+    fn validation_import_plan_skips_project_local_helpers_when_external_deps_exist() {
+        let parse_result = sample_parse_result(&["proj", "config", "settings"]);
+        let retry_state = RetryLoopState::new("proj==1.0.0".to_string());
+        let plan = build_validation_import_plan(
+            &parse_result,
+            &[resolved_dep("proj", "proj")],
+            &retry_state,
+        );
+
+        assert_eq!(plan.imports, vec!["proj".to_string()]);
+        assert_eq!(
+            plan.omitted_project_local_imports,
+            vec!["config".to_string(), "settings".to_string()]
+        );
+    }
+
+    #[test]
+    fn validation_import_plan_keeps_all_imports_when_no_external_deps_were_resolved() {
+        let parse_result = sample_parse_result(&["gisutils", "config"]);
+        let retry_state = RetryLoopState::new(String::new());
+        let plan = build_validation_import_plan(&parse_result, &[], &retry_state);
+
+        assert_eq!(plan.imports, parse_result.imports);
+        assert!(plan.omitted_project_local_imports.is_empty());
+    }
+
+    #[test]
+    fn validation_import_plan_skips_llm_removed_imports() {
+        let parse_result = sample_parse_result(&["proj", "localthing"]);
+        let mut retry_state = RetryLoopState::new("proj==1.0.0".to_string());
+        retry_state
+            .llm_removed_imports
+            .insert(normalize_package_key("localthing"));
+        let plan = build_validation_import_plan(
+            &parse_result,
+            &[resolved_dep("proj", "proj")],
+            &retry_state,
+        );
+
+        assert_eq!(plan.imports, vec!["proj".to_string()]);
+        assert_eq!(
+            plan.omitted_project_local_imports,
+            vec!["localthing".to_string()]
+        );
+    }
 }

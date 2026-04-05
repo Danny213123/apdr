@@ -449,7 +449,7 @@ impl ResolveConfig {
             benchmark_context_log: None,
             validate: true,
             validation_backend: VALIDATION_BACKEND_ENV.to_string(),
-            llm_validation_policy: LLM_VALIDATION_POLICY_DOCKER_FIRST.to_string(),
+            llm_validation_policy: LLM_VALIDATION_POLICY_ENV_FIRST.to_string(),
             execute_snippet: true,
             force_validate: false,
             run_contract: RunContractMetadata::default(),
@@ -475,8 +475,11 @@ pub fn normalize_validation_backend(value: &str) -> &str {
     }
 }
 
-pub fn normalize_llm_validation_policy(_value: &str) -> &str {
-    LLM_VALIDATION_POLICY_DOCKER_FIRST
+pub fn normalize_llm_validation_policy(value: &str) -> &str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        LLM_VALIDATION_POLICY_DOCKER_FIRST => LLM_VALIDATION_POLICY_DOCKER_FIRST,
+        _ => LLM_VALIDATION_POLICY_ENV_FIRST,
+    }
 }
 
 fn normalize_machine_architecture(value: &str) -> String {

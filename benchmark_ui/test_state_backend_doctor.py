@@ -74,21 +74,21 @@ class TestStateBackendDoctor(unittest.TestCase):
             return "/usr/bin/cargo"
         return "/usr/bin/python3"
 
-    def test_llm_backend_warns_when_docker_is_missing_for_docker_first_degradation(self) -> None:
+    def test_llm_backend_warns_when_docker_is_missing_for_env_first_followup_degradation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
             with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_missing_which):
                 rows = state.doctor_checks(selected_tool="apdr", validation_backend="llm")
 
             docker_row = next(
-                row for row in rows if row["label"] == "Docker (required first hop for APDR llm)"
+                row for row in rows if row["label"] == "Docker (follow-up path for APDR llm)"
             )
             self.assertEqual(docker_row["status"], "WARN")
-            self.assertIn("requires docker-first validation", docker_row["detail"])
-            self.assertIn("degrade to env validation", docker_row["detail"])
+            self.assertIn("env-first validation", docker_row["detail"])
+            self.assertIn("Docker follow-up will be unavailable", docker_row["detail"])
             self.assertIn("docker cli unavailable", docker_row["detail"])
 
-    def test_llm_backend_warns_when_docker_daemon_is_unavailable_for_docker_first_degradation(self) -> None:
+    def test_llm_backend_warns_when_docker_daemon_is_unavailable_for_env_first_followup_degradation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state = _FakeDoctorState(Path(temp_dir))
             with patch("benchmark_ui.state.shutil.which", side_effect=self._docker_present_which):
@@ -97,10 +97,10 @@ class TestStateBackendDoctor(unittest.TestCase):
             docker_row = next(
                 row
                 for row in rows
-                if row["label"] == "Docker daemon (required first hop for APDR llm)"
+                if row["label"] == "Docker daemon (follow-up path for APDR llm)"
             )
             self.assertEqual(docker_row["status"], "WARN")
-            self.assertIn("degrade to env validation", docker_row["detail"])
+            self.assertIn("Docker follow-up will be unavailable", docker_row["detail"])
             self.assertIn("docker daemon unavailable", docker_row["detail"])
 
     def test_llm_backend_still_checks_local_env_tooling(self) -> None:
@@ -111,9 +111,7 @@ class TestStateBackendDoctor(unittest.TestCase):
 
             backend_row = next(row for row in rows if row["label"] == "apdr validation backend")
             tooling_row = next(row for row in rows if row["label"] == "apdr env tooling")
-            self.assertIn("Docker-first validation is required", backend_row["detail"])
-            self.assertIn("docker cli unavailable", backend_row["detail"])
-            self.assertIn("docker daemon unavailable", backend_row["detail"])
+            self.assertIn("Env-first validation with Docker follow-up", backend_row["detail"])
             self.assertEqual(tooling_row["status"], "PASS")
             self.assertEqual(tooling_row["detail"], "virtualenv tooling ready")
 
@@ -132,8 +130,8 @@ class TestStateBackendDoctor(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             service = BenchmarkService(_FakeDoctorState(Path(temp_dir)))
             summary = service._doctor_intro_summary("apdr", "llm")
-            self.assertIn("Docker-first llm readiness", summary)
-            self.assertIn("env fallback", summary)
+            self.assertIn("env-first llm readiness", summary)
+            self.assertIn("Docker follow-up availability", summary)
 
 
 if __name__ == "__main__":

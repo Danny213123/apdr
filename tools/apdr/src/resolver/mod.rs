@@ -536,11 +536,14 @@ pub fn resolve_path(
         });
     }
 
+    let should_prepare_pre_validation_docker_plan =
+        should_author_docker_plan(config, &resolved, &unresolved);
+
     if let Some(plan) = authored_plan.as_ref() {
         let authored_plan_path = config.output_dir.join("case-plan.json");
         let authored_plan_json = serde_json::to_string_pretty(plan).map_err(io::Error::other)?;
         fs::write(&authored_plan_path, authored_plan_json)?;
-        if should_author_docker_plan(config) {
+        if should_prepare_pre_validation_docker_plan {
             let docker_stage = tier3_llm::author_docker_plan(plan, config, &selected_python);
             report.llm_calls += docker_stage.prompts_issued;
             pre_validation_llm_duration_ms += docker_stage.llm_duration_ms;
@@ -548,7 +551,7 @@ pub fn resolve_path(
             docker_plan = docker_stage.docker_plan;
             docker_plan_status = docker_stage.docker_plan_status;
         }
-        if docker_plan.is_none() {
+        if should_prepare_pre_validation_docker_plan && docker_plan.is_none() {
             docker_plan = Some(synthesize_deterministic_authored_docker_plan(
                 plan,
                 &selected_python,
@@ -712,6 +715,12 @@ pub fn resolve_path(
                 config,
                 &requirements_txt,
             )
+        } else if should_skip_validation_for_tier1_cache_hit(config, &resolved, &unresolved) {
+            report.notes.push(
+                "Skipped validation because every dependency was resolved by tier1 cache hits."
+                    .to_string(),
+            );
+            passed_tier1_cache_validation_summary(&requirements_txt, &selected_python)
         } else if let Some((missing_pkg, _is_seed)) =
             find_nonexistent_package(&resolved, &mut store, &selected_python)
         {
@@ -1140,13 +1149,18 @@ fn synthesize_deterministic_authored_plan(
     }
 }
 
-fn should_author_docker_plan(config: &ResolveConfig) -> bool {
-    config.llm_only_mode
-        || config.allow_llm
-        || matches!(
-            config.validation_backend(),
-            VALIDATION_BACKEND_DOCKER | VALIDATION_BACKEND_LLM
-        )
+fn should_author_docker_plan(
+    config: &ResolveConfig,
+    resolved: &[ResolvedDependency],
+    unresolved: &[String],
+) -> bool {
+    !should_skip_validation_for_tier1_cache_hit(config, resolved, unresolved)
+        && (config.llm_only_mode
+            || config.allow_llm
+            || matches!(
+                config.validation_backend(),
+                VALIDATION_BACKEND_DOCKER | VALIDATION_BACKEND_LLM
+            ))
 }
 
 fn synthesize_deterministic_authored_docker_plan(
@@ -1211,6 +1225,35 @@ fn default_llm_only_intake_failure() -> IntakeFailureRecord {
 
 fn should_skip_smt_pre_solve(config: &ResolveConfig) -> bool {
     config.force_validate && config.validation_backend() == VALIDATION_BACKEND_LLM
+}
+
+fn should_skip_validation_for_tier1_cache_hit(
+    config: &ResolveConfig,
+    resolved: &[ResolvedDependency],
+    unresolved: &[String],
+) -> bool {
+    !config.force_validate
+        && unresolved.is_empty()
+        && !resolved.is_empty()
+        && resolved
+            .iter()
+            .all(|dep| dep.strategy.starts_with("cache:"))
+}
+
+fn passed_tier1_cache_validation_summary(
+    requirements_txt: &str,
+    selected_python: &str,
+) -> ValidationSummary {
+    ValidationSummary {
+        succeeded: true,
+        status: "passed-tier1-cache".to_string(),
+        validation_backend: "tier1-cache".to_string(),
+        reason: Some("Resolved entirely from tier1 cache hits; skipped validation.".to_string()),
+        selected_python_version: Some(selected_python.to_string()),
+        lockfile_key: Some(lockfile_cache::key_for(requirements_txt, selected_python)),
+        build_cache_key: Some(lockfile_cache::key_for(requirements_txt, selected_python)),
+        ..Default::default()
+    }
 }
 
 fn noninteractive_validation_note(
@@ -1945,6 +1988,133 @@ mod tests {
         config.force_validate = true;
         config.validation_backend = crate::VALIDATION_BACKEND_ENV.to_string();
         assert!(!should_skip_smt_pre_solve(&config));
+    }
+
+    #[test]
+    fn skips_validation_only_for_pure_tier1_cache_hits() {
+        let config = ResolveConfig::for_tool_root(Path::new("."));
+        let resolved = vec![
+            ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "cache:seed".to_string(),
+                confidence: 0.97,
+            },
+            ResolvedDependency {
+                import_name: "bs4".to_string(),
+                package_name: "beautifulsoup4".to_string(),
+                version: Some("4.12.3".to_string()),
+                strategy: "cache:path-prefix:seed".to_string(),
+                confidence: 0.97,
+            },
+        ];
+
+        assert!(should_skip_validation_for_tier1_cache_hit(
+            &config,
+            &resolved,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn does_not_skip_validation_for_mixed_or_forced_tier1_results() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        let resolved = vec![
+            ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "cache:seed".to_string(),
+                confidence: 0.97,
+            },
+            ResolvedDependency {
+                import_name: "yaml".to_string(),
+                package_name: "PyYAML".to_string(),
+                version: Some("6.0.2".to_string()),
+                strategy: "heuristic:pypi-exact".to_string(),
+                confidence: 0.80,
+            },
+        ];
+
+        assert!(!should_skip_validation_for_tier1_cache_hit(
+            &config,
+            &resolved,
+            &[]
+        ));
+        assert!(!should_skip_validation_for_tier1_cache_hit(
+            &config,
+            &[ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "cache:seed".to_string(),
+                confidence: 0.97,
+            }],
+            &["yaml".to_string()]
+        ));
+
+        config.force_validate = true;
+        assert!(!should_skip_validation_for_tier1_cache_hit(
+            &config,
+            &[ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "cache:seed".to_string(),
+                confidence: 0.97,
+            }],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn does_not_prepare_pre_validation_docker_plan_for_pure_tier1_cache_hits() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.allow_llm = true;
+        config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+
+        let resolved = vec![ResolvedDependency {
+            import_name: "requests".to_string(),
+            package_name: "requests".to_string(),
+            version: Some("2.32.3".to_string()),
+            strategy: "cache:seed".to_string(),
+            confidence: 0.97,
+        }];
+
+        assert!(!should_author_docker_plan(&config, &resolved, &[]));
+    }
+
+    #[test]
+    fn still_prepares_pre_validation_docker_plan_when_tier1_short_circuit_does_not_apply() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.allow_llm = true;
+        config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+
+        assert!(should_author_docker_plan(
+            &config,
+            &[ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "heuristic:pypi-exact".to_string(),
+                confidence: 0.80,
+            }],
+            &[]
+        ));
+
+        config.force_validate = true;
+        assert!(should_author_docker_plan(
+            &config,
+            &[ResolvedDependency {
+                import_name: "requests".to_string(),
+                package_name: "requests".to_string(),
+                version: Some("2.32.3".to_string()),
+                strategy: "cache:seed".to_string(),
+                confidence: 0.97,
+            }],
+            &[]
+        ));
     }
 
     #[test]

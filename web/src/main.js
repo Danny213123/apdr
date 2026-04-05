@@ -723,6 +723,81 @@ function kvRows(fields) {
     .join("");
 }
 
+function validationPathParts(item) {
+  return String(item?.validationPath || "")
+    .split("->")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function validationRouteSummary(item) {
+  const path = String(item?.validationPath || "").trim();
+  if (path) {
+    return path;
+  }
+
+  const backend = String(item?.validationBackend || "").trim();
+  if (backend && backend !== "llm") {
+    return backend;
+  }
+
+  const route = String(item?.llmValidationRoute || "").trim();
+  const requestedPolicy = String(item?.requestedLlmValidationPolicy || "").trim();
+  const dockerStatus = String(item?.dockerStatus || "").trim();
+
+  if (route.startsWith("env-first") || requestedPolicy === "env-first") {
+    return dockerStatus === "attempted" ? "env->docker" : "env";
+  }
+  if (route === "docker-first" || requestedPolicy === "docker-first") {
+    return "docker";
+  }
+
+  return backend;
+}
+
+function validationFirstHop(item) {
+  const parts = validationPathParts(item);
+  if (parts.length) {
+    return parts[0];
+  }
+
+  const route = String(item?.llmValidationRoute || "").trim();
+  const requestedPolicy = String(item?.requestedLlmValidationPolicy || "").trim();
+  if (route.startsWith("env-first") || requestedPolicy === "env-first") {
+    return "env";
+  }
+  if (route === "docker-first" || requestedPolicy === "docker-first") {
+    return "docker";
+  }
+
+  return validationRouteSummary(item);
+}
+
+function validationTerminalHop(item) {
+  const parts = validationPathParts(item);
+  if (parts.length) {
+    return parts[parts.length - 1];
+  }
+  return validationRouteSummary(item);
+}
+
+function validationEnvStatus(item) {
+  const envBuilds = Number(item?.envBuilds || 0);
+  if (envBuilds > 0) {
+    return envBuilds === 1 ? "attempted (1 build)" : `attempted (${envBuilds} builds)`;
+  }
+
+  const route = String(item?.llmValidationRoute || "").trim();
+  const backend = String(item?.validationBackend || "").trim();
+  if (validationPathParts(item).includes("env") || route.startsWith("env-first") || backend === "env") {
+    return "selected";
+  }
+  if (backend === "tier1-cache" || backend === "import-set-cache") {
+    return "not needed";
+  }
+  return "";
+}
+
 function validationTruthFields(item) {
   const hasLlmTruth =
     item.validationBackend === "llm" ||
@@ -741,6 +816,11 @@ function validationTruthFields(item) {
   }
 
   const fields = [
+    ["Validation backend", item.validationBackend],
+    ["Route summary", validationRouteSummary(item)],
+    ["First hop", validationFirstHop(item)],
+    ["Final hop", validationTerminalHop(item)],
+    ["Env status", validationEnvStatus(item)],
     ["Docker plan", item.dockerPlanStatus],
     ["Docker plan path", item.dockerPlanPath],
     ["Docker plan authorship", item.dockerPlanAuthorship],
@@ -901,7 +981,7 @@ function showLlmValidationPolicyControl() {
 
 function llmValidationPolicyOptions() {
   return [
-    { value: "docker-first", label: "docker-first" },
+    { value: "env-first", label: "env-first" },
   ];
 }
 
@@ -909,7 +989,7 @@ function syncLlmValidationPolicyControl() {
   if (!dropdowns.llmValidationPolicy || !ui.llmPolicyRow || !state.form) {
     return;
   }
-  const nextValue = "docker-first";
+  const nextValue = "env-first";
   state.form.llm_validation_policy = nextValue;
   setDropdownOptions(dropdowns.llmValidationPolicy, llmValidationPolicyOptions(), nextValue);
   ui.llmPolicyRow.hidden = !showLlmValidationPolicyControl();
@@ -1107,6 +1187,12 @@ function renderCaseDetails(container, item) {
     ["Snippet", item.snippet || "-"],
     ["Result", item.result || "-"],
     ["Dependencies", item.dependencies || "-"],
+    ["Validation backend", item.validationBackend || "-"],
+    ["Validation route", validationRouteSummary(item) || "-"],
+    ["First hop", validationFirstHop(item) || "-"],
+    ["Final hop", validationTerminalHop(item) || "-"],
+    ["Env status", validationEnvStatus(item) || "-"],
+    ["Docker status", item.dockerStatus || "-"],
     ["LLM calls", item.llmCalls || "0"],
     ["Retries", item.retries || "0"],
     ["Env builds", item.envBuilds || "0"],
@@ -1185,6 +1271,9 @@ function filteredCases() {
       item.llmCalls,
       item.retries,
       item.envBuilds,
+      item.validationBackend,
+      item.validationPath,
+      item.dockerStatus,
       item.snippet,
       ...(item.outputFiles || []),
       ...(item.logTail || []),
@@ -1245,6 +1334,11 @@ function buildCaseRow(item, openIds) {
   readpy.textContent = item.readpy || "-";
   readpy.classList.add(markerClass(item.readpy));
   readpy.title = item.readpySummary || "";
+
+  const route = validationRouteSummary(item) || "-";
+  const routeNode = node.querySelector(".case-route");
+  routeNode.textContent = route;
+  routeNode.title = route;
 
   node.querySelector(".case-result").textContent = item.result || "-";
   node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
@@ -1309,6 +1403,8 @@ function renderDeterministicCases(filtered, options = {}) {
     "python",
     "tries",
     "seconds",
+    "validationBackend",
+    "validationPath",
     "result",
     "dependencies",
     "pllm",
@@ -1387,6 +1483,17 @@ function buildLLMCaseRow(item, openIds) {
   readpy.classList.add(markerClass(item.readpy));
   readpy.title = item.readpySummary || "";
 
+  const route = validationRouteSummary(item) || "-";
+  const routeNode = node.querySelector(".case-route");
+  routeNode.textContent = route;
+  routeNode.title = [
+    route,
+    item.validationBackend ? `backend=${item.validationBackend}` : "",
+    item.requestedLlmValidationPolicy ? `policy=${item.requestedLlmValidationPolicy}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
   node.querySelector(".case-result").textContent = item.result || "-";
   node.querySelector(".case-dependencies").textContent = item.dependencies || "-";
 
@@ -1429,6 +1536,7 @@ function renderLlmCases(filtered = null, options = {}) {
     "pllm",
     "legacy",
     "readpy",
+    "validationBackend",
     "validationPath",
     "requestedLlmValidationPolicy",
     "llmValidationRoute",
@@ -1645,7 +1753,7 @@ function applyLoadoutToForm(loadout) {
     snippet_limit: loadout.snippet_limit || "",
     python_command: loadout.python_command || "",
     validation_backend: validationBackend,
-    llm_validation_policy: "docker-first",
+    llm_validation_policy: "env-first",
     llm_only_mode: validationBackend === "llm-only",
     loadout_name: loadout.name || "",
   };
@@ -1660,7 +1768,7 @@ function currentConfigPayload() {
   return {
     ...state.form,
     loadout_name: state.form?.loadout_name || "",
-    llm_validation_policy: "docker-first",
+    llm_validation_policy: "env-first",
     llm_only_mode: isLlmOnly,
     // When llm-only is selected, keep the special resolver mode but force Docker
     // validation as the actual backend.

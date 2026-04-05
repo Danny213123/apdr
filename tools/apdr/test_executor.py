@@ -38,20 +38,24 @@ def parse_args() -> argparse.Namespace:
         "--validation-backend",
         choices=("env", "docker", "llm"),
         default="env",
-        help="Validation backend: env (local venvs), docker, or llm (docker-first required)",
+        help="Validation backend: env (local venvs), docker, or llm (env-first with Docker fallback)",
     )
     parser.add_argument(
         "--llm-validation-policy",
         choices=("docker-first", "env-first"),
-        default="docker-first",
-        help="First validation hop inside llm mode: docker-first (legacy env-first inputs are normalized)",
+        default="env-first",
+        help="First validation hop inside llm mode: env-first or docker-first",
     )
     parser.add_argument("--no-validate", action="store_true", help="Skip APDR validation")
     parser.add_argument("--no-execute-snippet", action="store_true", help="Only import resolved packages in smoke tests")
     parser.add_argument("--no-parallel-versions", action="store_true", help="Validate only the selected Python version")
     parser.add_argument("--benchmark-context-log", default="", help="Append benchmark build/run/LLM trace to this file")
     parser.add_argument("--run-contract-json", default="", help="Path to the benchmark run contract JSON")
-    parser.add_argument("--llm-only", action="store_true", help="Use LLM-only mode (skip heuristic tiers, keep Docker validation)")
+    parser.add_argument(
+        "--llm-only",
+        action="store_true",
+        help="Use LLM-only mode (skip tier1/tier2 and force LLM import resolution)",
+    )
     parser.add_argument("--force-validate", action="store_true", help="Force venv validation even for cached/pre-solved results")
     parser.add_argument("--validation-timeout", type=int, default=0, help="Per-attempt validation timeout in seconds")
     parser.add_argument(
@@ -142,8 +146,10 @@ def newest_source_mtime(tool_dir: Path) -> float:
     return max(mtimes, default=0.0)
 
 
-def parse_summary(stdout: str) -> dict[str, str]:
+def parse_summary(stdout: str | None) -> dict[str, str]:
     summary: dict[str, str] = {}
+    if not stdout:
+        return summary
     for line in stdout.splitlines():
         if "=" not in line:
             continue
@@ -351,6 +357,8 @@ def main() -> int:
         cwd=tool_dir,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
 

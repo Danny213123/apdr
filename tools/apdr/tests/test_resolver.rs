@@ -1970,15 +1970,11 @@ fn phase7_family_keras_fixtures_add_tensorflow_backend() {
             dependency.package_name == "tensorflow" && dependency.strategy == "family:keras-backend"
         }));
         assert!(
-            result
-                .resolution_report
-                .notes
-                .iter()
-                .any(|note| {
-                    note.contains(
+            result.resolution_report.notes.iter().any(|note| {
+                note.contains(
                 "Family knowledge added tensorflow as the default backend for standalone keras."
             )
-                }),
+            }),
             "{case_id} should keep the keras backend note"
         );
     }

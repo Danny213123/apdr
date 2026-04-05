@@ -541,9 +541,6 @@ class BenchmarkWorker(threading.Thread):
                     vt = self.run_config.get("validation_timeout")
                     if vt and int(vt) > 0:
                         command.extend(["--validation-timeout", str(int(vt))])
-                    # Always force venv validation for non-LLM cases in benchmark mode
-                    if not is_llm_only:
-                        command.append("--force-validate")
                 if self.run_config["verbose"]:
                     command.append("-v")
                 command.extend(["--benchmark-context-log", str(context_log)])

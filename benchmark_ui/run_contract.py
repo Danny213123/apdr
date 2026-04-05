@@ -77,7 +77,10 @@ def normalize_inference_policy(value: Any, temperature: float | None = None) -> 
 
 
 def normalize_llm_validation_policy(value: Any) -> str:
-    return LLM_VALIDATION_POLICY_DOCKER_FIRST
+    text = str(value or "").strip().lower()
+    if text == LLM_VALIDATION_POLICY_DOCKER_FIRST:
+        return LLM_VALIDATION_POLICY_DOCKER_FIRST
+    return LLM_VALIDATION_POLICY_ENV_FIRST
 
 
 def determine_execution_mode(tool: str, validation_backend: str) -> str:

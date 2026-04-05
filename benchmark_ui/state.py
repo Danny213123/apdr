@@ -196,7 +196,7 @@ class AppState:
             "snippet_limit": "",
             "python_command": "",
             "validation_backend": "docker" if tool == "pllm" else "env",
-            "llm_validation_policy": "docker-first",
+            "llm_validation_policy": "env-first",
             "run_intent": "baseline",
             "cache_state": "unknown",
             "llm_context_window": str(
@@ -305,8 +305,8 @@ class AppState:
             return "Docker build + run validation"
         if resolved == "llm":
             return (
-                "Docker-first validation is required for APDR llm when Docker is usable, "
-                "with safe env fallback when docker cli unavailable or docker daemon unavailable "
+                "Env-first validation with Docker follow-up for recoverable APDR llm failures "
+                "when Docker is usable, plus agent fallback when needed "
                 "+ agent fallback"
             )
         return "Isolated local Python env validation"
@@ -621,7 +621,7 @@ class AppState:
         if shutil.which("docker"):
             code, output = self._run_command(["docker", "--version"], cwd=self.repo_root, timeout=5)
             docker_cli_label = (
-                "Docker CLI (required first hop for APDR llm)"
+                "Docker CLI (follow-up path for APDR llm)"
                 if docker_targeted_for_llm
                 else
                 "Docker CLI (optional for APDR env validation)"
@@ -630,7 +630,7 @@ class AppState:
             )
             docker_cli_status = "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL")
             docker_cli_detail = output or (
-                "Docker is installed and will be used as the first validation hop for APDR llm."
+                "Docker is installed and can be used after env validation for recoverable APDR llm failures."
                 if docker_targeted_for_llm
                 else
                 "Docker is installed, but the selected backend does not require it."
@@ -644,8 +644,8 @@ class AppState:
                 detail = f"{detail} Start Docker Desktop or another local Docker daemon, then rerun Doctor."
             elif code != 0 and docker_targeted_for_llm:
                 detail = (
-                    f"{detail} APDR llm requires docker-first validation, so runs will "
-                    "degrade to env validation with docker_bypass_reason: "
+                    f"{detail} APDR llm can still start with env validation, but Docker follow-up "
+                    "will be unavailable and runs will record docker_bypass_reason: "
                     "docker daemon unavailable until Docker is available."
                 )
             elif code != 0 and docker_optional:
@@ -654,7 +654,7 @@ class AppState:
                 self._doctor_row(
                     "PASS" if code == 0 else ("WARN" if docker_optional else "FAIL"),
                     (
-                        "Docker daemon (required first hop for APDR llm)"
+                        "Docker daemon (follow-up path for APDR llm)"
                         if docker_targeted_for_llm
                         else
                         "Docker daemon (optional for APDR env validation)"
@@ -669,10 +669,10 @@ class AppState:
                 checks.append(
                     self._doctor_row(
                         "WARN",
-                        "Docker (required first hop for APDR llm)",
-                        "Docker is not installed. APDR llm requires docker-first validation, "
-                        "so runs will degrade to env validation with docker_bypass_reason: "
-                        "docker cli unavailable until Docker is available.",
+                        "Docker (follow-up path for APDR llm)",
+                        "Docker is not installed. APDR llm can still use env-first validation, "
+                        "but Docker follow-up will be unavailable and runs will record "
+                        "docker_bypass_reason: docker cli unavailable until Docker is available.",
                     )
                 )
             elif docker_optional:

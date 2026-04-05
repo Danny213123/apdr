@@ -1323,7 +1323,7 @@ class BenchmarkService:
         jobs = run.get("total") or str(config.get("snippet_limit") or "all")
         artifacts = self.state.relative_path(run["runDir"]) if run.get("runDir") else "runs/pending"
         llm_validation_label = (
-            "LLM resolver (legacy env-first control + Docker follow-up + agent fallback)"
+            "LLM resolver (env-first validation + Docker follow-up + agent fallback)"
             if contract_view["llm_validation_policy"] == "env-first"
             else "LLM resolver (docker-first required + env fallback + agent fallback)"
         )
@@ -2332,7 +2332,8 @@ class BenchmarkService:
                 return "Doctor is checking Docker, Ollama, dataset readiness, and each tool runtime."
             if resolved_backend == "llm":
                 return (
-                    "Doctor is checking Docker-first llm readiness, local Python env fallback "
+                    "Doctor is checking env-first llm readiness, Docker follow-up availability, "
+                    "local Python env fallback "
                     "readiness, the LLM agent, Ollama, dataset readiness, and each tool runtime."
                 )
             return "Doctor is checking local Python interpreters, Ollama, dataset readiness, and each tool runtime."
