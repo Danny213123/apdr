@@ -291,7 +291,20 @@ class BenchmarkService:
             else:
                 summary = self.state.load_run_summary(run_id)
                 if not summary:
-                    raise ValueError(f"Run not found: {run_id}")
+                    timestamp = datetime.now().isoformat()
+                    yield {
+                        "type": "run_missing",
+                        "runId": run_id,
+                        "message": f"Run not found: {run_id}",
+                        "timestamp": timestamp,
+                    }
+                    yield {
+                        "type": "complete",
+                        "status": "missing",
+                        "runId": run_id,
+                        "timestamp": timestamp,
+                    }
+                    return
                 run_dir = self.state.runs_dir / run_id
                 run_state = self._historical_run_snapshot(run_id, summary, run_dir)
                 is_current = False

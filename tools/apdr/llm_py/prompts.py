@@ -345,16 +345,16 @@ def _attribute_section(
 # System prompts (constant, cached by provider)
 # ---------------------------------------------------------------------------
 
-RESOLUTION_SYSTEM = f"""\
+_RESOLUTION_SYSTEM_BASE = """\
 You are resolving Python imports to PyPI package names.
 
-{IMPORT_PATTERN_TAXONOMY}
-{FAILURE_PAIR_EXAMPLES}
-{LOCAL_MODULE_BANK}
-{FRAMEWORK_SUBMODULE_ALLOWLIST}
+{taxonomy}
+{failure_examples}
+{local_bank}
+{framework_allowlist}
 Think step by step for each import:
 1. Is this a Python standard library module? If yes, skip it entirely.
-2. Is this a local/project module from the LOCAL_MODULE_BANK list? If yes, skip it.
+2. Is this a local/project module (settings, config, urls, models, etc.)? If yes, skip it.
 3. Is this a framework submodule (e.g. django.conf)? If yes, map to the parent package.
 4. Does the import match a known pattern (A-G above)? Apply the pattern.
 5. Do the tier2 candidates or reverse-index context suggest a real package? Prefer those.
@@ -363,6 +363,41 @@ Think step by step for each import:
 Only include imports that map to VERIFIED real PyPI packages.
 Return a JSON object with a "mappings" array. Each entry has "import_name" and "package_name".
 """
+
+# Full system prompt (used as default / for multi-import cases)
+RESOLUTION_SYSTEM = _RESOLUTION_SYSTEM_BASE.format(
+    taxonomy=IMPORT_PATTERN_TAXONOMY,
+    failure_examples=FAILURE_PAIR_EXAMPLES,
+    local_bank=LOCAL_MODULE_BANK,
+    framework_allowlist=FRAMEWORK_SUBMODULE_ALLOWLIST,
+)
+
+
+def resolution_system_for_imports(imports: list[str]) -> str:
+    """Build a resolve system prompt tailored to the specific imports.
+
+    For single-import cases or cases where most context is irrelevant,
+    this produces a shorter prompt that keeps the model focused.
+    """
+    has_dotted = any("." in imp for imp in imports)
+
+    # Always include core taxonomy and failure examples
+    taxonomy = IMPORT_PATTERN_TAXONOMY
+    failure_examples = FAILURE_PAIR_EXAMPLES
+
+    # Only include framework allowlist if imports contain dotted names
+    framework_allowlist = FRAMEWORK_SUBMODULE_ALLOWLIST if has_dotted else ""
+
+    # Only include local module bank if imports could plausibly be local
+    # (the pre-LLM filter already removed obvious locals, so this is for edge cases)
+    local_bank = LOCAL_MODULE_BANK
+
+    return _RESOLUTION_SYSTEM_BASE.format(
+        taxonomy=taxonomy,
+        failure_examples=failure_examples,
+        local_bank=local_bank,
+        framework_allowlist=framework_allowlist,
+    )
 
 SOLVABILITY_SYSTEM = """\
 You are triaging whether a Python snippet is solvable in a generic Docker + PyPI environment.
@@ -418,68 +453,57 @@ Return a JSON object with:
   (empty array if all correct; use corrected_package="SKIP" to remove unsolvable imports)
 """
 
-RECOVERY_SYSTEM = f"""\
+RECOVERY_SYSTEM = """\
 You are fixing a Python dependency installation failure.
+Read the error log, identify the root cause, and return a JSON fix.
 
-{FAILURE_PAIR_EXAMPLES}
-Think step by step:
-1. Read the error log carefully to identify which package caused the failure.
-2. Check if a package should be REMOVED entirely — it may be a local/project module \
-(like "domain", "settings", "utils") that was incorrectly resolved to a PyPI package. \
-If a package with a common English word name fails to build/install, it's likely NOT \
-the right package. Set remove_package to the package name to remove it.
-3. Check if the package name is wrong (needs a prefix like `django-` or `python-`).
-4. Check if the package needs system C libraries and a pure-Python alternative exists \
-(e.g. use `Pillow` instead of `PIL`, `pylibmc` instead of `python-memcached`, \
-`cffi`-based packages instead of C-extension packages).
-5. Check if the wrong package was installed (same name on PyPI but unrelated project).
-6. Check if a transitive dependency needs to be version-pinned (e.g. protobuf<4 for TF 1.x, \
-numpy version caps, etc.). If so, use add_package.
-7. For Python 2.7 targets: many packages dropped Py2 support. Pin to the LAST Py2-compatible \
-version (e.g. numpy==1.16.6, pandas==0.24.2, scipy==1.2.3, Flask==1.1.4, Django==1.11.29, \
-Jinja2==2.11.3, MarkupSafe==1.1.1, itsdangerous==1.1.0, Werkzeug==1.0.1, cryptography==3.3.2, \
-PyYAML==5.4.1, attrs==21.4.0, six==1.16.0, futures==3.3.0, enum34==1.1.10, typing==3.10.0.0). \
-SyntaxError in setup.py with f-strings or walrus operators means the package is Py3-only.
-8. For build failures ("failed building wheel", "command errored out", "subprocess-exited-with-error"): \
-try pinning to an older version that has pre-built wheels, or suggest a pure-Python alternative.
-9. For opencv-python build failures (missing system deps like libGL, libgthread, cmake): \
-ALWAYS replace opencv-python with opencv-python-headless — it has the same API but ships \
-pre-built wheels with no system dependencies. This fixes 90% of OpenCV build failures.
-10. For TensorFlow version selection based on API usage: \
-tf.placeholder, tf.Session, tf.train.*, tf.nn.rnn_cell, tf.contrib.* -> tensorflow==1.15.0 \
-(also add protobuf==3.20.3). tf.keras.*, tf.function, tf.GradientTape -> tensorflow (latest).
-11. For macOS-framework imports (Foundation, CoreFoundation, OpenDirectory, AppKit, \
-SystemConfiguration, Cocoa, ScriptingBridge, etc.): These CANNOT be installed via pip in Docker. \
-Use remove_package to remove pyobjc or pyobjc-framework-* packages — the snippet is \
-macOS-only and these imports are unsolvable in a generic environment.
+Here are concrete examples of correct recovery fixes:
 
-Return a JSON object with:
+EXAMPLE 1 — Build failure, replace with headless variant:
+  Error: "Failed building wheel for opencv-python" + "libGL.so.1: cannot open"
+  Packages: opencv-python==4.8.0, numpy==1.24.0
+  Fix: {"fix_possible": true, "wrong_package": "opencv-python", "correct_package": "opencv-python-headless", "reasoning": "headless has pre-built wheels, no system deps"}
+
+EXAMPLE 2 — Wrong package name, swap preserving namespace:
+  Error: "ModuleNotFoundError: No module named 'MySQLdb'"
+  Packages: MySQL-python==1.2.5
+  Fix: {"fix_possible": true, "wrong_package": "MySQL-python", "correct_package": "mysqlclient", "reasoning": "mysqlclient provides the MySQLdb import"}
+
+EXAMPLE 3 — Py2 incompatibility, pin to last compatible version:
+  Error: "SyntaxError: invalid syntax" (f-string in setup.py, Python 2.7)
+  Packages: MarkupSafe==2.1.3
+  Fix: {"fix_possible": true, "wrong_package": "MarkupSafe", "correct_package": "MarkupSafe", "version": "1.1.1", "reasoning": "2.x requires Py3, pin to last Py2 version"}
+
+EXAMPLE 4 — Local module incorrectly resolved, remove it:
+  Error: "error in deployment setup" (package 'deployment' has broken setup.py)
+  Packages: deployment==1.0, fabric==2.7.1
+  Fix: {"fix_possible": true, "remove_package": "deployment", "reasoning": "deployment is a local project module, not a PyPI package"}
+
+EXAMPLE 5 — Transitive dependency conflict, add version pin:
+  Error: "tensorflow 1.15.0 requires protobuf<4, but you have protobuf 4.25.0"
+  Packages: tensorflow==1.15.0, protobuf==4.25.0
+  Fix: {"fix_possible": true, "add_package": "protobuf==3.20.3", "reasoning": "TF 1.x needs protobuf<4"}
+
+EXAMPLE 6 — macOS framework, unsolvable in Docker:
+  Error: "Failed building wheel for pyobjc-framework-SystemConfiguration"
+  Packages: pyobjc-framework-SystemConfiguration==10.0
+  Fix: {"fix_possible": true, "remove_package": "pyobjc-framework-SystemConfiguration", "reasoning": "macOS framework, cannot install in Docker/Linux"}
+
+Return a JSON object with these fields:
 - fix_possible: true or false
-- wrong_package: the package that caused the error (exact name from resolved list)
-- correct_package: the correct PyPI package name (can be the SAME name if only a version pin is needed)
-- version: (optional) specific version to pin, e.g. "1.8.3". Use this when the package itself is \
-correct but needs an older version (e.g. for Python 2.7 compatibility, or to get pre-built wheels).
-- add_package: (optional) a NEW dependency to add, with version pin, e.g. "protobuf==3.20.3"
-- remove_package: (optional) a package to REMOVE from the resolved list because it's a local module \
-or wrong package that should not be installed at all
-- recovery_outcome: "applied", "abstained", "provider-failure", or "no-output"
-- failure_class: short reason class such as "timeout", "invalid-json", "schema-validation-failure", \
-  "provider-tooling-failure", or "wrong-package"
-- diagnostic_preview: one short line summarizing the key diagnostic or why you abstained
+- wrong_package: package that caused the error (exact name from resolved list)
+- correct_package: correct PyPI package (can be SAME name if only pinning version)
+- version: (optional) version to pin, e.g. "1.8.3"
+- add_package: (optional) new dependency to add with pin, e.g. "protobuf==3.20.3"
+- remove_package: (optional) package to REMOVE (local module or wrong package)
+- recovery_outcome: "applied" or "abstained"
+- failure_class: short reason class
+- diagnostic_preview: one-line summary
 - reasoning: brief explanation
 
-You can:
-1. Swap a package: set wrong_package + correct_package (different names)
-2. Pin a version: set wrong_package + correct_package (SAME name) + version
-3. Add a transitive dep: set add_package
-4. Remove a wrong package: set remove_package (for local modules or wrong PyPI packages)
-5. Any combination of the above.
-If no fix is possible, set fix_possible=false.
-
-CRITICAL: only suggest package swaps that preserve the imported namespace.
-VALID: ldap -> python-ldap, Levenshtein -> python-Levenshtein, psycopg2 -> psycopg2-binary
-INVALID: PySide -> PySide6, mosquitto -> paho-mqtt, ldap -> ldap3, oaipmh -> a, Levenshtein -> fuzzywuzzy
-If the replacement would not provide the same import path, do not suggest it.
+CRITICAL: only suggest swaps that preserve the imported namespace.
+VALID: ldap -> python-ldap, psycopg2 -> psycopg2-binary, cv2 -> opencv-python-headless
+INVALID: PySide -> PySide6, ldap -> ldap3, Levenshtein -> fuzzywuzzy
 """
 
 # ---------------------------------------------------------------------------
@@ -522,18 +546,24 @@ def package_resolution_user(
     attribute_usage: dict[str, list[str]],
     tier2_candidates: dict[str, list[str]] | None = None,
     retrieval_profile: str = "none",
+    snippet_source: str = "",
 ) -> str:
     ctx_str = "\n".join(context) if context else "- none"
     bm_str = compress_benchmark_context(benchmark_context, 12288)
     attr_sec = _attribute_section(attribute_usage, unresolved_imports)
     cand_sec = _candidates_section(tier2_candidates or {})
+    snippet_sec = ""
+    if snippet_source.strip():
+        snippet_excerpt = _extract_import_section(snippet_source)
+        snippet_sec = f"\nCode context:\n```python\n{snippet_excerpt}\n```\n"
     return (
         f"Target Python version: {python_version}\n\n"
         f"Retrieval profile: {retrieval_profile or 'none'}\n\n"
         f"Context:\n{ctx_str}\n"
         f"Benchmark context:\n{bm_str}"
         f"{attr_sec}"
-        f"{cand_sec}\n"
+        f"{cand_sec}"
+        f"{snippet_sec}\n"
         f"Imports to resolve:\n" + "\n".join(unresolved_imports)
     )
 
@@ -633,25 +663,14 @@ def _intake_failure_summary(failure: Any) -> str:
 
 
 def _artifact_pointer_summary(recovery_artifacts: Any) -> str:
+    # NOTE: Artifact pointers are file paths the LLM cannot read.
+    # Only include the executed_image_ref which is semantically useful.
     if recovery_artifacts is None:
-        return "- none"
-    pointer_fields = (
-        "authored_plan_path",
-        "docker_plan_path",
-        "intake_failure_path",
-        "combined_log_path",
-        "executed_dockerfile_path",
-        "docker_build_command_path",
-        "docker_run_command_path",
-        "image_inspect_path",
-        "executed_image_ref",
-    )
-    lines = []
-    for field in pointer_fields:
-        value = str(getattr(recovery_artifacts, field, "") or "").strip()
-        if value:
-            lines.append(f"- {field}: {value}")
-    return "\n".join(lines) if lines else "- none"
+        return ""
+    image_ref = str(getattr(recovery_artifacts, "executed_image_ref", "") or "").strip()
+    if image_ref:
+        return f"- executed_image_ref: {image_ref}"
+    return ""
 
 
 def _build_error_specific_hint(
@@ -660,118 +679,81 @@ def _build_error_specific_hint(
     python_version: str,
     failing_pkg: str,
 ) -> str:
-    """Build targeted hints based on the specific error type.
+    """Build a focused, single-strategy hint based on error type and context.
 
-    Different error types have very different root causes and fix strategies.
-    Giving the LLM focused guidance per error type improves accuracy.
+    Instead of listing all possible strategies, identify the most likely root
+    cause and give one targeted recommendation.
     """
-    parts: list[str] = []
-
-    if failing_pkg:
-        parts.append(f"Failing package: {failing_pkg}")
-
+    lower_log = error_log.lower()
     is_py2 = python_version.startswith("2")
+    pkg_lower = failing_pkg.lower()
+
+    # Header with structured classification
+    header = f"=== ERROR: {error_type} ==="
+    if failing_pkg:
+        header += f"\nFailing package: {failing_pkg}"
+
+    strategy = ""
 
     if error_type == "BuildFailure":
-        parts.append(
-            "ERROR TYPE: Build/compilation failure during pip install.\n"
-            "STRATEGY (try in order):\n"
-            "1. CHECK if the package name is WRONG — common English words like 'domain', "
-            "'core', 'base', 'api', 'utils' are often local modules incorrectly resolved "
-            "to unrelated PyPI packages. Use remove_package to remove them.\n"
-            "2. For opencv-python: REPLACE with opencv-python-headless (same API, pre-built wheels, "
-            "no system deps like libGL/libgthread needed). This is the #1 fix for OpenCV failures.\n"
-            "3. For dlib: requires cmake + C++ compiler. Pin dlib==19.22.1 (last version with wheels) "
-            "or remove if not essential.\n"
-            "4. For pyobjc / pyobjc-framework-*: These are macOS-only. REMOVE them — they cannot "
-            "build in Docker Linux containers.\n"
-            "5. CHECK if a pure-Python alternative exists (e.g. Pillow instead of PIL, "
-            "pylibmc instead of python-memcached, cffi-based alternatives).\n"
-            "6. TRY pinning to an older version that ships pre-built wheels.\n"
-            "7. CHECK if the package is Py3-only being installed on Py2 — use remove_package "
-            "or pin to the last Py2-compatible version."
-        )
-        if is_py2:
-            parts.append(
-                "PY2 NOTE: SyntaxError with f-strings/walrus/type hints in setup.py means "
-                "the package dropped Python 2 support. Either pin to the last Py2 version "
-                "or use remove_package if it's a local module."
+        # Pick the ONE most likely fix based on the failing package
+        if pkg_lower in ("opencv-python", "cv2"):
+            strategy = "REPLACE opencv-python with opencv-python-headless (same API, pre-built wheels, no system deps)."
+        elif "pyobjc" in pkg_lower or "foundation" in pkg_lower or "appkit" in pkg_lower:
+            strategy = "REMOVE this package — it's macOS-only and cannot build in Docker/Linux."
+        elif pkg_lower in ("dlib",):
+            strategy = "PIN dlib==19.22.1 (last version with pre-built wheels) or remove if not essential."
+        elif is_py2 and ("f-string" in lower_log or "walrus" in lower_log or "invalid syntax" in lower_log):
+            strategy = (
+                "Package dropped Python 2 support. Pin to last Py2 version "
+                "(numpy==1.16.6, pandas==0.24.2, scipy==1.2.3, Flask==1.1.4, "
+                "Django==1.11.29, Jinja2==2.11.3, MarkupSafe==1.1.1, cryptography==3.3.2)."
             )
+        elif pkg_lower in ("domain", "core", "base", "api", "utils", "app", "common", "models"):
+            strategy = f"'{failing_pkg}' looks like a local project module, not a PyPI package. Use remove_package."
+        elif "no matching distribution" in lower_log:
+            strategy = "Package name or version is wrong. Check if the name needs a prefix (python-, django-, Flask-)."
+        else:
+            strategy = "Try pinning to an older version with pre-built wheels, or check if the package name is wrong (local module?)."
 
     elif error_type in ("ModuleNotFound", "ImportError"):
-        parts.append(
-            "ERROR TYPE: A module could not be imported at runtime.\n"
-            "STRATEGY (try in order):\n"
-            "1. CHECK if the import-to-package mapping is wrong — the installed package "
-            "may not provide this import. Look at known patterns (cv2→opencv-python, "
-            "PIL→Pillow, yaml→PyYAML, serial→pyserial, etc.).\n"
-            "2. CHECK if it's a local project module that shouldn't be in requirements "
-            "at all — use remove_package.\n"
-            "3. CHECK if a transitive dependency is needed — use add_package.\n"
-            "4. CHECK if the package was installed but the wrong version — some versions "
-            "don't export the same modules."
-        )
+        if "local" in lower_log or failing_pkg in ("settings", "config", "utils", "helpers"):
+            strategy = "This is likely a local project module. Use remove_package to remove it from requirements."
+        else:
+            strategy = (
+                "The import-to-package mapping may be wrong. Check known patterns "
+                "(cv2->opencv-python, PIL->Pillow, yaml->PyYAML, serial->pyserial). "
+                "Or a transitive dependency is missing — use add_package."
+            )
 
     elif error_type == "VersionConflict":
-        parts.append(
-            "ERROR TYPE: Version conflict between packages.\n"
-            "STRATEGY:\n"
-            "1. IDENTIFY which two packages conflict from the error message.\n"
-            "2. PIN the less critical package to a compatible version using "
-            "wrong_package + correct_package (same name) + version.\n"
-            "3. For common conflicts: protobuf<4 for TensorFlow 1.x, numpy<1.24 for "
-            "older scipy, setuptools<58 for packages using use_2to3."
-        )
+        if "protobuf" in lower_log and "tensorflow" in lower_log:
+            strategy = "Pin protobuf==3.20.3 (TF 1.x requires protobuf<4). Use add_package."
+        elif "numpy" in lower_log:
+            strategy = "Pin numpy to a compatible version (numpy<1.24 for older scipy, numpy<1.20 for Py2)."
+        else:
+            strategy = "Identify the conflicting packages from the error. Pin the less critical one to a compatible version."
 
     elif error_type == "Oscillation":
-        parts.append(
-            "ERROR TYPE: Requirements keep oscillating between different versions.\n"
-            "STRATEGY:\n"
-            "1. One or more packages may be fundamentally wrong. Consider removing them "
-            "with remove_package if they look like local modules.\n"
-            "2. Try a completely DIFFERENT package that provides the same functionality "
-            "(e.g. pylibmc instead of python-memcached).\n"
-            "3. Do NOT suggest the same fix that was already tried — check previous attempts."
+        strategy = (
+            "Requirements are cycling. One or more packages may be fundamentally wrong. "
+            "Check if any package name is a local module (remove_package). "
+            "Do NOT repeat previous attempts."
         )
 
     elif error_type == "SyntaxError":
         if is_py2:
-            parts.append(
-                "ERROR TYPE: SyntaxError during package installation (Python 2.7 target).\n"
-                "STRATEGY:\n"
-                "1. The package likely uses Python 3 syntax. Pin to the LAST Py2-compatible "
-                "version.\n"
-                "2. If the package name is a common English word (domain, core, base), it's "
-                "probably a local module — use remove_package.\n"
-                "3. Common last-Py2 versions: numpy==1.16.6, pandas==0.24.2, scipy==1.2.3, "
-                "Flask==1.1.4, Django==1.11.29, Jinja2==2.11.3, MarkupSafe==1.1.1, "
-                "cryptography==3.3.2, PyYAML==5.4.1."
-            )
+            strategy = "Package uses Python 3 syntax. Pin to last Py2-compatible version, or remove if it's a local module."
         else:
-            parts.append(
-                "ERROR TYPE: SyntaxError in package installation.\n"
-                "STRATEGY: The package source has a syntax error. Try an older stable version, "
-                "or check if the package name is wrong."
-            )
+            strategy = "Package source has a syntax error. Try an older stable version or check if the package name is wrong."
 
     elif error_type == "RuntimeConfig":
-        parts.append(
-            "ERROR TYPE: Runtime configuration error (e.g. missing DJANGO_SETTINGS_MODULE).\n"
-            "This usually means dependencies are correct but the app needs runtime config. "
-            "No fix needed — set fix_possible=false."
-        )
+        strategy = "Dependencies are likely correct but the app needs runtime config. Set fix_possible=false."
 
-    elif error_type == "Unknown":
-        parts.append(
-            "ERROR TYPE: Unknown/unclassified error.\n"
-            "STRATEGY: Read the error log carefully. Look for:\n"
-            "1. 'No matching distribution found' → wrong package name or version\n"
-            "2. 'command errored out' → build failure, try older version or alternative\n"
-            "3. 'ModuleNotFoundError' → wrong import mapping\n"
-            "4. If no useful error info, check if any package name looks like a local module."
-        )
+    else:
+        strategy = "Read the error log. Look for: wrong package name, missing distribution, build failure, or local module."
 
-    return "\n".join(parts) + "\n" if parts else ""
+    return f"{header}\nSTRATEGY: {strategy}"
 
 
 def _extract_diagnostic_lines(error_log: str, error_type: str) -> str:
@@ -902,23 +884,35 @@ def recovery_user(
                 "\nPrevious attempts (DO NOT repeat — try something different):\n"
                 + "\n".join(lines) + "\n"
             )
-    authored_plan_summary = _plan_summary(authored_plan)
-    docker_plan_summary = _docker_plan_summary(docker_plan)
-    intake_failure_summary = _intake_failure_summary(intake_failure)
-    artifact_pointer_summary = _artifact_pointer_summary(recovery_artifacts)
-    return (
-        f"Target Python version: {python_version}\n"
-        f"Error type: {error_type}\n"
-        f"{structured_hint}\n"
-        f"Currently resolved packages:\n{pkg_list}\n\n"
-        f"Authored case plan:\n{authored_plan_summary}\n\n"
-        f"Authored Docker plan:\n{docker_plan_summary}\n\n"
-        f"Prior intake failure truth:\n{intake_failure_summary}\n\n"
-        f"Executed artifact pointers:\n{artifact_pointer_summary}\n\n"
-        f"Installation/import error:\n```\n{log_excerpt}\n```\n\n"
-        f"Python snippet imports:\n```python\n{snippet_excerpt}\n```\n"
-        f"{history}"
-    )
+    parts = [
+        f"Target Python version: {python_version}",
+        f"Error type: {error_type}",
+        structured_hint,
+        f"Currently resolved packages:\n{pkg_list}",
+    ]
+
+    # Only include plan/failure sections when they have content
+    plan_summary = _plan_summary(authored_plan)
+    if authored_plan is not None:
+        parts.append(f"Authored case plan:\n{plan_summary}")
+
+    docker_summary = _docker_plan_summary(docker_plan)
+    if docker_plan is not None:
+        parts.append(f"Authored Docker plan:\n{docker_summary}")
+
+    if intake_failure is not None:
+        parts.append(f"Prior intake failure:\n{_intake_failure_summary(intake_failure)}")
+
+    artifact_ref = _artifact_pointer_summary(recovery_artifacts)
+    if artifact_ref:
+        parts.append(artifact_ref)
+
+    parts.append(f"Installation/import error:\n```\n{log_excerpt}\n```")
+    parts.append(f"Python snippet imports:\n```python\n{snippet_excerpt}\n```")
+    if history:
+        parts.append(history)
+
+    return "\n\n".join(p for p in parts if p.strip())
 
 
 def version_user(

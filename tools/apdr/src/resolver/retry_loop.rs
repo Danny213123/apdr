@@ -42,6 +42,7 @@ pub(super) fn validate_with_retries(
     let mut module_requirement_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut repeat_failure_signature: Option<String> = None;
     let mut last_validation_import_note: Option<String> = None;
+    let mut current_validation_python = selected_python.to_string();
 
     // Overall wall-time budget for the entire retry loop equals validation_timeout.
     // Each validate_requirements call gets the *remaining* time as its budget.
@@ -119,7 +120,7 @@ pub(super) fn validate_with_retries(
                     snippet_source,
                     store,
                     config,
-                    selected_python,
+                    &current_validation_python,
                     "Oscillation",
                     &llm_recovery_history,
                     authored_plan,
@@ -209,20 +210,20 @@ pub(super) fn validate_with_retries(
             family_knowledge::validation_candidate_versions(
                 parse_result,
                 resolved,
-                selected_python,
+                &current_validation_python,
                 config.python_version_range,
                 config.execute_snippet,
             )
             .unwrap_or_else(|| {
                 docker::parallel::candidate_versions(
-                    selected_python,
+                    &current_validation_python,
                     config.python_version_range,
                     Some(&parse_result.python_version_min),
                     parse_result.python_version_max.as_deref(),
                 )
             })
         } else {
-            vec![selected_python.to_string()]
+            vec![current_validation_python.clone()]
         };
         if let Some(policy) = targeted_recovery::get_targeted_recovery_policy() {
             versions = targeted_recovery::filter_candidate_versions_for_resolved(
@@ -290,6 +291,9 @@ pub(super) fn validate_with_retries(
         validation.attempts.extend(attempt_result.attempts.clone());
         validation.refresh_validation_path();
         update_fallback_metadata(&mut validation);
+        if let Some(recovery_python) = recovery_python_from_attempt_result(&attempt_result) {
+            current_validation_python = recovery_python;
+        }
 
         if let Some((pattern, error_type, conflict_class, fix)) = pending_pattern_learning.take() {
             let _ = store.record_failure_pattern_outcome(
@@ -337,7 +341,7 @@ pub(super) fn validate_with_retries(
                     snippet_source,
                     store,
                     config,
-                    selected_python,
+                    &current_validation_python,
                     "Unknown",
                     &llm_recovery_history,
                     authored_plan,
@@ -732,7 +736,7 @@ pub(super) fn validate_with_retries(
             &last_log,
             resolved,
             parse_result,
-            selected_python,
+            &current_validation_python,
             store,
             &mut retry_state,
             config,
@@ -804,7 +808,7 @@ pub(super) fn validate_with_retries(
                 snippet_source,
                 store,
                 config,
-                selected_python,
+                &current_validation_python,
                 &classified.error_type,
                 &llm_recovery_history,
                 authored_plan,
@@ -934,7 +938,7 @@ pub(super) fn validate_with_retries(
                     parse_result,
                     store,
                     config,
-                    selected_python,
+                    &current_validation_python,
                     Some(format!(
                         "Previous resolution from seed data failed validation with {} error. Error: {}. \
                          The following seed mappings may be wrong: {}. \
@@ -1473,6 +1477,11 @@ fn apply_recovery_fix(
             None
         }
         "ModuleNotFound" | "ImportError" | "AttributeError" => {
+            if let Some(note) =
+                try_removed_runtime_api_recovery(resolved, log, store, python_version, retry_state)
+            {
+                return Some(note);
+            }
             let module_name = extract_missing_module(log)?;
             // Skip re-adding imports that were explicitly removed by LLM recovery
             if retry_state.has_removed_import(&module_name) {
@@ -1936,6 +1945,106 @@ fn apply_recovery_fix(
             None
         }
     }
+}
+
+fn recovery_python_from_attempt_result(attempt_result: &ValidationSummary) -> Option<String> {
+    attempt_result
+        .selected_python_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            attempt_result
+                .attempts
+                .iter()
+                .find(|attempt| {
+                    attempt.status == "runtime-failed" && !attempt.python_version.trim().is_empty()
+                })
+                .map(|attempt| attempt.python_version.clone())
+        })
+        .or_else(|| {
+            attempt_result
+                .attempts
+                .iter()
+                .rev()
+                .find(|attempt| !attempt.python_version.trim().is_empty())
+                .map(|attempt| attempt.python_version.clone())
+        })
+}
+
+fn extract_traceback_package_hint(log: &str) -> Option<String> {
+    for line in log.lines() {
+        let lower = line.to_ascii_lowercase();
+        for marker in ["site-packages\\", "site-packages/"] {
+            if let Some(index) = lower.find(marker) {
+                let rest = &lower[index + marker.len()..];
+                let candidate = rest
+                    .split(['\\', '/', ':'])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if !candidate.is_empty() {
+                    return Some(candidate.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn try_removed_runtime_api_recovery(
+    resolved: &mut [ResolvedDependency],
+    log: &str,
+    store: &mut CacheStore,
+    python_version: &str,
+    retry_state: &mut RetryLoopState,
+) -> Option<String> {
+    let lower = log.to_ascii_lowercase();
+    if !(lower.contains("module 'time' has no attribute 'clock'")
+        || lower.contains("module \"time\" has no attribute \"clock\"")
+        || lower.contains("time.clock"))
+    {
+        return None;
+    }
+
+    let hinted_package = extract_traceback_package_hint(log)
+        .and_then(|hint| {
+            dependency_index_by_import(resolved, &hint)
+                .or_else(|| dependency_index_by_package(resolved, &hint))
+                .map(|index| resolved[index].package_name.clone())
+        })
+        .or_else(|| {
+            resolved
+                .iter()
+                .find(|dependency| normalize_package_key(&dependency.package_name) == "ipython")
+                .map(|dependency| dependency.package_name.clone())
+        })?;
+    let dep_index = dependency_index_by_package(resolved, &hinted_package)?;
+    let current_version = resolved[dep_index].version.clone();
+    let known_versions = pypi_client::compatible_versions(store, &hinted_package, python_version);
+    if known_versions.is_empty() {
+        return None;
+    }
+
+    let previous = retry_state
+        .attempted_versions
+        .entry(hinted_package.clone())
+        .or_default();
+    if let Some(current) = current_version.clone() {
+        previous.push(current);
+    }
+
+    let next_version = known_versions.iter().rev().find(|version| {
+        current_version.as_deref() != Some(version.as_str()) && !previous.contains(*version)
+    })?;
+    previous.push(next_version.clone());
+    if update_package_version(resolved, &hinted_package, Some(next_version.clone())) {
+        return Some(format!(
+            "Upgraded {hinted_package} to {next_version} after removed runtime API `time.clock` on Python {python_version}."
+        ));
+    }
+    None
 }
 
 pub(super) fn python_backport_package<'a>(
@@ -2412,6 +2521,121 @@ mod tests {
             strategy: "test".to_string(),
             confidence: 0.9,
         }
+    }
+
+    fn sample_classifier(error_type: &str) -> crate::ClassifierResult {
+        crate::ClassifierResult {
+            error_type: error_type.to_string(),
+            conflict_class: "TPL-TPL".to_string(),
+            matched_pattern: "test-pattern".to_string(),
+            recommended_fix: "test-fix".to_string(),
+        }
+    }
+
+    #[test]
+    fn recovery_python_prefers_runtime_failed_attempt_version() {
+        let summary = ValidationSummary {
+            attempts: vec![
+                ValidationAttempt {
+                    status: "build-failed".to_string(),
+                    python_version: "2.7".to_string(),
+                    ..Default::default()
+                },
+                ValidationAttempt {
+                    status: "runtime-failed".to_string(),
+                    python_version: "3.9".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            recovery_python_from_attempt_result(&summary).as_deref(),
+            Some("3.9")
+        );
+    }
+
+    #[test]
+    fn apply_recovery_fix_caps_django_to_py2_ceiling_after_version_not_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = CacheStore::load(temp.path(), temp.path().join("cache")).unwrap();
+        store
+            .save_pypi_versions(
+                "django",
+                &[
+                    "1.11.29".to_string(),
+                    "4.2.16".to_string(),
+                    "5.1.3".to_string(),
+                ],
+            )
+            .unwrap();
+        let parse_result = sample_parse_result(&["django"]);
+        let mut resolved = vec![ResolvedDependency {
+            import_name: "django".to_string(),
+            package_name: "Django".to_string(),
+            version: Some("5.1.3".to_string()),
+            strategy: "cache:seed".to_string(),
+            confidence: 0.97,
+        }];
+        let mut retry_state = RetryLoopState::new("django==5.1.3\n".to_string());
+        let config = ResolveConfig::for_tool_root(temp.path());
+
+        let note = apply_recovery_fix(
+            &sample_classifier("VersionNotFound"),
+            "ERROR: No matching distribution found for django==5.1.3",
+            &mut resolved,
+            &parse_result,
+            "2.7",
+            &mut store,
+            &mut retry_state,
+            &config,
+        )
+        .unwrap();
+
+        assert!(note.contains("1.11.29"));
+        assert_eq!(resolved[0].version.as_deref(), Some("1.11.29"));
+    }
+
+    #[test]
+    fn apply_recovery_fix_upgrades_ipython_after_time_clock_traceback() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = CacheStore::load(temp.path(), temp.path().join("cache")).unwrap();
+        store
+            .save_pypi_versions(
+                "ipython",
+                &["5.10.0".to_string(), "8.18.1".to_string()],
+            )
+            .unwrap();
+        let parse_result = sample_parse_result(&["IPython"]);
+        let mut resolved = vec![ResolvedDependency {
+            import_name: "IPython".to_string(),
+            package_name: "ipython".to_string(),
+            version: Some("5.10.0".to_string()),
+            strategy: "cache:seed".to_string(),
+            confidence: 0.97,
+        }];
+        let mut retry_state = RetryLoopState::new("ipython==5.10.0\n".to_string());
+        let config = ResolveConfig::for_tool_root(temp.path());
+        let log = r#"Traceback (most recent call last):
+  File "env\lib\site-packages\IPython\utils\timing.py", line 64, in <module>
+    clocku = clocks = clock = time.clock
+AttributeError: module 'time' has no attribute 'clock'"#;
+
+        let note = apply_recovery_fix(
+            &sample_classifier("AttributeError"),
+            log,
+            &mut resolved,
+            &parse_result,
+            "3.9",
+            &mut store,
+            &mut retry_state,
+            &config,
+        )
+        .unwrap();
+
+        assert!(note.contains("time.clock"));
+        assert_eq!(resolved[0].version.as_deref(), Some("8.18.1"));
     }
 
     #[test]

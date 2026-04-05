@@ -32,7 +32,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     notes: list[str] = []
 
     # --- #4: Pre-LLM local module detection ---
-    llm_imports, local_skips, framework_mappings = filter_imports(req.imports)
+    llm_imports, local_skips, framework_mappings, known_mappings = filter_imports(req.imports)
 
     if local_skips:
         notes.append(f"Skipped local module: {', '.join(local_skips)}")
@@ -44,6 +44,16 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
             for imp, pkg in framework_mappings.items()
         ]
         notes.append(f"Framework submodule resolved: {list(framework_mappings.keys())}")
+        return ResolutionResponse(
+            mappings=result_mappings, notes=notes, prompts_issued=0,
+        )
+
+    if known_mappings:
+        result_mappings = [
+            PackageMapping(import_name=imp, package_name=pkg)
+            for imp, pkg in known_mappings.items()
+        ]
+        notes.append(f"Known mapping resolved: {list(known_mappings.keys())}")
         return ResolutionResponse(
             mappings=result_mappings, notes=notes, prompts_issued=0,
         )

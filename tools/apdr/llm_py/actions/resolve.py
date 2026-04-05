@@ -149,7 +149,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     deterministic_mappings: set[str] = set()
 
     # --- #4 (local): Pre-LLM local module detection ---
-    llm_imports, local_skips, framework_mappings = filter_imports(req.imports)
+    llm_imports, local_skips, framework_mappings, known_mappings = filter_imports(req.imports)
     pre_resolved: dict[str, str] = {}
 
     if local_skips:
@@ -158,6 +158,11 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         for imp, parent in framework_mappings.items():
             pre_resolved[imp] = parent
             notes.append(f"Framework submodule {imp} -> {parent}")
+    if known_mappings:
+        for imp, pkg in known_mappings.items():
+            pre_resolved[imp] = pkg
+            deterministic_mappings.add(imp)
+            notes.append(f"Known mapping {imp} -> {pkg}")
 
     llm_imports, evidence_mappings, evidence_notes = _seed_evidence_backed_mappings(
         req,
@@ -264,6 +269,7 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         attribute_usage=req.attribute_usage,
         tier2_candidates=req.tier2_candidates,
         retrieval_profile=req.retrieval_profile,
+        snippet_source=req.snippet_source,
     )
 
     # --- #2: Try constrained decoding if tier2 candidates available ---
@@ -271,13 +277,16 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
     if req.tier2_candidates:
         constrained_model = _build_constrained_model(req.tier2_candidates)
 
+    # Tailor system prompt to the specific imports (progressive context disclosure)
+    system_prompt = prompts.resolution_system_for_imports(llm_imports)
+
     # Single-pass JSON completion — no instructor, no multi-pass chains.
     llm_confidence = 0.73
     result = None
     if constrained_model is not None and len(llm_imports) == 1:
         # Easy single-import cases still benefit from grammar-constrained decoding.
         result = client.complete_ollama_native(
-            system_prompt=prompts.RESOLUTION_SYSTEM,
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
             response_model=constrained_model,
             max_tokens=512,
@@ -286,9 +295,33 @@ def handle(req: ResolutionRequest) -> ResolutionResponse:
         if result is not None:
             notes.append("Used constrained decoding with tier2 candidates")
 
+    # For small ambiguous cases that survived tier1/tier2 (retrieval_profile=full),
+    # use entropy voting to get real confidence. Skip in LLM-only mode (no tier2
+    # ran, so "no candidates" doesn't mean ambiguous — it means we skipped tiers).
+    use_entropy = (
+        result is None
+        and 1 <= len(llm_imports) <= 2
+        and not req.tier2_candidates
+        and (req.retrieval_profile or "none") == "full"
+    )
+
+    if use_entropy:
+        entropy_result, entropy_confidence = client.complete_with_entropy(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=MappingsResult,
+            n=3,
+            max_tokens=1024,
+        )
+        prompts_issued += 3
+        if entropy_result is not None:
+            result = entropy_result
+            llm_confidence = entropy_confidence
+            notes.append(f"Entropy voting confidence: {llm_confidence:.2f}")
+
     if result is None:
         result = client.complete_json(
-            system_prompt=prompts.RESOLUTION_SYSTEM,
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
             response_model=MappingsResult,
             max_tokens=1024,

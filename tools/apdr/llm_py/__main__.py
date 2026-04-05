@@ -161,17 +161,23 @@ def run_self_tests() -> None:
     print("  react_agent tools OK")
 
     print("Testing local detector...")
-    from .local_detector import filter_imports, is_likely_local, get_framework_parent
+    from .local_detector import filter_imports, is_likely_local, get_framework_parent, get_known_mapping
     assert is_likely_local("settings")
     assert is_likely_local("conftest")
     assert not is_likely_local("numpy")
     assert get_framework_parent("django.conf") == "django"
     assert get_framework_parent("flask.views") == "flask"
     assert get_framework_parent("numpy") is None
-    needs_llm, skips, fw = filter_imports(["numpy", "settings", "django.conf"])
+    assert get_known_mapping("cv2") == "opencv-python-headless"
+    assert get_known_mapping("PIL") == "Pillow"
+    assert get_known_mapping("sklearn") == "scikit-learn"
+    assert get_known_mapping("numpy") is None  # identity, not in known mappings
+    needs_llm, skips, fw, known = filter_imports(["numpy", "settings", "django.conf", "cv2", "bs4"])
     assert needs_llm == ["numpy"]
     assert "settings" in skips
     assert "django.conf" in fw and fw["django.conf"] == "django"
+    assert known.get("cv2") == "opencv-python-headless"
+    assert known.get("bs4") == "beautifulsoup4"
     print("  local_detector OK")
 
     print("Testing build error patterns...")

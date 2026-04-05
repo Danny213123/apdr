@@ -28,6 +28,8 @@ const state = {
     search: ""
   },
   pollTimer: null,
+  pollInFlight: false,
+  pollAbortController: null,
   previewTimer: null,
   serverStopping: false,
   sseConnection: null,
@@ -879,8 +881,8 @@ function switchPage(pageId, options = {}) {
   syncDocumentTitle();
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, { cache: "no-store", ...options });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.error || `Request failed: ${response.status} ${response.statusText}`);
@@ -1826,7 +1828,7 @@ function setupSSE(runId) {
     state.sseReconnectAttempts++;
 
     state.sseReconnectTimer = setTimeout(() => {
-      if (state.currentRun?.runId === runId) {
+      if (state.currentRun?.runId === runId && isRunActive(state.currentRun)) {
         setupSSE(runId);
       }
     }, delay);
@@ -1910,6 +1912,15 @@ function processPendingSSEUpdates() {
         break;
       case "heartbeat":
         // No UI update needed, just proves connection alive
+        break;
+      case "run_missing":
+        if (state.currentRun?.runId === event.runId) {
+          state.currentRun.status = "idle";
+          state.currentRun.statusText = event.message || "Saved run stream is no longer available.";
+        }
+        teardownSSE();
+        scheduleNextStatusPoll(0);
+        refreshRuns().catch((error) => console.error(error));
         break;
       case "complete":
         handleBenchmarkComplete();
@@ -2097,13 +2108,16 @@ function formatSuccessRate(succeeded, failed, skipped, total) {
 }
 
 async function pollStatus() {
-  if (state.serverStopping) {
+  if (state.serverStopping || state.pollInFlight) {
     return;
   }
+  const controller = new AbortController();
+  state.pollInFlight = true;
+  state.pollAbortController = controller;
   try {
     const previousRunId = state.currentRun?.runId || "";
     const previousStatus = state.currentRun?.status || "";
-    const payload = await fetchJson("/api/status");
+    const payload = await fetchJson("/api/status", { signal: controller.signal });
     state.currentRun = payload.currentRun;
     state.doctor = payload.doctor;
     renderHome();
@@ -2134,10 +2148,29 @@ async function pollStatus() {
       refreshRuns().catch((error) => console.error(error));
     }
   } catch (error) {
-    if (!state.serverStopping) {
+    if (!state.serverStopping && error?.name !== "AbortError") {
       console.error(error);
     }
+  } finally {
+    if (state.pollAbortController === controller) {
+      state.pollAbortController = null;
+    }
+    state.pollInFlight = false;
+    scheduleNextStatusPoll();
   }
+}
+
+function scheduleNextStatusPoll(delay = 1000) {
+  if (state.serverStopping) {
+    return;
+  }
+  if (state.pollTimer) {
+    window.clearTimeout(state.pollTimer);
+  }
+  state.pollTimer = window.setTimeout(() => {
+    state.pollTimer = null;
+    pollStatus();
+  }, delay);
 }
 
 function wireTabs() {
@@ -2225,7 +2258,11 @@ function wireHomeControls() {
   ui.quitButton.addEventListener("click", async () => {
     try {
       state.serverStopping = true;
-      window.clearInterval(state.pollTimer);
+      if (state.pollTimer) {
+        window.clearTimeout(state.pollTimer);
+        state.pollTimer = null;
+      }
+      state.pollAbortController?.abort("server-shutdown");
       await sendJson("/api/server/shutdown");
       document.body.innerHTML = `
         <main class="terminal-shell">
@@ -2488,7 +2525,7 @@ async function initialize() {
   // Mark UI as interactive
   console.timeEnd("ui-interactive");
 
-  state.pollTimer = window.setInterval(pollStatus, 1000);
+  scheduleNextStatusPoll();
 
   // DEFERRED PATH: Load heavy data in background (doesn't block interaction)
   setTimeout(async () => {

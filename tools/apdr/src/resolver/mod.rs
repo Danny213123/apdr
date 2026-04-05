@@ -83,6 +83,7 @@ pub fn resolve_path(
     let mut docker_plan = None;
     let mut docker_plan_status = "not-requested".to_string();
     let mut intake_failure = None;
+    let mut cached_import_set_solution = None;
     write_parse_artifacts(
         &config.output_dir,
         snippet_path,
@@ -196,67 +197,82 @@ pub fn resolve_path(
     }
 
     // --- #3: Fast path â€” reuse a previously validated import-set solution ---
-    // If we've already validated an identical import set successfully, skip all
-    // resolution + validation work and return the cached result immediately (~5ms).
-    // Disabled when --force-validate is set (benchmark mode: always re-validate).
-    if config.validate && !config.llm_only_mode && !config.force_validate {
+    // If we've already validated an identical import set successfully, either
+    // return the cached result immediately (~5ms) or reuse that deterministic
+    // resolution as the starting point for a forced validation pass.
+    if config.validate && !config.llm_only_mode {
         let import_key = cache::store::import_set_key(&parse_result.imports);
         if let Some(cached) = store.load_import_set_solution(&import_key) {
-            report.notes.push(format!(
-                "Import-set cache hit (key={}) â€” reusing validated solution.",
-                &import_key[..8.min(import_key.len())]
-            ));
-            let requirements_txt = cached.requirements_txt.clone();
-            let mut validation = ValidationSummary {
-                succeeded: true,
-                status: "passed-cached".to_string(),
-                validation_backend: "import-set-cache".to_string(),
-                reason: Some("Reused previously validated import-set solution.".to_string()),
-                selected_python_version: Some(cached.python_version.clone()),
-                lockfile_key: Some(cache::lockfile_cache::key_for(
+            let key_preview = &import_key[..8.min(import_key.len())];
+            if config.force_validate {
+                report.notes.push(format!(
+                    "Import-set cache hit (key={key_preview}) — reusing cached resolution before forced validation."
+                ));
+                selected_python = cached.python_version.clone();
+                cached_import_set_solution = Some(cached);
+            } else {
+                report.notes.push(format!(
+                    "Import-set cache hit (key={key_preview}) — reusing validated solution."
+                ));
+                let requirements_txt = cached.requirements_txt.clone();
+                let mut validation = ValidationSummary {
+                    succeeded: true,
+                    status: "passed-cached".to_string(),
+                    validation_backend: "import-set-cache".to_string(),
+                    reason: Some("Reused previously validated import-set solution.".to_string()),
+                    selected_python_version: Some(cached.python_version.clone()),
+                    lockfile_key: Some(cache::lockfile_cache::key_for(
+                        &requirements_txt,
+                        &cached.python_version,
+                    )),
+                    ..Default::default()
+                };
+                validation.solve_duration_ms = started.elapsed().as_millis();
+                report.duration = started.elapsed();
+                write_state_artifacts(
+                    &config.output_dir,
+                    "requirements-final.txt",
                     &requirements_txt,
-                    &cached.python_version,
-                )),
-                ..Default::default()
-            };
-            validation.solve_duration_ms = started.elapsed().as_millis();
-            report.duration = started.elapsed();
-            write_state_artifacts(
-                &config.output_dir,
-                "requirements-final.txt",
-                &requirements_txt,
-            )?;
-            write_state_artifacts(
-                &config.output_dir,
-                "resolved-final.txt",
-                &format_dependency_state(&cached.resolved, &[]),
-            )?;
-            return Ok(ResolveResult {
-                snippet_path: snippet_path.to_path_buf(),
-                python_version: cached.python_version.clone(),
-                parse_result,
-                run_contract: config.run_contract.clone(),
-                solvability: None,
-                resolved: cached.resolved,
-                unresolved: Vec::new(),
-                requirements_txt: requirements_txt.clone(),
-                lockfile: Some(requirements_txt),
-                build_image_id: None,
-                authored_plan: None,
-                authored_plan_status: "not-requested".to_string(),
-                docker_plan: None,
-                docker_plan_status: "not-requested".to_string(),
-                intake_failure: None,
-                validation,
-                resolution_report: report,
-            });
+                )?;
+                write_state_artifacts(
+                    &config.output_dir,
+                    "resolved-final.txt",
+                    &format_dependency_state(&cached.resolved, &[]),
+                )?;
+                return Ok(ResolveResult {
+                    snippet_path: snippet_path.to_path_buf(),
+                    python_version: cached.python_version.clone(),
+                    parse_result,
+                    run_contract: config.run_contract.clone(),
+                    solvability: None,
+                    resolved: cached.resolved,
+                    unresolved: Vec::new(),
+                    requirements_txt: requirements_txt.clone(),
+                    lockfile: Some(requirements_txt),
+                    build_image_id: None,
+                    authored_plan: None,
+                    authored_plan_status: "not-requested".to_string(),
+                    docker_plan: None,
+                    docker_plan_status: "not-requested".to_string(),
+                    intake_failure: None,
+                    validation,
+                    resolution_report: report,
+                });
+            }
         }
     }
 
     // Run tier1 (cache) + tier2 (heuristic) first â€” these are fast (~ms)
     // In LLM-only mode, skip these tiers and go straight to Tier 3 LLM.
-    let mut resolved = Vec::new();
-    let mut unresolved = if config.llm_only_mode {
+    let using_cached_import_set_solution = cached_import_set_solution.is_some();
+    let mut resolved = if let Some(cached) = cached_import_set_solution.as_ref() {
+        cached.resolved.clone()
+    } else {
+        Vec::new()
+    };
+    let mut unresolved = if using_cached_import_set_solution {
+        Vec::new()
+    } else if config.llm_only_mode {
         report
             .notes
             .push("LLM-only mode: skipping tier1 cache and tier2 heuristics.".to_string());
@@ -585,10 +601,12 @@ pub fn resolve_path(
         report.mean_confidence =
             resolved.iter().map(|d| d.confidence).sum::<f64>() / resolved.len() as f64;
     }
-    for note in
-        apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config)
-    {
-        report.notes.push(note);
+    if !using_cached_import_set_solution {
+        for note in
+            apply_compatibility_overrides(&parse_result, &mut resolved, &selected_python, config)
+        {
+            report.notes.push(note);
+        }
     }
     write_state_artifacts(
         &config.output_dir,
@@ -596,8 +614,14 @@ pub fn resolve_path(
         &format_dependency_state(&resolved, &unresolved),
     )?;
 
-    let skip_pre_solve = unresolved.is_empty() && should_skip_smt_pre_solve(config);
-    if skip_pre_solve {
+    let skip_pre_solve = using_cached_import_set_solution
+        || (unresolved.is_empty() && should_skip_smt_pre_solve(config));
+    if using_cached_import_set_solution {
+        report.notes.push(
+            "Skipped SMT pre-solve and reused cached import-set requirements for forced validation."
+                .to_string(),
+        );
+    } else if skip_pre_solve {
         report.notes.push(
             "Skipped SMT pre-solve for this force-validated LLM run and proceeded directly to validation."
                 .to_string(),
@@ -676,6 +700,11 @@ pub fn resolve_path(
         .filter(|result| result.satisfiable && !result.lockfile_requirements.trim().is_empty())
         .filter(|_| !selected_python.starts_with("2."))
         .map(|result| result.lockfile_requirements.clone())
+        .or_else(|| {
+            cached_import_set_solution
+                .as_ref()
+                .map(|cached| cached.requirements_txt.clone())
+        })
         .unwrap_or_else(|| render_requirements(&resolved));
 
     // For Python 2 targets, strip generic seed version pins (e.g.
@@ -683,7 +712,7 @@ pub fn resolve_path(
     // Python 3.  Family pins (curated for specific Python versions) are
     // preserved.  Also cap unpinned packages to their last known Py2 version
     // to avoid installing Py3-only releases.
-    if selected_python.starts_with("2.") {
+    if selected_python.starts_with("2.") && !using_cached_import_set_solution {
         for dep in &mut resolved {
             if dep.strategy == "cache:seed" {
                 dep.version = None;
@@ -1154,6 +1183,15 @@ fn should_author_docker_plan(
     resolved: &[ResolvedDependency],
     unresolved: &[String],
 ) -> bool {
+    // For env-first forced validation, let the local env attempt run before
+    // paying an LLM call to author a Docker plan for already-deterministic inputs.
+    if config.force_validate
+        && unresolved.is_empty()
+        && config.validation_backend() == VALIDATION_BACKEND_LLM
+        && config.llm_validation_policy() == crate::LLM_VALIDATION_POLICY_ENV_FIRST
+    {
+        return false;
+    }
     !should_skip_validation_for_tier1_cache_hit(config, resolved, unresolved)
         && (config.llm_only_mode
             || config.allow_llm
@@ -2086,7 +2124,7 @@ mod tests {
     }
 
     #[test]
-    fn still_prepares_pre_validation_docker_plan_when_tier1_short_circuit_does_not_apply() {
+    fn only_prepares_pre_validation_docker_plan_before_force_validation() {
         let mut config = ResolveConfig::for_tool_root(Path::new("."));
         config.allow_llm = true;
         config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
@@ -2104,7 +2142,7 @@ mod tests {
         ));
 
         config.force_validate = true;
-        assert!(should_author_docker_plan(
+        assert!(!should_author_docker_plan(
             &config,
             &[ResolvedDependency {
                 import_name: "requests".to_string(),
@@ -2112,6 +2150,26 @@ mod tests {
                 version: Some("2.32.3".to_string()),
                 strategy: "cache:seed".to_string(),
                 confidence: 0.97,
+            }],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn does_not_prepare_pre_validation_docker_plan_for_force_validated_env_first_llm_runs() {
+        let mut config = ResolveConfig::for_tool_root(Path::new("."));
+        config.allow_llm = true;
+        config.force_validate = true;
+        config.validation_backend = VALIDATION_BACKEND_LLM.to_string();
+
+        assert!(!should_author_docker_plan(
+            &config,
+            &[ResolvedDependency {
+                import_name: "django".to_string(),
+                package_name: "Django".to_string(),
+                version: Some("4.2.16".to_string()),
+                strategy: "heuristic:pypi-exact".to_string(),
+                confidence: 0.80,
             }],
             &[]
         ));

@@ -63,8 +63,65 @@ FRAMEWORK_SUBMODULE_PARENTS: dict[str, str] = {
 }
 
 
+
+# Well-known import->package mappings that are always correct (Pattern A/B/E/F).
+# These bypass the LLM entirely with confidence=1.0.
+KNOWN_IMPORT_MAPPINGS: dict[str, str] = {
+    # Pattern A: C-extension wrappers
+    "cv2": "opencv-python-headless",
+    "PIL": "Pillow",
+    "yaml": "PyYAML",
+    "gi": "PyGObject",
+    # Pattern B: python- prefix
+    "ldap": "python-ldap",
+    "daemon": "python-daemon",
+    "dotenv": "python-dotenv",
+    "dateutil": "python-dateutil",
+    "magic": "python-magic",
+    "memcached": "python-memcached",
+    "xlib": "python-xlib",
+    "Levenshtein": "python-Levenshtein",
+    # Pattern E: Py prefix
+    "serial": "pyserial",
+    "usb": "pyusb",
+    "enchant": "pyenchant",
+    "cups": "pycups",
+    "audio": "pyaudio",
+    "jwt": "PyJWT",
+    "modbus": "pymodbus",
+    # Pattern F: completely different names
+    "bs4": "beautifulsoup4",
+    "sklearn": "scikit-learn",
+    "git": "GitPython",
+    "dns": "dnspython",
+    "Crypto": "pycryptodome",
+    "wx": "wxPython",
+    "nmap": "python-nmap",
+    "cassandra": "cassandra-driver",
+    "impala": "impyla",
+    # Common aliases
+    "pkg_resources": "setuptools",
+    "MySQLdb": "mysqlclient",
+    "Image": "Pillow",
+    "ImageDraw": "Pillow",
+    "ImageFont": "Pillow",
+    "ImageEnhance": "Pillow",
+}
+
+# Normalized lookup index built once
+_KNOWN_IMPORT_MAPPINGS_NORMALIZED: dict[str, str] = {
+    k.strip().lower().replace("-", "_").replace(".", "_"): v
+    for k, v in KNOWN_IMPORT_MAPPINGS.items()
+}
+
+
 def _normalize(name: str) -> str:
     return name.strip().lower().replace("-", "_").replace(".", "_")
+
+
+def get_known_mapping(import_name: str) -> str | None:
+    """Return a deterministic PyPI package for a well-known import, or None."""
+    return _KNOWN_IMPORT_MAPPINGS_NORMALIZED.get(_normalize(import_name))
 
 
 def is_likely_local(import_name: str) -> bool:
@@ -94,24 +151,28 @@ def get_framework_parent(import_name: str) -> str | None:
 
 def filter_imports(
     import_names: list[str],
-) -> tuple[list[str], list[str], dict[str, str]]:
-    """Partition imports into (needs_llm, local_skips, framework_mappings).
+) -> tuple[list[str], list[str], dict[str, str], dict[str, str]]:
+    """Partition imports into (needs_llm, local_skips, framework_mappings, known_mappings).
 
     Returns:
         needs_llm: imports that should be sent to the LLM
         local_skips: imports detected as local modules (skipped)
         framework_mappings: import -> parent package for framework submodules
+        known_mappings: import -> package for well-known deterministic mappings
     """
     needs_llm: list[str] = []
     local_skips: list[str] = []
     framework_mappings: dict[str, str] = {}
+    known_mappings: dict[str, str] = {}
 
     for imp in import_names:
         if is_likely_local(imp):
             local_skips.append(imp)
         elif (parent := get_framework_parent(imp)) is not None:
             framework_mappings[imp] = parent
+        elif (known_pkg := get_known_mapping(imp)) is not None:
+            known_mappings[imp] = known_pkg
         else:
             needs_llm.append(imp)
 
-    return needs_llm, local_skips, framework_mappings
+    return needs_llm, local_skips, framework_mappings, known_mappings

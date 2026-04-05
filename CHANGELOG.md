@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.22 - 2026-04-05
+
+- Stabilized the benchmark web UI during long and resumed runs by preventing overlapping `/api/status` polls, aborting in-flight polls on shutdown, and turning missing saved-run SSE reconnects into clean terminal events instead of server exceptions.
+- Reduced unnecessary APDR LLM and retry work by reusing cached import-set solutions during forced validation, suppressing pre-validation Docker-plan authoring for deterministic env-first runs, and restoring the no-validation fast path for pure tier1 cache hits.
+- Expanded deterministic LLM-side resolution with well-known import-to-package mappings, import-tailored resolution prompts, entropy-gated small-case solving, and targeted recovery fixes for Python-version-specific Django and `time.clock` failures.
+
 ## 0.2.21 - 2026-04-05
 
 - Hardened APDR's Docker validation cleanup on Windows by canceling orphaned BuildKit jobs after timed-out or killed `docker build` runs, probing for leftover ghost builds, and pruning dangling builder state more aggressively so Docker Desktop does not stay wedged between validations.

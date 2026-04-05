@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime
-from queue import Queue
+from unittest import mock
 
 from .service import BenchmarkService
-from .state import AppState
+from .state import APDR_PYTHON_VERSIONS, AppState
 
 
 class TestServiceTierStats(unittest.TestCase):
@@ -14,6 +14,16 @@ class TestServiceTierStats(unittest.TestCase):
 
     def setUp(self):
         """Create test service instance."""
+        self._interpreters_patch = mock.patch.object(
+            AppState,
+            "apdr_local_interpreters",
+            return_value=(
+                ["3.11"],
+                [version for version in APDR_PYTHON_VERSIONS if version != "3.11"],
+            ),
+        )
+        self._interpreters_patch.start()
+        self.addCleanup(self._interpreters_patch.stop)
         self.state = AppState()
         self.service = BenchmarkService(self.state)
 
@@ -148,6 +158,17 @@ class TestServiceTierStats(unittest.TestCase):
         self.assertEqual(stats["tier1"]["percent"], 28.6)
         self.assertEqual(stats["tier2"]["percent"], 42.9)
         self.assertEqual(stats["tier3"]["percent"], 28.6)
+
+    def test_missing_stream_run_yields_terminal_events(self):
+        """Missing stream targets should not raise and should terminate cleanly."""
+        events = list(self.service.stream_benchmark_progress("missing-run"))
+
+        self.assertEqual(events[0]["type"], "run_missing")
+        self.assertEqual(events[0]["runId"], "missing-run")
+        self.assertIn("Run not found", events[0]["message"])
+        self.assertEqual(events[1]["type"], "complete")
+        self.assertEqual(events[1]["status"], "missing")
+        self.assertEqual(events[1]["runId"], "missing-run")
 
 
 if __name__ == "__main__":
