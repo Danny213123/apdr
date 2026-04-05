@@ -1889,6 +1889,12 @@ function processPendingSSEUpdates() {
       case "init":
       case "progress":
         updateProgressBar(event.progress);
+        // Sync completed/total from server-authoritative progress events
+        if (event.progress && state.currentRun) {
+          state.currentRun.completed = event.progress.completed;
+          state.currentRun.total = event.progress.total;
+          state.currentRun.progressPercent = event.progress.percent;
+        }
         break;
       case "status_update":
         updateCaseStatus(event.caseId, event.status);
@@ -1897,6 +1903,7 @@ function processPendingSSEUpdates() {
       case "case_complete":
         updateCaseStatus(event.caseId, event.status);
         addActivityItem(event);
+        updateRunCountersFromSSE(event);
         break;
       case "tier_stats":
         // No longer used - success rates calculated from case data
@@ -1960,6 +1967,55 @@ function addActivityItem(event) {
   while (ui.recentActivity.children.length > 10) {
     ui.recentActivity.removeChild(ui.recentActivity.lastChild);
   }
+}
+
+function updateRunCountersFromSSE(event) {
+  // Immediately update state.currentRun counters from SSE case_complete events
+  // so the UI reflects changes without waiting for the next /api/status poll.
+  const run = state.currentRun;
+  if (!run) return;
+
+  const isLlm = event.tier === "tier3";
+
+  if (event.status === "pass") {
+    run.successes = (run.successes || 0) + 1;
+    if (isLlm) {
+      run.llmSuccesses = (run.llmSuccesses || 0) + 1;
+    } else {
+      run.regularSuccesses = (run.regularSuccesses || 0) + 1;
+    }
+  } else if (event.status === "skip") {
+    run.skipped = (run.skipped || 0) + 1;
+    if (isLlm) {
+      run.llmSkipped = (run.llmSkipped || 0) + 1;
+    } else {
+      run.regularSkipped = (run.regularSkipped || 0) + 1;
+    }
+  } else {
+    run.failures = (run.failures || 0) + 1;
+    if (isLlm) {
+      run.llmFailures = (run.llmFailures || 0) + 1;
+    } else {
+      run.regularFailures = (run.regularFailures || 0) + 1;
+    }
+  }
+
+  const completed = (run.successes || 0) + (run.failures || 0) + (run.skipped || 0);
+  run.completed = completed;
+
+  const total = run.total || 0;
+  run.progressPercent = total > 0 ? Math.round(completed / total * 1000) / 10 : 0;
+
+  const successes = run.successes || 0;
+  const failures = run.failures || 0;
+  const decided = successes + failures;
+  run.passRate = decided > 0 ? `${(successes / decided * 100).toFixed(1)}%` : "0.0%";
+
+  // Re-render the run page to reflect updated counters
+  if (state.activePage === "run") {
+    renderRunPage();
+  }
+  renderHome();
 }
 
 function handleBenchmarkComplete() {

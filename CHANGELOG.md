@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.21 - 2026-04-05
+
+- Hardened APDR's Docker validation cleanup on Windows by canceling orphaned BuildKit jobs after timed-out or killed `docker build` runs, probing for leftover ghost builds, and pruning dangling builder state more aggressively so Docker Desktop does not stay wedged between validations.
+- Improved the benchmark web UI's live run reporting by syncing server-authoritative progress counts immediately from SSE updates and recomputing success, failure, skip, and pass-rate counters on each completed case instead of waiting for the next status poll.
+- Refreshed the paper text to match current validation behavior by clarifying that APDR skips full validation only when every dependency in a case is resolved from previously validated tier-1 cache hits.
+
 ## 0.2.20 - 2026-04-04
 
 - Restored APDR's `llm` validation flow to prefer local env validation before Docker fallback, fixed benchmark runner and web UI defaults that were still forcing Docker-first, and expanded the run dashboard so env-vs-Docker routes are visible in saved and live case views.

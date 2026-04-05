@@ -104,6 +104,10 @@ pub(super) fn run_command_with_timeout(
             Some(status) => break (false, status),
             None if started.elapsed() >= timeout => {
                 let _ = child.kill();
+                // On Windows, killing `docker build` (CLI) does NOT cancel the
+                // BuildKit job running inside Docker Desktop's VM.  The build
+                // continues as a ghost "active build".  Cancel it explicitly.
+                cancel_orphaned_buildkit_jobs();
                 let status = child.wait()?;
                 break (true, status);
             }
@@ -124,6 +128,34 @@ pub(super) fn run_command_with_timeout(
         exit_code: status.code(),
         duration_ms: started.elapsed().as_millis(),
     })
+}
+
+/// Cancel orphaned BuildKit builds left behind when `docker build` CLI is killed.
+///
+/// On Windows, killing the `docker.exe build` process only kills the CLI -- the
+/// BuildKit builder inside Docker Desktop keeps processing the build, appearing
+/// as a ghost "active build" in Docker Desktop.  This function stops the default
+/// builder instance to cancel any in-flight builds, then prunes the build cache
+/// to free resources.  The builder restarts automatically on the next build.
+fn cancel_orphaned_buildkit_jobs() {
+    use std::process::Stdio;
+
+    eprintln!("[docker] killing orphaned BuildKit builds after timeout");
+    // `docker buildx stop` stops the builder, canceling all active builds.
+    // The builder auto-restarts on the next `docker build` invocation.
+    let _ = Command::new("docker")
+        .args(["buildx", "stop"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // Give the builder a moment to shut down, then prune dangling state.
+    thread::sleep(Duration::from_millis(500));
+    let _ = Command::new("docker")
+        .args(["builder", "prune", "-f", "--keep-storage", "2g"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 pub(super) fn truncate_log(log: &str) -> String {
@@ -226,7 +258,12 @@ pub(super) fn probe_docker_validation_availability() -> DockerValidationAvailabi
     let mut command = Command::new(binary);
     command.args(command_parts);
     match run_command_with_timeout(&mut command, Duration::from_secs(8)) {
-        Ok(result) if result.success => DockerValidationAvailability::Available,
+        Ok(result) if result.success => {
+            // Cancel any orphaned BuildKit builds left over from previous runs
+            // that were killed or timed out (ghost "active builds" in Docker Desktop).
+            cancel_orphaned_buildkit_jobs();
+            DockerValidationAvailability::Available
+        }
         _ => {
             DockerValidationAvailability::Unavailable(DockerUnavailabilityReason::DaemonUnavailable)
         }

@@ -128,7 +128,7 @@ fn validate_requirements_docker_inner(
 
     let validation_started = Instant::now();
     let total_budget = config.validation_timeout;
-    // Pre-generate once â€” identical across all Python version / retry attempts.
+    // Pre-generate once â€" identical across all Python version / retry attempts.
     let smoke_test_script = smoke_test::generate(imports, config.execute_snippet);
 
     // Infer system deps deterministically from requirements
@@ -297,7 +297,7 @@ fn validate_requirements_docker_inner(
                     }
                 }
 
-                // No new deps found or timed out â€” record failure and move to next Python version
+                // No new deps found or timed out â€" record failure and move to next Python version
                 let status = if build_output.timed_out {
                     "build-timeout"
                 } else {
@@ -323,7 +323,7 @@ fn validate_requirements_docker_inner(
                 break; // break inner retry loop, try next Python version
             }
 
-            // Build succeeded — create the container first so startup is measured
+            // Build succeeded -- create the container first so startup is measured
             // separately from the smoke-test runtime.
             let build_logs = build_output.combined_output;
             let build_exit_code = build_output.exit_code;
@@ -491,7 +491,7 @@ fn validate_requirements_docker_inner(
                 return Ok(summary);
             }
 
-            // Runtime failure â€” no system dep retry for runtime failures
+            // Runtime failure â€" no system dep retry for runtime failures
             attempt.status = "runtime-failed".to_string();
             attempt.log_excerpt = truncate_log(&combined);
             fs::write(
@@ -631,14 +631,23 @@ pub(super) fn cleanup_docker_container(container_name: &str) {
         .status();
 }
 
-/// Prune dangling images and build cache. Runs silently.
+/// Prune dangling images, orphaned BuildKit builds, and build cache. Runs silently.
 pub(super) fn cleanup_docker_dangling() {
+    // Stop any orphaned BuildKit builds left behind by killed `docker build` CLI
+    // processes (common on Windows where killing docker.exe doesn't cancel the
+    // builder job inside Docker Desktop's VM).  The builder auto-restarts on the
+    // next `docker build`.
+    let _ = Command::new("docker")
+        .args(["buildx", "stop"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     let _ = Command::new("docker")
         .args(["image", "prune", "-f"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-    // Also trim build cache â€” keep last 2GB to avoid re-downloading base images
+    // Also trim build cache -- keep last 2GB to avoid re-downloading base images
     let _ = Command::new("docker")
         .args(["builder", "prune", "-f", "--keep-storage", "2g"])
         .stdout(Stdio::null())
